@@ -1,11 +1,48 @@
 <script>
+   import { onMount } from 'svelte'
    import Chat from './Chat.svelte'
    import Spinner from './Spinner.svelte'
+   import { PVP_SERVER } from '$lib/util/env.js'
    import { connected, room, createRoom, joinRoom, leaveRoom } from '$lib/stores/connection.js'
 
    let roomId = ''
 
    let copyButtonText = 'Copy to Clipboard'
+
+   /* Is the game relay usable? This distinguishes "the server is not
+      configured" from "you have not joined a room yet", which is the
+      difference that matters on a fresh Vercel deploy with no database. */
+   let relay = { state: 'checking', error: null }
+   let busy = false
+   let failure = null
+
+   onMount(async () => {
+      try {
+         const res = await fetch(`${PVP_SERVER}/api/relay/health`)
+         const body = await res.json()
+         relay = res.ok && body.relay
+            ? { state: 'ok', error: null }
+            : { state: 'error', error: body.error || `relay responded ${res.status}` }
+      } catch (err) {
+         relay = { state: 'error', error: err.message }
+      }
+   })
+
+   async function create () {
+      busy = true
+      failure = null
+      const res = await createRoom()
+      if (!res) failure = 'Could not create a room.'
+      busy = false
+   }
+
+   async function join () {
+      busy = true
+      failure = null
+      const res = await joinRoom(roomId)
+      if (!res) failure = `Could not join ${roomId.toUpperCase()}.`
+      busy = false
+   }
 
    function copyToClipboard () {
       navigator.clipboard.writeText($room).then(() => {
@@ -26,18 +63,36 @@
    {#if !$room}
       <div class="text-center mb-4 italic font-bold">not connected</div>
 
+      {#if relay.state === 'error'}
+         <div class="bg-red-500 text-white text-sm rounded-md p-3 mb-4">
+            <div class="font-bold mb-1">Game relay unavailable</div>
+            <div class="text-xs break-words">{relay.error}</div>
+            <div class="text-xs mt-2 opacity-90">
+               On Vercel, attach a Redis/KV integration to this project and redeploy.
+            </div>
+         </div>
+      {:else if relay.state === 'checking'}
+         <div class="flex gap-3 items-center justify-center text-sm mb-4">
+            checking relay <Spinner />
+         </div>
+      {/if}
+
       <div class="flex flex-col justify-center gap-3">
-         <button class="connect" on:click={createRoom}>Create Room</button>
+         <button class="connect" on:click={create} disabled={busy}>Create Room</button>
          <hr>
-         <form class="flex flex-col gap-2" on:submit|preventDefault={() => joinRoom(roomId)}>
+         <form class="flex flex-col gap-2" on:submit|preventDefault={join}>
             <input
                class="p-2 border border-[var(--bg-color-three)] rounded-lg"
                type="text" name="roomId" bind:value={roomId} placeholder="Room ID" on:keydown|stopPropagation
                required
             >
 
-            <button class="connect">Join Room</button>
+            <button class="connect" disabled={busy}>Join Room</button>
          </form>
+
+         {#if failure}
+            <div class="text-sm text-red-500">{failure}</div>
+         {/if}
       </div>
 
    {:else}
@@ -71,5 +126,9 @@
 <style>
    button.connect {
       @apply py-2 px-3 font-bold text-white bg-[var(--primary-color)] rounded-lg;
+   }
+
+   button.connect:disabled {
+      @apply opacity-50;
    }
 </style>

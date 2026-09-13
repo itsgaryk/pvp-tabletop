@@ -11,3 +11,6 @@ node_modules
 # local npm cache (used when the default cache is not writable)
 /.npm-cache
 build-log.txt
+
+# scratch files
+.tmp-*

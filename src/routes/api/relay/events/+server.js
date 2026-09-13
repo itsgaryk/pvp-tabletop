@@ -1,0 +1,95 @@
+import { json } from '@sveltejs/kit'
+import { appendEvent, readRoom, touchMember } from '$lib/relay/store.js'
+
+/*
+   Append one game event to a room.
+
+   The event is stamped with a room-wide sequence number and timestamp, then
+   handed back so the sender can apply it locally. The sender does not need to
+   poll for its own event: the response body is the same envelope the poll
+   endpoint returns, so /api/relay/poll is the single delivery path for both
+   players.
+
+   Event names are allow-listed. The client only ever emits these, and an open
+   endpoint that relays arbitrary names is an easy way to fill the store.
+*/
+
+const EVENTS = new Set([
+   /* room lifecycle */
+   'chatMessage',
+   /* board / game actions */
+   'boardState',
+   'boardReset',
+   'deckLoaded',
+   'cardsMoved',
+   'slotsMoved',
+   'cardsBenched',
+   'activeBenched',
+   'cardPromoted',
+   'slotPromoted',
+   'cardsEvolved',
+   'cardsAttached',
+   'damageUpdated',
+   'markerUpdated',
+   'slotDiscarded',
+   'stadiumPlayed',
+   'pokemonToggle',
+   'prizeToggle',
+   'handToggle',
+   'oppDamageUpdated'
+])
+
+/** @type {import('./$types').RequestHandler} */
+export async function POST ({ request }) {
+   let body
+   try {
+      body = await request.json()
+   } catch {
+      return json({ error: 'expected a JSON body' }, { status: 400 })
+   }
+
+   const roomId = String(body?.roomId || '').toUpperCase().trim()
+   const memberId = body?.memberId
+   const name = body?.event
+   const data = body?.data ?? {}
+
+   if (!roomId || !memberId) {
+      return json({ error: 'roomId and memberId are required' }, { status: 400 })
+   }
+   if (typeof name !== 'string' || !EVENTS.has(name)) {
+      return json({ error: `event "${name}" is not relayed by this server` }, { status: 400 })
+   }
+
+   try {
+      const room = await readRoom(roomId)
+      if (!room) return json({ error: `room ${roomId} not found` }, { status: 404 })
+
+      if (!room.members[memberId]) {
+         return json({ error: 'you are not a member of this room' }, { status: 403 })
+      }
+
+      /* chat is the one event the server reshapes: it stamps the time so both
+         players agree on ordering, and keeps the log/chat distinction. */
+      const payload =
+         name === 'chatMessage'
+            ? { message: String(data.message ?? '').slice(0, 2000), type: data.type }
+            : data
+
+      const event = await appendEvent(roomId, name, payload)
+      if (!event) return json({ error: 'room went away while writing' }, { status: 409 })
+
+      /*
+         chat carries the relay's timestamp inside its payload: the client
+         renders `data.time`, and both players must agree on it, so only the
+         server can set it.
+      */
+      if (name === 'chatMessage') event.data.time = event.ts
+
+      await touchMember(roomId, memberId)
+
+      return json({ seq: event.seq, event })
+   } catch (err) {
+      console.error('[relay] event request failed', err)
+      return json({ error: err.message }, { status: 500 })
+   }
+}

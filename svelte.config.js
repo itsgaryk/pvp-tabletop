@@ -1,11 +1,20 @@
-import adapter from '@sveltejs/adapter-static'
+import adapter from '@sveltejs/adapter-vercel'
 import 'dotenv/config'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
    kit: {
       adapter: adapter({
-         pages: process.env.BUILD_DIR || 'build'
+         /*
+            adapter-vercel only auto-detects Node 16/18/20 and this project is
+            built on newer Node locally, so pin the runtime explicitly.
+
+            maxDuration has to clear the relay's long-poll window
+            (RELAY_POLL_WAIT_MS, 20s by default) or idle polls would be killed
+            mid-flight. Hobby allows up to 300s.
+         */
+         runtime: 'nodejs20.x',
+         maxDuration: 60
       })
    },
    onwarn (warning, handler) {
