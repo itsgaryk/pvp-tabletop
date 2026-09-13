@@ -1,21 +1,28 @@
+/*
+   Connection to the game relay.
+
+   The relay ships as server routes inside this same project (see
+   src/routes/api/relay), so there is no separate game server to deploy and
+   VITE_PVP_SERVER is normally left unset. Set it only to point the client at a
+   different relay - a self-hosted socket.io server, for example.
+
+   `socket` keeps the small surface the rest of the app was written against
+   (on / off / emit / connect), and `share` / `react` wrap it, so gameplay code
+   did not have to change. See src/lib/relay/client.js for the transport.
+*/
+
 import { PVP_SERVER, APP_ENV } from '$lib/util/env.js'
+import { HttpSocket } from '$lib/relay/client.js'
 import { writable } from './custom/writable.js'
-import { io } from 'socket.io-client'
 
 export let room = writable(null)
 export let connected = writable(false)
 export let chat = writable([])
 
-export const socket = io(PVP_SERVER, {
-   transports: [ 'websocket' ],
-   autoConnect: false
-})
+export const socket = new HttpSocket({ baseUrl: PVP_SERVER })
 
 socket.on('connect', () => {
    connected.set(true)
-   if (room.get()) { // re-join room when re-connection after disconnect
-      joinRoom(room.get())
-   }
 })
 
 socket.on('disconnect', () => {
@@ -23,26 +30,32 @@ socket.on('disconnect', () => {
 })
 
 function connect () {
-   if (!connected.get()) {
-      socket.connect()
-   }
+   socket.connect()
 }
 
 /* Rooms */
 
 export function createRoom () {
    connect()
-   socket.emit('createRoom')
+   return socket.createRoom().catch((err) => {
+      console.error('[pvp-tabletop] could not create a room', err)
+      return null
+   })
 }
 
 export function joinRoom (roomId) {
    connect()
-   socket.emit('joinRoom', { roomId })
+   return socket.joinRoom(roomId).catch((err) => {
+      console.error(`[pvp-tabletop] could not join room ${roomId}`, err)
+      return null
+   })
 }
 
 export function leaveRoom () {
-   socket.emit('leaveRoom', { roomId: room.get() })
-   chat.set([])
+   return socket.leaveRoom(room.get()).catch((err) => {
+      console.error('[pvp-tabletop] could not leave the room', err)
+      return null
+   })
 }
 
 socket.on('createdRoom', ({ roomId }) => {
@@ -55,6 +68,7 @@ socket.on('joinedRoom', ({ roomId }) => {
 
 socket.on('leftRoom', () => {
    room.set(null)
+   chat.set([])
 })
 
 socket.on('opponentJoined', () => {
@@ -93,8 +107,12 @@ export function publishLog (message) {
    publishToChat(message, 'log')
 }
 
-socket.on('chatMessage', ({ message, type }) => {
-   pushToChat(message, type)
+/* the relay stamps chat so both players see the same order */
+socket.on('chatMessage', ({ message, type, time }) => {
+   chat.update(history => {
+      history.push({ message, time: time ?? Date.now(), type, self: 0 })
+      return history
+   })
 })
 
 /* Game State */

@@ -7,6 +7,9 @@
    import Connection from './Connection.svelte'
    import DeckInput from './DeckInput.svelte'
 
+   /* the board itself is static; only /api/relay/* needs a server */
+   export const prerender = true
+
    $: if (browser) {
       document.documentElement.classList.toggle('dark', $darkMode)
    }

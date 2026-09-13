@@ -1,51 +1,107 @@
 2-player version of the Pokémon TCG tabletop app.
 Built with Svelte 4 + SvelteKit.
 
-**[Live Demo](https://pvp-tabletop-27e7a.ondigitalocean.app)** — this demo also hosts the socket.io relay server on the same origin, so rooms work there. The Vercel deployment below serves the static client only.
+The app and the game relay both live in this repository, so a single Vercel
+deployment serves the board *and* passes moves between the two players.
 
 ## Getting Started
-To run it locally, download the repository, run `npm ci` to install dependencies, copy `.env.example` to `.env` (or `.env.development`), and then run `npm run dev`.
 
-To build the app for deployment, run `npm run build`. You can customize the build directory by adding a `.env` file with a `BUILD_DIR` property.
+```sh
+npm ci
+npm run dev
+```
+
+The dev server runs the relay too, so two browser tabs can play each other with
+no configuration — no `.env` file is needed. Copy `.env.example` to `.env` if
+you want to override anything.
+
+`npm run build` produces a Vercel Build Output; `npm run preview` is not useful
+here because the relay needs the dev server or a real deployment.
 
 ## Deploying to Vercel
 
-The app is a fully prerendered static site (`@sveltejs/adapter-static`), so it deploys as a plain static build — no serverless functions are used. The realtime game server lives elsewhere and is reached over websockets from the browser.
-
-1. Import the repository at [vercel.com/new](https://vercel.com/new). `vercel.json` already configures the framework preset and the install/build commands plus the `build` output directory, so the detected defaults do not need to be changed.
-2. (Optional) Add the environment variables below under **Project Settings → Environment Variables**. They are read **at build time**, so changing one requires a redeploy (use *Redeploy* without the build cache).
+1. Import the repository at [vercel.com/new](https://vercel.com/new). `vercel.json` sets the framework preset and the install/build commands; the output directory is handled by `@sveltejs/adapter-vercel`.
+2. **Attach a Redis/KV database** (see below). This is the one required step.
 3. Deploy.
 
-Node is not configured in `vercel.json` — that file has no such property, and including one makes Vercel reject the project with *"should NOT have additional property"*. The build runs on Vercel's default Node version, and `engines.node` in `package.json` (`>=18.13`) is the floor. To pin an exact version, use **Project Settings → General → Node.js Version**.
+Node is not configured in `vercel.json` — that file has no such property, and including one makes Vercel reject the project with *"should NOT have additional property"*. The Node runtime is pinned in `svelte.config.js` instead (`runtime: 'nodejs20.x'`), because `@sveltejs/adapter-vercel` only auto-detects Node 16/18/20.
 
-This repository can also be deployed with the CLI:
+### Why a database is required
 
-```sh
-npm i -g vercel
-vercel        # preview deployment
-vercel --prod # production deployment
-```
+Vercel runs each request in its own function instance, and two players will not reliably be sent to the same one. Any in-process state therefore disappears between requests, so rooms live in Redis. Without it the relay returns a clear error and the UI shows *"Game relay unavailable"* rather than failing silently.
+
+Add a KV/Redis store from **Vercel → Storage** (Upstash Redis is the common
+choice and has a free tier). The integration injects the credentials as
+environment variables, which is all the relay needs — it reads, in order:
+
+- `KV_REST_API_URL` + `KV_REST_API_TOKEN`
+- `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`
+- `REDIS_REST_API_URL` + `REDIS_REST_API_TOKEN`
+
+Redeploy after attaching it so the variables are present at build/run time.
 
 ### Environment variables
 
-All three are **optional** and all three are **client-side**. The app is a static bundle, so Vite inlines their values into the JavaScript during `npm run build` — they are not read by any server at runtime. Because of that they must never hold secrets (anything in them is visible to anyone who opens the deployed app), and changing one requires a redeploy.
+All are **optional** and all are **client-side** except the Redis ones. Vite
+inlines the `VITE_*` values into the JavaScript during `npm run build`, so they
+must never hold secrets and changing one requires a redeploy.
 
-| Variable | What it controls | Example value | Unset behaviour |
-| --- | --- | --- | --- |
-| `VITE_PVP_SERVER` | Origin of the socket.io server that relays moves and chat between the two players. The browser opens a websocket to it directly, so it must be reachable from the public internet and must accept your Vercel domain as an origin. | `https://pvp-tabletop.vercel.app` | Falls back to `https://pvp-tabletop.vercel.app` and logs a warning in the browser console |
-| `VITE_LIMITLESS_WEB` | Base URL of the Limitless TCG API used by "Import Deck" / "Import Random Deck" (`/api/dm/import`, `/api/dm/random`). | `https://limitlesstcg.com` | Falls back to `https://limitlesstcg.com` |
-| `VITE_ENV` | Debug switch. When set to `dev`, every shared socket event is logged to the browser console. | `prod` | Treated as `prod` (no event logging) |
+| Variable | What it controls | Default |
+| --- | --- | --- |
+| `VITE_PVP_SERVER` | Base URL for the relay. Leave unset to use the relay in this same project (`/api/relay`). Set it only to serve the relay from another origin, which must implement the same three routes. | unset (same origin) |
+| `VITE_LIMITLESS_WEB` | Limitless TCG API used by "Import Deck" / "Import Random Deck". | `https://limitlesstcg.com` |
+| `VITE_ENV` | `dev` logs every relayed event to the browser console. | `dev` locally, `prod` in a build |
+| `RELAY_POLL_WAIT_MS` | Server-side long-poll window in ms. Larger = fewer requests but more billed function time. | `20000` |
 
-> **The default `VITE_PVP_SERVER` is the app's own origin, which only relays games if a socket.io server is hosted there.** This Vercel project serves the static client only — `/socket.io/` currently returns 404 on it, so creating or joining a room fails until you deploy the relay server (see *Server* below) and point `VITE_PVP_SERVER` at wherever it lives.
+Do not confuse the `VITE_*` names with Vercel's own system variables
+(`VERCEL_URL`, `VERCEL_ENV`, …), which Vercel lists in the same screen.
 
-Do not confuse these `VITE_*` variables with Vercel's own system variables (`VERCEL_URL`, `VERCEL_ENV`, …). Vercel shows its system variables alongside yours in that screen; only the three above are read by this project.
+## How the relay works
 
-### Project layout notes
+`src/routes/api/relay/` holds three routes, and `src/lib/relay/client.js` is the
+transport the browser uses:
 
-- `src/routes/+layout.js` sets `prerender = true`, so every page is generated at build time.
-- `vercel.json` pins the output directory to `build` (the adapter default).
-- The game/relay server is a separate project; see *Server* below.
+| Route | Purpose |
+| --- | --- |
+| `POST /api/relay/room` | create / join / leave a room |
+| `POST /api/relay/events` | append one event to a room's log |
+| `GET /api/relay/poll` | long poll for events after a cursor |
+| `GET /api/relay/health` | is a room store configured? |
 
-## Server
-The server-side code for passing actions between the two players is very simple. You can find all the necessary files [here](https://gist.github.com/link--11/b568ca86faca5dd9cf0017927d90451d).
-If you don't require any custom actions that are not in the current version, you can use the live demo server during development.
+A room is a single document: an ordered event log plus its two members. Events
+are stamped with a room-wide sequence number and timestamp, so both players
+agree on ordering. A client keeps a cursor, and `poll` holds the request open
+(up to `RELAY_POLL_WAIT_MS`) until something new appears.
+
+The client aborts its outstanding poll whenever it sends, so a move normally
+lands in milliseconds and the long-poll window only expires while the board is
+idle. `connection.js` exposes the same `socket.on/off/emit` surface the rest of
+the app was already written against, so gameplay code is unaware of the
+transport.
+
+Rooms expire 6 hours after their last event, and each room keeps its most recent
+400 events.
+
+## Server (optional, self-hosted)
+
+`VITE_PVP_SERVER` predates the in-project relay: it can point at a relay you run
+elsewhere. Note this is **not** a socket.io client any more — the client speaks
+HTTP long polling against `/api/relay/*`, so an alternative host has to serve
+those same routes. The relay code in `src/routes/api/relay` and the store
+adapters in `src/lib/relay/store.js` are plain functions and can be mounted in
+any Node HTTP framework.
+
+If you specifically want to go back to socket.io, the original server is
+[here](https://gist.github.com/link--11/b568ca86faca5dd9cf0017927d90451d), but
+that needs a host that keeps a process alive (Vercel Functions pin each
+websocket to one instance and cannot broadcast between them, so socket.io rooms
+do not work there without a pub/sub adapter).
+
+## Project layout notes
+
+- `src/routes/+page.svelte` opts into `prerender = true`; the root layout sets
+  `prerender = false` so the `api/relay` routes stay dynamic.
+- `vercel.json` holds the framework preset only — the output directory comes
+  from the adapter's Build Output.
+- Gameplay code talks to `share()` / `react()` in `src/lib/stores/connection.js`
+  and never touches the transport directly.

@@ -1,37 +1,31 @@
 /*
    Build-time configuration.
 
-   SvelteKit (`adapter-static`) ships a static bundle, so every value below is
-   inlined by Vite while building. That means these variables must exist in the
-   environment that runs `npm run build` (locally via `.env`, or in the Vercel
-   project's Environment Variables) and that changing one requires a rebuild.
+   SvelteKit inlines these values while building, so they have to be present in
+   the environment that runs `npm run build` (a local `.env`, or the Vercel
+   project's Environment Variables). Changing one needs a rebuild/redeploy.
 
-   Fallbacks are provided so a deployment always has a value to use without any
-   environment variables being configured. The game-server fallback points at
-   this app's own deployed origin, so it relays games once a socket.io server is
-   hosted there; the card API falls back to the public Limitless TCG API that
-   the project already uses for development.
+   Both values have working defaults: the relay now ships inside this project,
+   so a fresh deploy needs no configuration at all.
 */
 
-const DEFAULT_PVP_SERVER = 'https://pvp-tabletop.vercel.app'
 const DEFAULT_LIMITLESS_WEB = 'https://limitlesstcg.com'
 
-/* the socket.io server that relays actions between the two players */
-export const PVP_SERVER = import.meta.env.VITE_PVP_SERVER || DEFAULT_PVP_SERVER
+/*
+   Base URL for the game relay.
+   - unset (recommended): the relay served by this same project, under
+     /api/relay. Works locally and on Vercel with no configuration.
+   - an absolute URL: serve the relay from somewhere else. The same three
+     routes must exist there (/api/relay/room, /events, /poll) - this is *not*
+     a socket.io client, so a socket.io server will not satisfy it.
+*/
+export const PVP_SERVER = import.meta.env.VITE_PVP_SERVER || ''
+
+/* true when the relay is being served from a different origin */
+export const HAS_EXTERNAL_SERVER = Boolean(import.meta.env.VITE_PVP_SERVER)
 
 /* the Limitless TCG API used to import decklists */
 export const LIMITLESS_WEB = import.meta.env.VITE_LIMITLESS_WEB || DEFAULT_LIMITLESS_WEB
 
-/* 'dev' enables extra console logging for shared socket events */
-export const APP_ENV = import.meta.env.VITE_ENV || 'prod'
-
-/* true when the deployment was explicitly given its own game server */
-export const HAS_CUSTOM_SERVER = Boolean(import.meta.env.VITE_PVP_SERVER)
-
-if (!HAS_CUSTOM_SERVER) {
-   console.warn(
-      `[pvp-tabletop] VITE_PVP_SERVER is not set, falling back to ${DEFAULT_PVP_SERVER}. ` +
-      `Rooms will only work if a socket.io relay server is hosted there - set ` +
-      `VITE_PVP_SERVER to your own server otherwise.`
-   )
-}
+/* 'dev' logs every shared event to the console; local builds default to it */
+export const APP_ENV = import.meta.env.VITE_ENV || (import.meta.env.DEV ? 'dev' : 'prod')
