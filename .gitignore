@@ -3,6 +3,11 @@ node_modules
 /build
 /.svelte-kit
 /package
+.vercel
 .env
 .env.*
 !.env.example
+
+# local npm cache (used when the default cache is not writable)
+/.npm-cache
+build-log.txt

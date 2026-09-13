@@ -1,4 +1,4 @@
-const target = import.meta.env.VITE_LIMITLESS_WEB
+import { LIMITLESS_WEB as target } from './env.js'
 
 function get (endpoint, callback) {
 

@@ -1,5 +1,4 @@
-const server = import.meta.env.VITE_PVP_SERVER
-
+import { PVP_SERVER, APP_ENV } from '$lib/util/env.js'
 import { writable } from './custom/writable.js'
 import { io } from 'socket.io-client'
 
@@ -7,7 +6,7 @@ export let room = writable(null)
 export let connected = writable(false)
 export let chat = writable([])
 
-export const socket = io(server, {
+export const socket = io(PVP_SERVER, {
    transports: [ 'websocket' ],
    autoConnect: false
 })
@@ -81,7 +80,7 @@ function updateChat (message, type, self) {
 }
 
 export function publishToChat (message, type) {
-   if (!room.val) return
+   if (!room.get()) return
    updateChat(message, type, 1)
    share('chatMessage', { message, type })
 }
@@ -99,10 +98,9 @@ socket.on('chatMessage', ({ message, type }) => {
 })
 
 /* Game State */
-const env = import.meta.env.VITE_ENV
 
 export function share (event, data) {
-   if (env === 'dev') console.log('Sharing event ' + event, data)
+   if (APP_ENV === 'dev') console.log('Sharing event ' + event, data)
    socket.emit(event, {
       ...data, room: room.get()
    })
@@ -116,7 +114,7 @@ export function react (event, cb) {
    }
 }
 
-if (env === 'dev') {
+if (APP_ENV === 'dev') {
    socket.onAny((eventName, ...args) => {
       console.log('received event ' + eventName)
    })
