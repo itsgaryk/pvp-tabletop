@@ -1,10 +1,13 @@
 <script>
    import Card from './Card.svelte'
-   import { stadium } from '$lib/stores/opponent.js'
+   import { defaultOpponent } from '$lib/stores/opponent.js'
+
+   /* which player's board this component shows */
+   export let store = defaultOpponent
 </script>
 
 <div class="p-1 flex justify-center items-center">
-   {#if $stadium}
-      <Card card={$stadium} pile="stadium" />
+   {#if $store.stadium}
+      <Card card={$store.stadium} pile="store.stadium" />
    {/if}
 </div>

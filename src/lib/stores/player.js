@@ -40,6 +40,15 @@ export function importDeck (txt, cb, rd = false) {
 
       cb(res)
       share('deckLoaded', { deck: res.cards })
+
+      /*
+         deckLoaded only carries the card list, not the board layout. A player
+         who imports after joining would otherwise never publish their board:
+         shareBoardstate() only ran on join and on opponentJoined, so a spectator
+         (or an opponent reconnecting) would see their deck with an empty board.
+      */
+      shareBoardstate()
+
       publishLog(rd ? 'random deck ⚆ _ ⚆' : 'Imported deck')
    }
 
@@ -389,6 +398,17 @@ react('joinedRoom', () => {
 
 react('opponentJoined', () => {
    shareBoardstate()
+})
+
+/*
+   Presence-based board sharing. Whichever player is already in the room when
+   the other arrives never sees `opponentJoined` for that arrival in the other
+   direction, so publishing on every presence change guarantees both boards end
+   up in the room - which is what an opponent (or a spectator) needs to render
+   the second side.
+*/
+react('opponentPresent', ({ present }) => {
+   if (present) shareBoardstate()
 })
 
 /* functions that let the opponent manipulate our board */

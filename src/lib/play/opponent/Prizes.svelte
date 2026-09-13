@@ -3,14 +3,17 @@
    import Pile from './Pile.svelte'
    import Card from './Card.svelte'
 
-   import { prizes, prizesFlipped } from '$lib/stores/opponent.js'
+   import { defaultOpponent } from '$lib/stores/opponent.js'
+
+   /* which player's board this component shows */
+   export let store = defaultOpponent
 </script>
 
-<Pile pile={prizes} name="Prizes">
+<Pile pile={store.prizes} name="Prizes">
    <Vertical>
-      <div class="prizes p-1 grid grid-cols-2 gap-1 w-fit">
-         {#each $prizes as card (card._id)}
-            <Card {card} pile={prizes} revealed={$prizesFlipped} />
+      <div class="store.prizes p-1 grid grid-cols-2 gap-1 w-fit">
+         {#each $store.prizes as card (card._id)}
+            <Card {card} pile={store.prizes} revealed={$store.prizesFlipped} />
          {/each}
       </div>
    </Vertical>

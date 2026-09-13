@@ -1,11 +1,14 @@
 <script>
    import Pile from './Pile.svelte'
    import cardback from '$lib/assets/cardback_int.png'
-   import { deck } from '$lib/stores/opponent.js'
+   import { defaultOpponent } from '$lib/stores/opponent.js'
+
+   /* which player's board this component shows */
+   export let store = defaultOpponent
 </script>
 
-<Pile pile={deck} name="Deck">
-   {#if $deck.length > 0}
+<Pile pile={store.deck} name="Deck">
+   {#if $store.deck.length > 0}
       <img class="card" src={cardback} alt="" draggable="false">
    {/if}
 </Pile>

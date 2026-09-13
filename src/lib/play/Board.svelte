@@ -4,6 +4,7 @@
    import { publishLog, spectating } from '$lib/stores/connection.js'
    import { pick, shuffle, pokemonHidden, handRevealed } from '$lib/stores/player.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
+   import { defaultOpponent, spectatorOpponents } from '$lib/stores/opponent.js'
 
    import Hand from './board/Hand.svelte'
    import Deck from './board/Deck.svelte'
@@ -48,6 +49,15 @@
       startAttachEvolve,
       resetSelection, toggleMarker
    } from '$lib/stores/player.js'
+
+   /*
+      A spectator watches two players, so it needs a mirror per player: the top
+      and bottom halves of this board show a different one. A player keeps the
+      single default mirror (own board below, opponent above). The mirrors and
+      their assignment live in the opponent store.
+   */
+   $: topStore = $spectating ? spectatorOpponents.top : defaultOpponent
+   $: bottomStore = $spectating ? spectatorOpponents.bottom : defaultOpponent
 
    let inspectionModal
    let selectionModal
@@ -180,10 +190,7 @@
 
 <DndCard />
 
-<!-- the control sidebar acts on your own board, so a spectator has no use for it -->
-{#if !$spectating}
-   <Controls />
-{/if}
+<Controls />
 
 <div class="h-screen overflow-y-auto flex-1" on:contextmenu|capture|preventDefault>
    <div class="game flex flex-col h-full max-w-[1920px] m-auto select-none relative">
@@ -202,79 +209,115 @@
 
       <div class="gameboard min-h-0 relative flex-1">
 
-         <div class="hand2 flip">
-            <OppHand />
+         <div class="hand2" class:flip={!$spectating}>
+            <OppHand store={topStore} />
          </div>
 
-         <div class="prizes2 flip">
-            <OppPrizes />
+         <div class="prizes2" class:flip={!$spectating}>
+            <OppPrizes store={topStore} />
          </div>
 
-         <div class="deck2 flip">
-            <OppDeck />
+         <div class="deck2" class:flip={!$spectating}>
+            <OppDeck store={topStore} />
          </div>
 
-         <div class="discard2 flip">
-            <OppDiscard />
+         <div class="discard2" class:flip={!$spectating}>
+            <OppDiscard store={topStore} />
          </div>
 
-         <div class="lz2 flip">
-            <OppLostZone />
+         <div class="lz2" class:flip={!$spectating}>
+            <OppLostZone store={topStore} />
          </div>
 
-         <div class="bench2 flip">
-            <OppBench />
+         <div class="bench2" class:flip={!$spectating}>
+            <OppBench store={topStore} />
          </div>
 
-         <div class="play2 flip">
-            <OppTable />
+         <div class="play2" class:flip={!$spectating}>
+            <OppTable store={topStore} />
          </div>
 
          <div class="play">
+            {#if $spectating}
+            <OppTable store={bottomStore} />
+         {:else}
             <Table />
+         {/if}
          </div>
 
-         <div class="stadium2 flip">
-            <OppStadium />
+         <div class="stadium2" class:flip={!$spectating}>
+            <OppStadium store={topStore} />
          </div>
 
          <div class="stadium">
+            {#if $spectating}
+            <OppStadium store={bottomStore} />
+         {:else}
             <Stadium />
+         {/if}
          </div>
 
          <div class="active">
-            <div class="active2 flip">
-               <OppActive />
+            <div class="active2" class:flip={!$spectating}>
+               <OppActive store={topStore} />
             </div>
             <div class="active1">
-               <Active />
+               {#if $spectating}
+            <OppActive store={bottomStore} />
+         {:else}
+            <Active />
+         {/if}
             </div>
          </div>
 
          <div class="bench">
+            {#if $spectating}
+            <OppBench store={bottomStore} />
+         {:else}
             <Bench />
+         {/if}
          </div>
 
          <div class="veil" class:applied={$pokemonHidden}></div>
 
          <div class="lz">
+            {#if $spectating}
+            <OppLostZone store={bottomStore} />
+         {:else}
             <LostZone />
+         {/if}
          </div>
 
          <div class="discard">
+            {#if $spectating}
+            <OppDiscard store={bottomStore} />
+         {:else}
             <Discard />
+         {/if}
          </div>
 
          <div class="deck">
+            {#if $spectating}
+            <OppDeck store={bottomStore} />
+         {:else}
             <Deck />
+         {/if}
          </div>
 
          <div class="prizes">
+            {#if $spectating}
+            <OppPrizes store={bottomStore} />
+         {:else}
             <Prizes />
+         {/if}
          </div>
 
-         <div class="hand" class:revealed={$handRevealed}>
+         <div class="hand flip" class:revealed={$handRevealed && !$spectating}>
+            {#if $spectating}
+            <OppHand store={bottomStore} />
+         {:else}
             <Hand />
+         {/if}
          </div>
       </div>
 

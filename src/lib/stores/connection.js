@@ -20,6 +20,7 @@ export let connected = writable(false)
 export let chat = writable([])
 export let spectating = writable(false)
 export let spectators = writable(0)
+export let seatedPlayers = writable([])
 
 export const socket = new HttpSocket({ baseUrl: PVP_SERVER })
 
@@ -105,6 +106,11 @@ socket.on('spectatingRoom', ({ roomId }) => {
    spectating.set(true)
    room.set(roomId)
    refreshSummary(roomId)
+})
+
+/* which two members hold the playing seats, so a spectator can seat them */
+socket.on('seated', ({ players }) => {
+   seatedPlayers.set(players || [])
 })
 
 socket.on('leftRoom', () => {

@@ -3,14 +3,17 @@
    import { cardImage } from '$lib/util/assets.js'
    import Pile from './Pile.svelte'
 
-   import { discard } from '$lib/stores/opponent.js'
+   import { defaultOpponent } from '$lib/stores/opponent.js'
    const { openOppPile } = getContext('boardActions')
 
-   $: top = $discard[ $discard.length - 1 ]
+   $: top = $store.discard[ $store.discard.length - 1 ]
+
+   /* which player's board this component shows */
+   export let store = defaultOpponent
 </script>
 
-<Pile pile={discard} name="Discard">
-   {#if $discard.length}
-      <img class="card" src="{cardImage(top, 'xs')}" alt="{top.name}" on:click|stopPropagation={() => openOppPile(discard)}>
+<Pile pile={store.discard} name="Discard">
+   {#if $store.discard.length}
+      <img class="card" src="{cardImage(top, 'xs')}" alt="{top.name}" on:click|stopPropagation={() => openOppPile(store.discard)}>
    {/if}
 </Pile>
