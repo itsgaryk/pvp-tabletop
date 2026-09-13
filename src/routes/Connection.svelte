@@ -88,6 +88,14 @@
       if (!window.confirm('Sure?')) return
       leaveRoom()
    }
+
+   /*
+      What a spectator sees at the top of the panel. The watcher count belongs
+      in this line, so there is no separately labelled line for it (and no
+      "read only" note - the missing controls say that already). Until the count
+      arrives from the relay the number is left out rather than shown as zero.
+   */
+   $: spectatorHeading = $spectators > 0 ? `Spectating - ${$spectators} 👀` : 'Spectating 👀'
 </script>
 
 <div class="p-4 min-w-[350px] w-[min(20%,500px)] flex flex-col h-screen">
@@ -140,7 +148,11 @@
       <div class="flex flex-col gap-1 mb-5">
          <div class="text-center font-bold">
             {#if $connected}
-               {$spectating ? 'spectating' : 'connected to'}
+               {#if $spectating}
+                  {spectatorHeading}
+               {:else}
+                  connected to
+               {/if}
             {:else}
                <div class="flex gap-3 items-center justify-center bg-yellow-400 text-black p-1 rounded-md mb-2">
                   lost connection
@@ -150,13 +162,7 @@
             <div class="text-sm text-[var(--text-color-two)]">{$room}</div>
          </div>
 
-         {#if $spectating}
-            <div class="text-center text-xs italic text-[var(--text-color-two)]">
-               read only - you cannot affect the game
-            </div>
-         {/if}
-
-         {#if $spectators > 0}
+         {#if !$spectating && $spectators > 0}
             <div class="text-center text-xs text-[var(--text-color-two)]">
                {$spectators} {$spectators === 1 ? 'spectator' : 'spectators'}
             </div>
