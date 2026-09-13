@@ -1,5 +1,5 @@
 <script>
-   import { chat, publishToChat } from '$lib/stores/connection.js'
+   import { chat, publishToChat, spectating } from '$lib/stores/connection.js'
    import { tick } from 'svelte'
 
    let message = ''
@@ -44,11 +44,14 @@
       {/each}
    </div>
 
-   <div class="quick-messages">
-      <button on:click={() => publishToChat('Turn End', 'chat')}>Pass</button>
-      <button on:click={() => publishToChat('🤔', 'chat')}>🤔</button>
-      <button on:click={() => publishToChat('😠', 'chat')}>😠</button>
-   </div>
+   <!-- the quick messages are game actions ("Pass"), so a spectator does not get them -->
+   {#if !$spectating}
+      <div class="quick-messages">
+         <button on:click={() => publishToChat('Turn End', 'chat')}>Pass</button>
+         <button on:click={() => publishToChat('🤔', 'chat')}>🤔</button>
+         <button on:click={() => publishToChat('😠', 'chat')}>😠</button>
+      </div>
+   {/if}
 
    <form class="flex" on:submit|preventDefault={sendMessage}>
       <input
