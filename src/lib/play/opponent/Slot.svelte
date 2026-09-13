@@ -2,7 +2,6 @@
    import { getContext } from 'svelte'
    import { cardImage } from '$lib/util/assets.js'
    import cardback from '$lib/assets/cardback_int.png'
-
    import { defaultOpponent } from '$lib/stores/opponent.js'
    const { openOppSlotDetails, openOppSlotMenu, openDetails } = getContext('boardActions')
 
@@ -10,18 +9,20 @@
    export let store = defaultOpponent
    export let slot
 
+   $: ({ pokemonHidden } = store)
+
    /* these are piles belonging to the slot itself, not to the mirrored board */
    $: ({ pokemon, trainer, energy, damage, marker } = slot)
    $: top = $pokemon[ $pokemon.length - 1]
 
    function onClick (e) {
-      if ($store.pokemonHidden) return
+      if ($pokemonHidden) return
       if (e.altKey) openDetails(top)
       else openOppSlotDetails(slot)
    }
 
    function onCtx (e) {
-      if ($store.pokemonHidden) return
+      if ($pokemonHidden) return
       openOppSlotMenu(e.clientX, e.clientY, slot)
    }
 </script>
@@ -40,8 +41,8 @@
 
    {#if top}
       <img
-         src="{$store.pokemonHidden ? cardback : cardImage(top, 'xs')}"
-         alt="{$store.pokemonHidden ? 'Hidden Pokémon' : top.name}"
+         src="{$pokemonHidden ? cardback : cardImage(top, 'xs')}"
+         alt="{$pokemonHidden ? 'Hidden PokÃ©mon' : top.name}"
          class="card pokemon relative z-10" draggable=false>
    {/if}
 

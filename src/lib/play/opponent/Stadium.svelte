@@ -4,10 +4,11 @@
 
    /* which player's board this component shows */
    export let store = defaultOpponent
+   $: ({ stadium } = store)
 </script>
 
 <div class="p-1 flex justify-center items-center">
-   {#if $store.stadium}
-      <Card card={$store.stadium} pile="store.stadium" />
+   {#if $stadium}
+      <Card card={$stadium} pile={stadium} />
    {/if}
 </div>
