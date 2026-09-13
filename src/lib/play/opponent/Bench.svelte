@@ -10,7 +10,7 @@
 <div class="p-1 flex items-center focus:outline-none" tabindex="0">
    <div class="p-1 flex gap-[var(--scaled-rem)] min-w-0">
       {#each $bench as slot (slot.id)}
-         <Slot bind:slot={slot} />
+         <Slot bind:slot={slot} {store} />
       {/each}
    </div>
 </div>

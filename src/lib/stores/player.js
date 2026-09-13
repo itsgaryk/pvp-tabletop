@@ -375,12 +375,21 @@ export function resetSelection () {
    evolving.set(false)
 }
 
-export function toggleMarker () {
+/*
+   Put a status effect on the selected Pokémon, or clear it.
+
+   A status only ever applies to the Active Pokémon and only one can be on it at
+   a time, so this replaces whatever was there - and choosing the status the
+   Pokémon already has clears it, which is how it is taken off again.
+*/
+export function setStatus (status) {
    if (isSpectator()) return
    if (!slotSelection.get().length) return
+
    for (const slot of slotSelection.get()) {
-      slot.marker.update(b => !b)
-      share('markerUpdated', { slotId: slot.id, state: slot.marker.get() })
+      const next = slot.status.get() === status ? null : status
+      slot.status.set(next)
+      share('statusUpdated', { slotId: slot.id, status: next })
    }
 }
 
@@ -413,7 +422,24 @@ react('opponentPresent', ({ present }) => {
 
 /* functions that let the opponent manipulate our board */
 
+/*
+   The opponent can set the damage and the status effect on our Active Pokémon,
+   and both arrive as their event. Our own board is the one that keeps the
+   change, and we then publish it as our own: boards watching us - a spectator's
+   mirror of us, for instance - only follow what we say, so without this the
+   change would be visible to the opponent who made it and to nobody else.
+   (Our own event never comes back to us, the relay skips the sender's echo.)
+*/
 react('oppDamageUpdated', ({ slotId, damage }) => {
    const slot = findSlot(slotId)
+   if (!slot) return
    slot.damage.set(damage)
+   share('damageUpdated', { slotId, damage })
+})
+
+react('statusUpdated', ({ slotId, status }) => {
+   const slot = findSlot(slotId)
+   if (!slot) return
+   slot.status.set(status)
+   share('statusUpdated', { slotId, status })
 })

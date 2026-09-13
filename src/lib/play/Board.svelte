@@ -47,7 +47,7 @@
       cardSelection, slotSelection, selectionPile, selectPile,
       moveSelection, toBench, toActive, toStadium,
       startAttachEvolve,
-      resetSelection, toggleMarker
+      resetSelection
    } from '$lib/stores/player.js'
 
    /*
@@ -113,8 +113,8 @@
       slotMenu.open(x, y)
    }
 
-   function openOppSlotMenu (x, y, slot) {
-      oppSlotMenu.open(x, y, slot)
+   function openOppSlotMenu (x, y, slot, active) {
+      oppSlotMenu.open(x, y, slot, active)
    }
 
    function startAE (evo = false) { // attach / evolve
@@ -165,7 +165,6 @@
 
       else if (key === 'v') openPile(deck)
       else if (key === 'w') openPile(table)
-      else if (key === 'u') toggleMarker(deck)
 
       else if (key === 'w') moveSelection(table) // older version table shortcut without the extra functionality
       else if (key === 'x') {
@@ -507,7 +506,8 @@
       there and every card and number reads the same way up on both halves.
    */
    .flip :global(.count),
-   .flip :global(.counter) {
+   .flip :global(.counter),
+   .flip :global(.marker) {
       transform: scale(-1, -1);
    }
 

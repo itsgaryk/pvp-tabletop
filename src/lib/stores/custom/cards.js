@@ -106,7 +106,8 @@ export function slot (card = null, id = null) {
       energy: pile(`${sid}.energy`),
       trainer: pile(`${sid}.trainer`),
       damage: writable(0),
-      marker: writable(false),
+      /* status effect id (see $lib/util/status.js), or null for none */
+      status: writable(null),
       get name() {
          return pokemon.get().at(-1)?.name
       }

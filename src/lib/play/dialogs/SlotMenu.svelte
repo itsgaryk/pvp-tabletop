@@ -4,11 +4,12 @@
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import { share } from '$lib/stores/connection.js'
    import { logMove } from '$lib/stores/logger.js'
+   import { STATUSES } from '$lib/util/status.js'
 
    import {
       hand, discard, active,
       moveSelection, toActive, toBench, removeSlot,
-      toggleMarker
+      setStatus
    } from '$lib/stores/player.js'
 
    const { openSlotDetails } = getContext('boardActions')
@@ -19,9 +20,17 @@
       $selection[0].pokemon.get().at(-1).name : `${$selection.length} Pokémon`
 
    let menu
+   /* the status effects are only listed once their menu entry is clicked */
+   let statusOpen = false
 
    export function open (x, y) {
+      statusOpen = false
       menu.open(x, y)
+   }
+
+   function applyStatus (status) {
+      setStatus(status)
+      menu.close()
    }
 
    /* move actions analog zu CardMenu.svelte */
@@ -115,7 +124,36 @@
    <ContextMenuOption click={damage} text="Damage" />
    <ContextMenuOption click={heal} text="Heal" />
    <ContextMenuOption click={setDamage} text="Set Damage" />
-   <ContextMenuOption click={() => toggleMarker()} text="Toggle Marker" shortcut="u" />
+
+   <!--
+      A status effect only applies to the Active Pokémon, so it is offered for
+      that one alone. Choosing the status it already has takes it off again.
+   -->
+   {#if $selection.length === 1 && $selection[0] === $active}
+      <ContextMenuOption
+         click={() => statusOpen = !statusOpen}
+         text="Set Status Effect"
+         shortcut={statusOpen ? '▾' : '▸'} />
+
+      {#if statusOpen}
+         {#each STATUSES as status (status.id)}
+            <ContextMenuOption click={() => applyStatus(status.id)}>
+               <span class="flex items-center gap-2 pl-3">
+                  <span class="w-4 text-center">{status.emoji}</span>
+                  {status.label}
+                  {#if $active.status.get() === status.id}<span class="ml-auto">✓</span>{/if}
+               </span>
+            </ContextMenuOption>
+         {/each}
+
+         {#if $active.status.get()}
+            <ContextMenuOption click={() => applyStatus(null)}>
+               <span class="pl-3">Clear Status Effect</span>
+            </ContextMenuOption>
+         {/if}
+      {/if}
+   {/if}
+
    <hr>
    {#if $selection.length === 1 && $selection[0] !== $active}
       <ContextMenuOption click={() => callThenClose(toActive)} text="Move to Active" shortcut="a" />

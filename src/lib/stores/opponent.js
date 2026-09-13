@@ -121,7 +121,7 @@ export function createOpponent () {
          moveCards(data.energy, deck, p.energy)
          moveCards(data.trainer, deck, p.trainer)
          p.damage.set(data.damage)
-         p.marker.set(data.marker)
+         p.status.set(data.status || null)
          return p
       }
 
@@ -226,9 +226,9 @@ export function createOpponent () {
          const s = findSlot(slotId)
          if (s) s.damage.set(damage)
       },
-      markerUpdated: ({ slotId, state }) => {
+      statusUpdated: ({ slotId, status }) => {
          const s = findSlot(slotId)
-         if (s) s.marker.set(state)
+         if (s) s.status.set(status || null)
       },
       slotDiscarded: ({ slotId }) => {
          const s = findSlot(slotId)
@@ -377,7 +377,7 @@ export const spectatorFlipped = writable(false)
 const RELAY_EVENTS = [
    'boardState', 'deckLoaded', 'boardReset', 'cardsMoved', 'slotsMoved',
    'cardsBenched', 'activeBenched', 'cardPromoted', 'slotPromoted',
-   'cardsEvolved', 'cardsAttached', 'damageUpdated', 'markerUpdated',
+   'cardsEvolved', 'cardsAttached', 'damageUpdated', 'statusUpdated',
    'slotDiscarded', 'stadiumPlayed', 'pokemonToggle', 'prizeToggle', 'handToggle'
 ]
 

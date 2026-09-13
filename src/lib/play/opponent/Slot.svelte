@@ -3,16 +3,20 @@
    import { cardImage } from '$lib/util/assets.js'
    import cardback from '$lib/assets/cardback_int.png'
    import { defaultOpponent } from '$lib/stores/opponent.js'
+   import StatusMarker from '$lib/play/StatusMarker.svelte'
    const { openOppSlotDetails, openOppSlotMenu, openDetails } = getContext('boardActions')
 
    /* which player's board this component shows */
    export let store = defaultOpponent
    export let slot
 
-   $: ({ pokemonHidden } = store)
+   $: ({ pokemonHidden, active } = store)
+
+   /* a status effect can only be set on the Active Pokémon */
+   $: isActive = active.get() === slot
 
    /* these are piles belonging to the slot itself, not to the mirrored board */
-   $: ({ pokemon, trainer, energy, damage, marker } = slot)
+   $: ({ pokemon, trainer, energy, damage, status } = slot)
    $: top = $pokemon[ $pokemon.length - 1]
 
    function onClick (e) {
@@ -23,7 +27,7 @@
 
    function onCtx (e) {
       if ($pokemonHidden) return
-      openOppSlotMenu(e.clientX, e.clientY, slot)
+      openOppSlotMenu(e.clientX, e.clientY, slot, isActive)
    }
 </script>
 
@@ -35,9 +39,7 @@
       <span class="counter absolute bottom-1 left-1 z-15 rounded-full p-4 bg-red-500 text-white font-bold flex justify-center items-center">{$damage}</span>
    {/if}
 
-   {#if $marker}
-      <span class="counter absolute top-1 right-1 z-15 rounded-full p-4 bg-yellow-500 text-white font-bold flex justify-center items-center"></span>
-   {/if}
+   <StatusMarker status={$status} />
 
    {#if top}
       <img

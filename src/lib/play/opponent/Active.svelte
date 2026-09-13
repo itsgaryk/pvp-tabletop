@@ -10,7 +10,7 @@
 <div>
    <div class="h-full flex justify-center items-center">
       {#if $active}
-         <Slot bind:slot={$active} />
+         <Slot bind:slot={$active} {store} />
       {/if}
    </div>
 </div>
