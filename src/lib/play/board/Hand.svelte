@@ -25,14 +25,16 @@
    }
 
    function shuffleBack () {
+      const count = $hand.length
       moveAll(deck)
       deck.shuffle()
 
-      publishLog('Shuffled Hand into Deck')
+      publishLog(`Shuffled Hand (${count}) into Deck`)
    }
 
    function marnie () {
       const cards = $hand.map(card => card._id)
+      const count = cards.length
 
       hand.shuffle()
       while ($hand.length) {
@@ -42,7 +44,7 @@
       menu.close()
 
       share('cardsMoved', { cards, from: 'hand', to: 'deck' }) // order of opponents cards does not matter
-      publishLog('Shuffled Hand to bottom of Deck')
+      publishLog(`Shuffled Hand (${count}) to bottom of Deck`)
    }
 
    function discardRandom () {

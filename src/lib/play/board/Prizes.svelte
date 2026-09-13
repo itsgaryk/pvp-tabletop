@@ -24,6 +24,7 @@
 
    function shuffleBack () {
       const cards = $prizes.map(card => card._id)
+      const count = cards.length
 
       deck.merge($prizes)
       prizes.clear()
@@ -31,7 +32,23 @@
       deck.shuffle()
 
       share('cardsMoved', { cards, from: 'prizes', to: 'deck' })
-      publishLog('Shuffled Prizes into Deck')
+      publishLog(`Shuffled Prizes (${count}) into Deck`)
+   }
+
+   function shuffleBackBottom () {
+      const cards = $prizes.map(card => card._id)
+      const count = cards.length
+
+      /* shuffle the prizes first, then place them under the deck - index 0 is
+         the bottom, matching the hand's "to bottom of Deck" behaviour */
+      prizes.shuffle()
+      while ($prizes.length) {
+         deck.unshift(prizes.pop())
+      }
+      menu.close()
+
+      share('cardsMoved', { cards, from: 'prizes', to: 'deck' }) // order of opponents cards does not matter
+      publishLog(`Shuffled Prizes (${count}) to bottom of Deck`)
    }
 
    const { openSelection } = getContext('boardActions')
@@ -55,6 +72,7 @@
       <ContextMenuOption click={switchVisibility} text={$prizesFlipped ? 'Hide Prizes' : 'Show Prizes'} />
       <ContextMenuOption click={shuffle} text="Shuffle" />
       <ContextMenuOption click={shuffleBack} text="Shuffle All Into Deck" />
+      <ContextMenuOption click={shuffleBackBottom} text="Shuffle All to Bottom of Deck" />
       <ContextMenuOption click={pickupPrizes} text="Inspect Prizes" />
    </svelte:fragment>
 </Pile>
