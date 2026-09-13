@@ -12,9 +12,11 @@ To build the app for deployment, run `npm run build`. You can customize the buil
 
 The app is a fully prerendered static site (`@sveltejs/adapter-static`), so it deploys as a plain static build — no serverless functions are used. The realtime game server lives elsewhere and is reached over websockets from the browser.
 
-1. Import the repository at [vercel.com/new](https://vercel.com/new). `vercel.json` already configures the install/build commands, the `build` output directory, and Node 22, so the detected defaults do not need to be changed.
+1. Import the repository at [vercel.com/new](https://vercel.com/new). `vercel.json` already configures the framework preset and the install/build commands plus the `build` output directory, so the detected defaults do not need to be changed.
 2. (Optional) Add the environment variables below under **Project Settings → Environment Variables**. They are read **at build time**, so changing one requires a redeploy (use *Redeploy* without the build cache).
 3. Deploy.
+
+Node is not configured in `vercel.json` — that file has no such property, and including one makes Vercel reject the project with *"should NOT have additional property"*. The build runs on Vercel's default Node version, and `engines.node` in `package.json` (`>=18.13`) is the floor. To pin an exact version, use **Project Settings → General → Node.js Version**.
 
 This repository can also be deployed with the CLI:
 
@@ -26,15 +28,17 @@ vercel --prod # production deployment
 
 ### Environment variables
 
-| Variable | Purpose | Default when unset |
-| --- | --- | --- |
-| `VITE_PVP_SERVER` | Origin of the socket.io server that relays actions between the two players. Must be `http(s)://` and reachable from the browser; the server has to allow your Vercel domain as a CORS/websocket origin. | The public demo server |
-| `VITE_LIMITLESS_WEB` | Limitless TCG API used for decklist import. | `https://limitlesstcg.com` |
-| `VITE_ENV` | Set to `dev` to log every shared socket event to the console. | `prod` |
+All three are **optional** and all three are **client-side**. The app is a static bundle, so Vite inlines their values into the JavaScript during `npm run build` — they are not read by any server at runtime. Because of that they must never hold secrets (anything in them is visible to anyone who opens the deployed app), and changing one requires a redeploy.
 
-Because these values are inlined into the static bundle, they must never hold secrets.
+| Variable | What it controls | Example value | Unset behaviour |
+| --- | --- | --- | --- |
+| `VITE_PVP_SERVER` | Origin of the socket.io server that relays moves and chat between the two players. The browser opens a websocket to it directly, so it must be reachable from the public internet and must accept your Vercel domain as an origin. | `https://pvp-tabletop-27e7a.ondigitalocean.app` | Falls back to that public demo server and logs a warning in the browser console |
+| `VITE_LIMITLESS_WEB` | Base URL of the Limitless TCG API used by "Import Deck" / "Import Random Deck" (`/api/dm/import`, `/api/dm/random`). | `https://limitlesstcg.com` | Falls back to `https://limitlesstcg.com` |
+| `VITE_ENV` | Debug switch. When set to `dev`, every shared socket event is logged to the browser console. | `prod` | Treated as `prod` (no event logging) |
 
-If `VITE_PVP_SERVER` is not set, the build falls back to the public demo server and logs a warning at startup. The app still needs *a* server to create/join rooms — Vercel only hosts the client.
+You can leave all three blank on a first deploy: the app builds and runs against the public demo server. Set `VITE_PVP_SERVER` once you host your own relay server (see *Server* below) — otherwise everyone using your deployment shares the demo server's rooms.
+
+Do not confuse these `VITE_*` variables with Vercel's own system variables (`VERCEL_URL`, `VERCEL_ENV`, …). Vercel shows its system variables alongside yours in that screen; only the three above are read by this project.
 
 ### Project layout notes
 
