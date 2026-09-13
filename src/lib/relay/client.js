@@ -90,9 +90,18 @@ export class HttpSocket {
       return this
    }
 
-   /* Emit is fire-and-forget to match socket.io's signature. */
+   /*
+      Send an event to the rest of the room. Fire-and-forget, matching
+      socket.io's signature.
+
+      A sent event is deliberately NOT delivered to local listeners. The app
+      registers its opponent-side handlers with `socket.on(...)`, so echoing our
+      own event back would run them against our own action: drawing a card made
+      the *opponent's* hand grow, and pressing Setup applied our board state to
+      the opponent's board. The original socket.io server never echoed to the
+      sender either.
+   */
    emit (event, data) {
-      this.deliver(event, data, { local: true })
       this.post(event, data).catch((err) => console.error('[relay] send failed', err))
    }
 
