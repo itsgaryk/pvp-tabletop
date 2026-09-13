@@ -1,6 +1,7 @@
 <script>
    import { browser } from '$app/environment'
    import { darkMode } from '$lib/stores/settings.js'
+   import { spectating } from '$lib/stores/connection.js'
    import Board from '$lib/play/Board.svelte'
    import { github } from '$lib/icons/paths.js'
    import Icon from '$lib/components/Icon.svelte'
@@ -23,7 +24,10 @@
    Beta <Icon path={github} size={512}></Icon>
 </a>
 
-<DeckInput />
+<!-- a spectator has no deck of their own to edit -->
+{#if !$spectating}
+   <DeckInput />
+{/if}
 
 <div class="flex gap-2">
    <Board />

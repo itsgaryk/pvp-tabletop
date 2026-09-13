@@ -7,6 +7,7 @@
       hand, discard, deck, prizes, lz, table,
       moveSelection, toActive, toBench, toStadium
    } from '$lib/stores/player.js'
+   import { spectating } from '$lib/stores/connection.js'
 
    const { openDetails, startAE } = getContext('boardActions')
 
@@ -42,40 +43,40 @@
 
 <ContextMenu bind:this={menu} {heading}>
    {#if pile !== hand}
-      <ContextMenuOption click={() => moveTo(hand)} text="To Hand" shortcut="h" />
+      <ContextMenuOption click={() => moveTo(hand)} text="To Hand" shortcut="h" disabled={$spectating} />
    {/if}
    {#if pile !== discard}
-      <ContextMenuOption click={() => moveTo(discard)} text="To Discard" shortcut="d"/>
+      <ContextMenuOption click={() => moveTo(discard)} text="To Discard" shortcut="d" disabled={$spectating} />
    {/if}
 
-   <ContextMenuOption click={() => callThenClose(toBench)} text="To Bench" shortcut="b" />
+   <ContextMenuOption click={() => callThenClose(toBench)} text="To Bench" shortcut="b" disabled={$spectating} />
    {#if $selection.length === 1}
-      <ContextMenuOption click={() => callThenClose(toActive)} text="To Active" shortcut="a" />
-      <ContextMenuOption click={() => callThenClose(toStadium)} text="To Stadium" shortcut="g" />
+      <ContextMenuOption click={() => callThenClose(toActive)} text="To Active" shortcut="a" disabled={$spectating} />
+      <ContextMenuOption click={() => callThenClose(toStadium)} text="To Stadium" shortcut="g" disabled={$spectating} />
    {/if}
 
    {#if pile !== deck}
-      <ContextMenuOption click={() => moveTo(deck, { shuffle: true })} text="Shuffle Into Deck" shortcut="s" />
-      <ContextMenuOption click={() => moveTo(deck)} text="To Top of Deck" shortcut="t" />
-      <ContextMenuOption click={() => moveTo(deck, { bottom: true })} text="To Bottom of Deck" shortcut="m" />
+      <ContextMenuOption click={() => moveTo(deck, { shuffle: true })} text="Shuffle Into Deck" shortcut="s" disabled={$spectating} />
+      <ContextMenuOption click={() => moveTo(deck)} text="To Top of Deck" shortcut="t" disabled={$spectating} />
+      <ContextMenuOption click={() => moveTo(deck, { bottom: true })} text="To Bottom of Deck" shortcut="m" disabled={$spectating} />
    {/if}
 
    {#if pile !== lz}
-      <ContextMenuOption click={() => moveTo(lz)} text="To Lost Zone" shortcut="l" />
+      <ContextMenuOption click={() => moveTo(lz)} text="To Lost Zone" shortcut="l" disabled={$spectating} />
    {/if}
    {#if pile !== prizes}
-      <ContextMenuOption click={() => moveTo(prizes)} text="To Prizes" shortcut="p" />
+      <ContextMenuOption click={() => moveTo(prizes)} text="To Prizes" shortcut="p" disabled={$spectating} />
    {/if}
    {#if pile !== table}
-      <ContextMenuOption click={() => moveTo(table)} text="To Table" shortcut="x" />
+      <ContextMenuOption click={() => moveTo(table)} text="To Table" shortcut="x" disabled={$spectating} />
    {/if}
 
-   <ContextMenuOption click={() => attachEvolve()} text="Attach" shortcut="q" />
-   <ContextMenuOption click={() => attachEvolve(true)} text="Evolve" shortcut="e" />
+   <ContextMenuOption click={() => attachEvolve()} text="Attach" shortcut="q" disabled={$spectating} />
+   <ContextMenuOption click={() => attachEvolve(true)} text="Evolve" shortcut="e" disabled={$spectating} />
 
    {#if $selection.length === 1}
       {#if $deck.length && pile !== deck}
-         <ContextMenuOption click={() => moveTo(deck, { switch: true })} text="Switch With Top of Deck" />
+         <ContextMenuOption click={() => moveTo(deck, { switch: true })} text="Switch With Top of Deck" disabled={$spectating} />
       {/if}
       <ContextMenuOption click={() => openDetails($selection[0])} text="Show Details" />
    {/if}

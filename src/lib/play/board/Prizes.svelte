@@ -4,7 +4,7 @@
    import Vertical from '$lib/components/scroll/Vertical.svelte'
    import Pile from './Pile.svelte'
    import Card from './Card.svelte'
-   import { share, publishLog } from '$lib/stores/connection.js'
+   import { share, publishLog, spectating } from '$lib/stores/connection.js'
 
    import { prizes, deck, prizesFlipped } from '$lib/stores/player.js'
 
@@ -69,11 +69,11 @@
    </Vertical>
 
    <svelte:fragment slot="menu">
-      <ContextMenuOption click={switchVisibility} text={$prizesFlipped ? 'Hide Prizes' : 'Show Prizes'} />
-      <ContextMenuOption click={shuffle} text="Shuffle" />
-      <ContextMenuOption click={shuffleBack} text="Shuffle All Into Deck" />
-      <ContextMenuOption click={shuffleBackBottom} text="Shuffle All to Bottom of Deck" />
-      <ContextMenuOption click={pickupPrizes} text="Inspect Prizes" />
+      <ContextMenuOption click={switchVisibility} text={$prizesFlipped ? 'Hide Prizes' : 'Show Prizes'} disabled={$spectating} />
+      <ContextMenuOption click={shuffle} text="Shuffle" disabled={$spectating} />
+      <ContextMenuOption click={shuffleBack} text="Shuffle All Into Deck" disabled={$spectating} />
+      <ContextMenuOption click={shuffleBackBottom} text="Shuffle All to Bottom of Deck" disabled={$spectating} />
+      <ContextMenuOption click={pickupPrizes} text="Inspect Prizes" disabled={$spectating} />
    </svelte:fragment>
 </Pile>
 

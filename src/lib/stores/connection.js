@@ -18,6 +18,8 @@ import { writable } from './custom/writable.js'
 export let room = writable(null)
 export let connected = writable(false)
 export let chat = writable([])
+export let spectating = writable(false)
+export let spectators = writable(0)
 
 export const socket = new HttpSocket({ baseUrl: PVP_SERVER })
 
@@ -51,6 +53,15 @@ export function joinRoom (roomId) {
    })
 }
 
+/* Watch a game without taking a playing seat. */
+export function spectateRoom (roomId) {
+   connect()
+   return socket.spectateRoom(roomId).catch((err) => {
+      console.error(`[pvp-tabletop] could not spectate room ${roomId}`, err)
+      return null
+   })
+}
+
 export function leaveRoom () {
    return socket.leaveRoom(room.get()).catch((err) => {
       console.error('[pvp-tabletop] could not leave the room', err)
@@ -58,16 +69,48 @@ export function leaveRoom () {
    })
 }
 
-socket.on('createdRoom', ({ roomId }) => {
+/*
+   How many playing seats are taken, and whether they are all taken. A locked
+   lobby only accepts spectators, so the UI uses this to offer "Spectate Game"
+   instead of "Join Room".
+*/
+export async function roomSummary (roomId) {
+   try {
+      const res = await fetch(`${PVP_SERVER}/api/relay/room?roomId=${encodeURIComponent(roomId)}`)
+      if (!res.ok) return null
+      return await res.json()
+   } catch {
+      return null
+   }
+}
+
+async function refreshSummary (roomId) {
+   const summary = await roomSummary(roomId)
+   if (summary && typeof summary.spectators === 'number') spectators.set(summary.spectators)
+}
+
+socket.on('createdRoom', ({ roomId, role }) => {
+   spectating.set(role === 'spectator')
    room.set(roomId)
+   refreshSummary(roomId)
 })
 
-socket.on('joinedRoom', ({ roomId }) => {
+socket.on('joinedRoom', ({ roomId, role }) => {
+   spectating.set(role === 'spectator')
    room.set(roomId)
+   refreshSummary(roomId)
+})
+
+socket.on('spectatingRoom', ({ roomId }) => {
+   spectating.set(true)
+   room.set(roomId)
+   refreshSummary(roomId)
 })
 
 socket.on('leftRoom', () => {
    room.set(null)
+   spectating.set(false)
+   spectators.set(0)
    chat.set([])
 })
 
@@ -77,6 +120,11 @@ socket.on('opponentJoined', () => {
 
 socket.on('opponentLeft', () => {
    pushToChat('left the room', 'important')
+})
+
+/* keeps the watcher count current for everyone, without polling the lobby */
+socket.on('spectatorChanged', ({ spectators: count }) => {
+   if (typeof count === 'number') spectators.set(count)
 })
 
 /* Chat / Log */
@@ -93,10 +141,15 @@ function updateChat (message, type, self) {
    })
 }
 
+/*
+   Chat is the one thing a spectator is allowed to send, so it does not go
+   through share() (which refuses to act while spectating). The relay itself
+   decides what a member may post.
+*/
 export function publishToChat (message, type) {
    if (!room.get()) return
    updateChat(message, type, 1)
-   share('chatMessage', { message, type })
+   socket.emit('chatMessage', { message, type })
 }
 
 export function pushToChat (message, type) {
@@ -125,6 +178,13 @@ socket.on('chatMessage', ({ message, type, time }, meta, { local } = {}) => {
 /* Game State */
 
 export function share (event, data) {
+   /*
+      A spectator is read-only: every state change in the app funnels through
+      share(), so refusing here is what stops a spectator from touching the
+      game. The relay also rejects writes from a non-player member.
+   */
+   if (spectating.get()) return
+
    if (APP_ENV === 'dev') console.log('Sharing event ' + event, data)
    socket.emit(event, {
       ...data, room: room.get()

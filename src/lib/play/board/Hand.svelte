@@ -3,7 +3,7 @@
    import Horizontal from '$lib/components/scroll/Horizontal.svelte'
    import Pile from './Pile.svelte'
    import Card from './Card.svelte'
-   import { share, publishLog } from '$lib/stores/connection.js'
+   import { share, publishLog, spectating } from '$lib/stores/connection.js'
 
    import { hand, deck, discard, handRevealed } from '$lib/stores/player.js'
 
@@ -74,10 +74,10 @@
    </Horizontal>
 
    <svelte:fragment slot="menu">
-      <ContextMenuOption click={() => discardAll()} text="Discard All" />
-      <ContextMenuOption click={() => shuffleBack()} text="Shuffle All Into Deck" />
-      <ContextMenuOption click={() => marnie()} text="Shuffle All to Bottom of Deck" />
-      <ContextMenuOption click={() => discardRandom()} text="Discard Random Card" />
-      <ContextMenuOption click={switchVisibility} text={$handRevealed ? 'Hide Hand' : 'Reveal Hand'} />
+      <ContextMenuOption click={() => discardAll()} text="Discard All" disabled={$spectating} />
+      <ContextMenuOption click={() => shuffleBack()} text="Shuffle All Into Deck" disabled={$spectating} />
+      <ContextMenuOption click={() => marnie()} text="Shuffle All to Bottom of Deck" disabled={$spectating} />
+      <ContextMenuOption click={() => discardRandom()} text="Discard Random Card" disabled={$spectating} />
+      <ContextMenuOption click={switchVisibility} text={$handRevealed ? 'Hide Hand' : 'Reveal Hand'} disabled={$spectating} />
    </svelte:fragment>
 </Pile>

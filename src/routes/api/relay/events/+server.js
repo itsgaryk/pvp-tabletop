@@ -17,6 +17,7 @@ import { appendEvent, getRoom, touchMember } from '$lib/relay/store.js'
 const EVENTS = new Set([
    /* room lifecycle */
    'chatMessage',
+   'spectatorChanged',
    /* board / game actions */
    'boardState',
    'boardReset',
@@ -64,8 +65,17 @@ export async function POST ({ request }) {
       const room = await getRoom(roomId)
       if (!room) return json({ error: `room ${roomId} not found` }, { status: 404 })
 
-      if (!room.members.some((m) => m.id === memberId)) {
+      const member = room.members.find((m) => m.id === memberId)
+      if (!member) {
          return json({ error: 'you are not a member of this room' }, { status: 403 })
+      }
+
+      /*
+         A spectator may talk but must never change the game. The client refuses
+         too, but that is only a convenience - the relay is the authority.
+      */
+      if (name !== 'chatMessage' && member.role === 'spectator') {
+         return json({ error: 'spectators cannot change the game' }, { status: 403 })
       }
 
       /* chat is the one event the server reshapes: it stamps the time so both

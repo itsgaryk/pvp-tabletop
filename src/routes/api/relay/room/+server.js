@@ -1,23 +1,32 @@
 import { json } from '@sveltejs/kit'
 import {
-   addMember,
+   appendEvent,
    createRoom,
    getRoom,
    getStore,
-   removeMember
+   joinRoom,
+   removeMember,
+   roomSummary
 } from '$lib/relay/store.js'
 
 /*
    Room lifecycle.
 
-   action 'create' -> makes a new room, caller becomes player 1
-   action 'join'   -> adds the caller as player 2 (or re-attaches a known
-                      member), and replays the room's event history so the
-                      joiner immediately receives the opponent's board state
-   action 'leave'  -> removes the caller from the room
+   action 'create'   -> makes a new room, caller takes the first playing seat
+   action 'join'     -> join as a player, or as a spectator when `role` is
+                        'spectator' (or when both seats are taken)
+   action 'leave'    -> removes the caller from the room
+
+   The lobby is limited to two players; once both seats are filled it is locked
+   and any further arrival can only spectate.
 */
 
-const MAX_MEMBERS = 2
+/* keep everyone's spectator count in step while a room is open */
+async function announceSpectators (roomId) {
+   const summary = await roomSummary(roomId)
+   if (summary) await appendEvent(roomId, 'spectatorChanged', { spectators: summary.spectators })
+   return summary
+}
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST ({ request }) {
@@ -34,49 +43,77 @@ export async function POST ({ request }) {
 
       if (action === 'create') {
          const { roomId, memberId, role } = await createRoom()
-         return json({ roomId, memberId, role, seq: 0, events: [] })
+         return json({ roomId, memberId, role, seq: 0, events: [], summary: { players: 1, maxPlayers: 2, locked: false, spectators: 0 } })
       }
 
       if (action === 'join') {
          const roomId = String(body?.roomId || '').toUpperCase().trim()
          if (!roomId) return json({ error: 'roomId is required' }, { status: 400 })
 
-         const room = await getRoom(roomId)
-         if (!room) return json({ error: `room ${roomId} not found` }, { status: 404 })
+         const result = await joinRoom(roomId, {
+            memberId: body?.memberId || null,
+            role: body?.role === 'spectator' ? 'spectator' : 'guest'
+         })
 
-         /* Re-attach a member we already know (page reload, reconnect). */
-         const known = body?.memberId && room.members.some((m) => m.id === body.memberId)
-         let memberId = known ? body.memberId : null
-         let role = known ? room.members.find((m) => m.id === memberId).role : null
-
-         if (!memberId) {
-            if (room.members.length >= MAX_MEMBERS) {
-               return json({ error: `room ${roomId} is already full` }, { status: 409 })
-            }
-            memberId = crypto.randomUUID()
-            role = 'guest'
+         if (result.error) {
+            return json(
+               { error: result.error, locked: Boolean(result.locked) },
+               { status: result.status || 400 }
+            )
          }
 
-         await addMember(roomId, memberId, role)
+         const { room, memberId, role } = result
+
+         /* tell the room a watcher arrived so the count updates everywhere */
+         let summary = null
+         if (role === 'spectator') summary = await announceSpectators(roomId)
 
          return json({
             roomId,
             memberId,
             role,
             seq: room.events.length ? room.events[room.events.length - 1].seq : 0,
-            events: room.events
+            events: room.events,
+            summary: summary || await roomSummary(roomId)
          })
       }
 
       if (action === 'leave') {
          const roomId = String(body?.roomId || '').toUpperCase().trim()
-         if (roomId && body?.memberId) await removeMember(roomId, body.memberId)
+         const memberId = body?.memberId
+         if (roomId && memberId) {
+            const room = await getRoom(roomId)
+            const leaving = room ? room.members.find((m) => m.id === memberId) : null
+            await removeMember(roomId, memberId)
+            if (leaving && leaving.role === 'spectator' && await getRoom(roomId)) {
+               await announceSpectators(roomId)
+            }
+         }
          return json({ ok: true })
       }
 
       return json({ error: `unknown action "${action}"` }, { status: 400 })
    } catch (err) {
       console.error('[relay] room request failed', err)
+      return json({ error: err.message }, { status: 500 })
+   }
+}
+
+/*
+   Lobby status without joining anything - used by the UI to tell a prospective
+   player that the seats are taken before they try.
+*/
+/** @type {import('./$types').RequestHandler} */
+export async function GET ({ url }) {
+   const roomId = String(url.searchParams.get('roomId') || '').toUpperCase().trim()
+   if (!roomId) return json({ error: 'roomId is required' }, { status: 400 })
+
+   try {
+      const summary = await roomSummary(roomId)
+      if (!summary) return json({ error: `room ${roomId} not found` }, { status: 404 })
+      return json(summary)
+   } catch (err) {
+      console.error('[relay] room lookup failed', err)
       return json({ error: err.message }, { status: 500 })
    }
 }

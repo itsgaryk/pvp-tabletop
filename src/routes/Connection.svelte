@@ -3,7 +3,10 @@
    import Chat from './Chat.svelte'
    import Spinner from './Spinner.svelte'
    import { PVP_SERVER } from '$lib/util/env.js'
-   import { connected, room, createRoom, joinRoom, leaveRoom } from '$lib/stores/connection.js'
+   import {
+      connected, room, spectating, spectators,
+      createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary
+   } from '$lib/stores/connection.js'
 
    let roomId = ''
 
@@ -15,6 +18,11 @@
    let relay = { state: 'checking', error: null }
    let busy = false
    let failure = null
+
+   /* Lobby status for the code being typed: once both seats are taken the
+      lobby is locked and only spectating is offered. */
+   let status = null
+   let statusTimer = null
 
    onMount(async () => {
       try {
@@ -28,6 +36,17 @@
       }
    })
 
+   $: if (roomId.length >= 6) scheduleStatus(roomId)
+   else status = null
+
+   function scheduleStatus (id) {
+      clearTimeout(statusTimer)
+      statusTimer = setTimeout(async () => {
+         const summary = await roomSummary(id.toUpperCase().trim())
+         if (summary && !summary.error) status = summary
+      }, 400)
+   }
+
    async function create () {
       busy = true
       failure = null
@@ -40,7 +59,19 @@
       busy = true
       failure = null
       const res = await joinRoom(roomId)
-      if (!res) failure = `Could not join ${roomId.toUpperCase()}.`
+      if (!res) {
+         failure = status?.locked
+            ? 'That lobby is locked - both seats are taken. Spectate instead.'
+            : `Could not join ${roomId.toUpperCase()}.`
+      }
+      busy = false
+   }
+
+   async function spectate () {
+      busy = true
+      failure = null
+      const res = await spectateRoom(roomId)
+      if (!res) failure = `Could not spectate ${roomId.toUpperCase()}.`
       busy = false
    }
 
@@ -87,8 +118,18 @@
                required
             >
 
-            <button class="connect" disabled={busy}>Join Room</button>
+            <div class="flex gap-2">
+               <button class="connect flex-1" disabled={busy || status?.locked}>Join Room</button>
+               <button type="button" class="connect flex-1" on:click={spectate} disabled={busy}>Spectate Game</button>
+            </div>
          </form>
+
+         {#if status?.locked}
+            <div class="text-xs text-center text-[var(--text-color-two)]">
+               This lobby is full - {status.players}/{status.maxPlayers} players.
+               You can watch as a spectator.
+            </div>
+         {/if}
 
          {#if failure}
             <div class="text-sm text-red-500">{failure}</div>
@@ -99,7 +140,7 @@
       <div class="flex flex-col gap-1 mb-5">
          <div class="text-center font-bold">
             {#if $connected}
-               connected to
+               {$spectating ? 'spectating' : 'connected to'}
             {:else}
                <div class="flex gap-3 items-center justify-center bg-yellow-400 text-black p-1 rounded-md mb-2">
                   lost connection
@@ -108,6 +149,18 @@
             {/if}
             <div class="text-sm text-[var(--text-color-two)]">{$room}</div>
          </div>
+
+         {#if $spectating}
+            <div class="text-center text-xs italic text-[var(--text-color-two)]">
+               read only - you cannot affect the game
+            </div>
+         {/if}
+
+         {#if $spectators > 0}
+            <div class="text-center text-xs text-[var(--text-color-two)]">
+               {$spectators} {$spectators === 1 ? 'spectator' : 'spectators'}
+            </div>
+         {/if}
 
          <button
             class="self-center py-1 px-2 primary rounded-md text-sm font-bold"
@@ -118,7 +171,7 @@
 
       <Chat />
 
-      <button class="mt-4 text-center" on:click={leave}>Leave Room</button>
+      <button class="mt-4 text-center" on:click={leave}>{$spectating ? 'Stop Spectating' : 'Leave Room'}</button>
 
    {/if}
 </div>

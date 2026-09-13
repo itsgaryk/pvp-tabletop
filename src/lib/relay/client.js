@@ -40,6 +40,7 @@ export class HttpSocket {
 
       this.id = null // member id, set once a room is created or joined
       this.roomId = null
+      this.role = null // 'host' | 'guest' | 'spectator'
       this.cursor = 0
       this.connected = false
       this.active = false
@@ -115,6 +116,15 @@ export class HttpSocket {
       return this.room('join', { roomId })
    }
 
+   /* watch only - never takes a playing seat */
+   async spectateRoom (roomId) {
+      return this.room('join', { roomId, role: 'spectator' })
+   }
+
+   get spectating () {
+      return this.role === 'spectator'
+   }
+
    async leaveRoom (roomId) {
       const id = roomId || this.roomId
       this.abortPoll()
@@ -128,6 +138,7 @@ export class HttpSocket {
       }
       this.roomId = null
       this.cursor = 0
+      this.role = null
       this.opponentPresent = null
       this.deliver('leftRoom', {})
       return { ok: true }
@@ -148,6 +159,7 @@ export class HttpSocket {
 
       this.id = res.memberId
       this.roomId = res.roomId
+      this.role = res.role || 'guest'
       this.cursor = res.seq || 0
       this.opponentPresent = false
       this.setConnected(true)
@@ -157,7 +169,8 @@ export class HttpSocket {
          so the store relied on them; here the client has to raise them itself,
          otherwise `room` stays null and the UI never leaves the lobby.
       */
-      this.deliver(action === 'create' ? 'createdRoom' : 'joinedRoom', { roomId: res.roomId })
+      if (this.spectating) this.deliver('spectatingRoom', { roomId: res.roomId, role: this.role })
+      else this.deliver(action === 'create' ? 'createdRoom' : 'joinedRoom', { roomId: res.roomId, role: this.role })
 
       // Replay anything already in the room (the opponent's board state, their
       // deck, chat) through the same path polled events take. Our own events are

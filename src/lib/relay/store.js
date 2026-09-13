@@ -298,6 +298,64 @@ export async function getRoom (roomId) {
    return { ...meta, events: events.reverse(), members }
 }
 
+/* Roles that occupy one of the two playing seats. */
+export const PLAYER_ROLES = ['host', 'guest']
+
+export async function roomSummary (roomId) {
+   const room = await getRoom(roomId)
+   if (!room) return null
+
+   const players = room.members.filter((m) => PLAYER_ROLES.includes(m.role))
+   const spectators = room.members.filter((m) => m.role === 'spectator')
+
+   return {
+      roomId: room.id,
+      players: players.length,
+      maxPlayers: 2,
+      locked: players.length >= 2,
+      spectators: spectators.length
+   }
+}
+
+/*
+   Add the caller to a room.
+
+   `role` defaults to a playing seat ('guest'), which is only granted while one
+   is free - once two players have joined the lobby is locked and further
+   arrivals are spectators. A spectator never takes a seat, so they can join a
+   full room and any number of them may watch at once.
+*/
+export async function joinRoom (roomId, { memberId = null, role = 'guest' } = {}) {
+   const store = getStore()
+   const id = normalizeRoomId(roomId)
+
+   const room = await getRoom(id)
+   if (!room) return { error: `room ${id} not found`, status: 404 }
+
+   const existing = memberId ? room.members.find((m) => m.id === memberId) : null
+   if (existing) {
+      await addMember(id, memberId, existing.role)
+      return { roomId: id, memberId, role: existing.role, room }
+   }
+
+   let assigned
+
+   if (role === 'spectator') {
+      assigned = 'spectator'
+   } else {
+      const players = room.members.filter((m) => PLAYER_ROLES.includes(m.role))
+      if (players.length >= 2) {
+         return { error: `room ${id} is full - only spectating is available`, status: 409, locked: true }
+      }
+      assigned = players.length === 0 ? 'host' : 'guest'
+   }
+
+   const newId = newMemberId()
+   await addMember(id, newId, assigned)
+
+   return { roomId: id, memberId: newId, role: assigned, room }
+}
+
 export async function roomExists (roomId) {
    const store = getStore()
    return Boolean(await store.getMeta(normalizeRoomId(roomId)))
