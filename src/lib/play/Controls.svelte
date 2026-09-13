@@ -2,7 +2,8 @@
    import { getContext, onMount } from 'svelte'
    import { autoMulligan } from '$lib/stores/settings.js'
    import { share, publishLog, spectating } from '$lib/stores/connection.js'
-   import { cog } from '$lib/icons/paths.js'
+   import { spectatorFlipped } from '$lib/stores/opponent.js'
+   import { cog, flipBoard } from '$lib/icons/paths.js'
    import Icon from '$lib/components/Icon.svelte'
    import Settings from './dialogs/Settings.svelte'
 
@@ -122,6 +123,15 @@
       }
    })
 
+   /*
+      Swap which player a spectator sees on which half of the screen. This is a
+      local view change: it only re-points the two mirrors on screen, so neither
+      player's own view is affected.
+   */
+   function flipSides () {
+      spectatorFlipped.update((flipped) => !flipped)
+   }
+
    let settings // DOM element binding
 </script>
 
@@ -147,16 +157,30 @@
    <!--
       A spectator gets no controls at all: every button here acts on the local
       board and many of them also write to chat. Leaving the empty column in
-      place would push the board off centre, so the settings button moves to the
-      top right corner of the window and the board keeps the whole width.
+      place would push the board off centre, so the two buttons a spectator does
+      need live in the top right corner of the window and the board keeps the
+      whole width.
    -->
-   <button
-      class="fixed top-3 right-3 z-20 rounded-md bg-[var(--bg-color-two)] p-1 shadow"
-      title="Settings"
-      on:click|stopPropagation={() => settings.open()}
-   >
-      <Icon path={cog} />
-   </button>
+   <div class="fixed top-3 right-3 z-20 flex items-center gap-2">
+      <button
+         class="rounded-md bg-[var(--bg-color-two)] p-1 shadow"
+         title="Settings"
+         aria-label="Settings"
+         on:click|stopPropagation={() => settings.open()}
+      >
+         <Icon path={cog} />
+      </button>
+
+      <button
+         class="rounded-md bg-[var(--bg-color-two)] p-1 shadow"
+         title="Flip Board - switch which player is on which half"
+         aria-label="Flip Board"
+         aria-pressed={$spectatorFlipped}
+         on:click|stopPropagation={flipSides}
+      >
+         <Icon path={flipBoard} />
+      </button>
+   </div>
 {/if}
 
 <Settings bind:this={settings} />

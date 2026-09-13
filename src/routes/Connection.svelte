@@ -2,6 +2,8 @@
    import { onMount } from 'svelte'
    import Chat from './Chat.svelte'
    import Spinner from './Spinner.svelte'
+   import Icon from '$lib/components/Icon.svelte'
+   import { check, copy } from '$lib/icons/paths.js'
    import { PVP_SERVER } from '$lib/util/env.js'
    import {
       connected, room, spectating, spectators,
@@ -10,7 +12,9 @@
 
    let roomId = ''
 
-   let copyButtonText = 'Copy to Clipboard'
+   /* the room code's copy button shows a tick for a moment after a copy */
+   let copied = false
+   let copiedTimer = null
 
    /* Is the game relay usable? This distinguishes "the server is not
       configured" from "you have not joined a room yet", which is the
@@ -75,12 +79,16 @@
       busy = false
    }
 
-   function copyToClipboard () {
+   /*
+      Copy the room code from beside the code itself, the way the harness copies
+      a prompt: the button turns into a tick for a moment so the copy is visible
+      without a label.
+   */
+   function copyRoomCode () {
       navigator.clipboard.writeText($room).then(() => {
-         copyButtonText = 'Copied!'
-         setTimeout(() => {
-            copyButtonText = 'Copy to Clipboard'
-         }, 3000)
+         copied = true
+         clearTimeout(copiedTimer)
+         copiedTimer = setTimeout(() => { copied = false }, 2000)
       })
    }
 
@@ -159,7 +167,17 @@
                   <Spinner />
                </div>
             {/if}
-            <div class="text-sm text-[var(--text-color-two)]">{$room}</div>
+            <div class="flex items-center justify-center gap-1 text-sm text-[var(--text-color-two)]">
+               <span>{$room}</span>
+               <button
+                  class="rounded p-0.5 hover:bg-[var(--bg-color-two)]"
+                  title={copied ? 'Copied' : 'Copy room code'}
+                  aria-label="Copy room code"
+                  on:click={copyRoomCode}
+               >
+                  <Icon path={copied ? check : copy} class="text-[8px]" />
+               </button>
+            </div>
          </div>
 
          {#if !$spectating && $spectators > 0}
@@ -167,12 +185,6 @@
                {$spectators} {$spectators === 1 ? 'spectator' : 'spectators'}
             </div>
          {/if}
-
-         <button
-            class="self-center py-1 px-2 primary rounded-md text-sm font-bold"
-            on:click={copyToClipboard}>
-               {copyButtonText}
-         </button>
       </div>
 
       <Chat />
