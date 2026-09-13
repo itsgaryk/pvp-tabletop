@@ -2,7 +2,7 @@ import { get, post } from '$lib/util/fetch-web.js'
 import { board } from './custom/board.js'
 import { pile, slot } from './custom/cards.js'
 import { writable } from './custom/writable.js'
-import { share, react, publishLog } from './connection.js'
+import { share, react, publishLog, spectating } from './connection.js'
 import { fixOld } from './oldCards.js'
 import { s } from '$lib/util/strings.js'
 import {
@@ -16,10 +16,23 @@ export const {
    bench, active, stadium, table, pickup,
    vstarUsed, gxUsed,
    prizesFlipped, handRevealed, pokemonHidden,
-   reset, exportBoard, findSlot
+   exportBoard, findSlot,
+   reset: resetBoard
 } = board()
 
+/*
+   Reset is used by the UI (Setup / Reset in Controls), so it is guarded like
+   the rest of the board actions. The relay is the real authority: it refuses
+   anything a spectator tries to send.
+*/
+export function reset () {
+   if (isSpectator()) return
+   return resetBoard()
+}
+
 export function importDeck (txt, cb, rd = false) {
+   if (isSpectator()) return
+
    const callback = (res) => {
       fixOld(res.cards)
       cards.set(res.cards)
@@ -35,6 +48,8 @@ export function importDeck (txt, cb, rd = false) {
 }
 
 export function draw (count = 1, setup = false) {
+   if (isSpectator()) return
+
    const cards = []
    for (let i = 0; i < count; i++) {
       if (deck.get().length) {
@@ -51,6 +66,8 @@ export function draw (count = 1, setup = false) {
 }
 
 export function pick (source, count, options = {}) {
+   if (isSpectator()) return
+
    const cards = []
 
    for (let i = 0; i < count; i++) {
@@ -66,6 +83,8 @@ export function pick (source, count, options = {}) {
 }
 
 export function shuffle () {
+   if (isSpectator()) return
+
    deck.shuffle()
    publishLog('Shuffled Deck')
 }
@@ -75,7 +94,15 @@ export let slotSelection = pile()
 
 export let selectionPile = null
 
+/*
+   A spectator watches and nothing else. Every board mutation below is a
+   function the UI calls, so refusing here keeps a spectator from changing the
+   game; the relay also rejects writes from a member that holds no playing seat.
+*/
+const isSpectator = () => spectating.get()
+
 export function selectCard (card, pile, push = false) {
+   if (isSpectator()) return
    slotSelection.clear() // only have 1 of the two selections active at a time
    // allow multi select on the same pile only
    if (!push || selectionPile !== pile) cardSelection.clear()
@@ -85,6 +112,8 @@ export function selectCard (card, pile, push = false) {
 }
 
 export function selectPile (pile) {
+   if (isSpectator()) return
+
    resetSelection()
    for (const card of pile.get()) {
       cardSelection.push(card)
@@ -93,6 +122,7 @@ export function selectPile (pile) {
 }
 
 export function selectSlot (slot, push = false) {
+   if (isSpectator()) return
    cardSelection.clear()
    if (!push) slotSelection.clear()
    if (!slotSelection.get().includes(slot)) slotSelection.push(slot)
@@ -175,6 +205,8 @@ export function moveSelection (pile, options = {}) {
 }
 
 export function toBench () {
+   if (isSpectator()) return
+
    if (cardSelection.get().length) {
       if (selectionPile.get && !selectionPile.get().length) return // see moveSelection
 
@@ -251,6 +283,8 @@ export function toActive () {
 }
 
 export function discardStadium () {
+   if (isSpectator()) return
+
    const st = stadium.get()
    if (st) {
       discard.push(st)
@@ -260,6 +294,8 @@ export function discardStadium () {
 }
 
 export function toStadium () {
+   if (isSpectator()) return
+
    if (cardSelection.get().length !== 1 || selectionPile === 'stadium' || !selectionPile.get().length) return
    const card = cardSelection.get()[0]
 
@@ -283,6 +319,8 @@ export let attaching = writable(false)
 export let evolving = writable(false)
 
 export function startAttachEvolve (evo = false) {
+   if (isSpectator()) return
+
    // override the other if both were clicked
    // if clicked twice cancel the process
    attaching.set(!evo && !attaching.get())
@@ -290,6 +328,7 @@ export function startAttachEvolve (evo = false) {
 }
 
 export function attachSelection (slot) {
+   if (isSpectator()) return
    if (!cardSelection.get().length) return
 
    const ids = []
@@ -328,6 +367,7 @@ export function resetSelection () {
 }
 
 export function toggleMarker () {
+   if (isSpectator()) return
    if (!slotSelection.get().length) return
    for (const slot of slotSelection.get()) {
       slot.marker.update(b => !b)
@@ -338,6 +378,7 @@ export function toggleMarker () {
 /* full board sharing */
 
 export function shareBoardstate () {
+   if (isSpectator()) return
    const deck = cards.get()
    if (deck) share('boardState', { cards: deck, board: exportBoard() })
 }

@@ -3,7 +3,7 @@
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import Pile from './Pile.svelte'
    import cardback from '$lib/assets/cardback_int.png'
-   import { share } from '$lib/stores/connection.js'
+   import { share, spectating } from '$lib/stores/connection.js'
    import { logMove } from '$lib/stores/logger.js'
 
    import { deck, discard, lz, prizes, draw, shuffle } from '$lib/stores/player.js'
@@ -41,14 +41,14 @@
    {/if}
 
    <svelte:fragment slot="menu">
-      <ContextMenuOption click={() => shuffle()} text="Shuffle" shortcut="s" />
-      <ContextMenuOption click={() => draw()} text="Draw" shortcut="1" />
-      <ContextMenuOption click={() => drawX()} text="Draw X" shortcut="1...9" />
+      <ContextMenuOption click={() => shuffle()} text="Shuffle" shortcut="s" disabled={$spectating} />
+      <ContextMenuOption click={() => draw()} text="Draw" shortcut="1" disabled={$spectating} />
+      <ContextMenuOption click={() => drawX()} text="Draw X" shortcut="1...9" disabled={$spectating} />
       <ContextMenuOption click={() => openPile(deck)} text="View All" shortcut="v" />
-      <ContextMenuOption click={() => pickX()} text="View Top X" shortcut="Alt+1...9" />
-      <ContextMenuOption click={() => pickX(true)} text="View Bottom X" />
-      <ContextMenuOption click={() => moveTop(discard)} text="Discard Top Card" />
-      <ContextMenuOption click={() => moveTop(lz)} text="Lost Zone Top Card" />
-      <ContextMenuOption click={() => moveTop(prizes)} text="Prize Top Card" />
+      <ContextMenuOption click={() => pickX()} text="View Top X" shortcut="Alt+1...9" disabled={$spectating} />
+      <ContextMenuOption click={() => pickX(true)} text="View Bottom X" disabled={$spectating} />
+      <ContextMenuOption click={() => moveTop(discard)} text="Discard Top Card" disabled={$spectating} />
+      <ContextMenuOption click={() => moveTop(lz)} text="Lost Zone Top Card" disabled={$spectating} />
+      <ContextMenuOption click={() => moveTop(prizes)} text="Prize Top Card" disabled={$spectating} />
    </svelte:fragment>
 </Pile>

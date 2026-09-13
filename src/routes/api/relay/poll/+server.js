@@ -34,9 +34,19 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const opponentState = (room, memberId) => {
    const now = Date.now()
    const others = room.members.filter((m) => m.id !== memberId)
+   const fresh = others.filter((m) => now - (m.lastSeen || 0) < PRESENCE_MS)
+   const me = room.members.find((m) => m.id === memberId)
+
    return {
-      present: others.some((m) => now - (m.lastSeen || 0) < PRESENCE_MS),
-      count: others.length
+      /* a spectator has no opponent; it watches both seats */
+      present: me && me.role !== 'spectator'
+         ? fresh.some((m) => m.role !== 'spectator')
+         : false,
+      count: fresh.filter((m) => m.role !== 'spectator').length,
+      /* watchers are counted from membership, not presence, so somebody who
+         just joined shows up immediately */
+      spectators: room.members.filter((m) => m.role === 'spectator').length,
+      role: me ? me.role : null
    }
 }
 

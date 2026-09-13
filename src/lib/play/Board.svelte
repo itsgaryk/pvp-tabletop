@@ -1,7 +1,7 @@
 <script>
    import { setContext, onMount } from 'svelte'
    import { dragging } from '$lib/dnd/pointer.js'
-   import { publishLog } from '$lib/stores/connection.js'
+   import { publishLog, spectating } from '$lib/stores/connection.js'
    import { pick, shuffle, pokemonHidden, handRevealed } from '$lib/stores/player.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
 
@@ -180,7 +180,10 @@
 
 <DndCard />
 
-<Controls />
+<!-- the control sidebar acts on your own board, so a spectator has no use for it -->
+{#if !$spectating}
+   <Controls />
+{/if}
 
 <div class="h-screen overflow-y-auto flex-1" on:contextmenu|capture|preventDefault>
    <div class="game flex flex-col h-full max-w-[1920px] m-auto select-none relative">
