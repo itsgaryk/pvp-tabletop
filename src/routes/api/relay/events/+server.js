@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit'
-import { appendEvent, readRoom, touchMember } from '$lib/relay/store.js'
+import { appendEvent, getRoom, touchMember } from '$lib/relay/store.js'
 
 /*
    Append one game event to a room.
@@ -61,10 +61,10 @@ export async function POST ({ request }) {
    }
 
    try {
-      const room = await readRoom(roomId)
+      const room = await getRoom(roomId)
       if (!room) return json({ error: `room ${roomId} not found` }, { status: 404 })
 
-      if (!room.members[memberId]) {
+      if (!room.members.some((m) => m.id === memberId)) {
          return json({ error: 'you are not a member of this room' }, { status: 403 })
       }
 
@@ -75,8 +75,13 @@ export async function POST ({ request }) {
             ? { message: String(data.message ?? '').slice(0, 2000), type: data.type }
             : data
 
-      const event = await appendEvent(roomId, name, payload)
-      if (!event) return json({ error: 'room went away while writing' }, { status: 409 })
+      /*
+         `from` lets the poll tell the sender's own echo apart from the
+         opponent's events. Without it a player sees their own message twice -
+         once when they publish it locally, once relayed back to them.
+      */
+      const event = await appendEvent(roomId, name, payload, { from: memberId })
+      if (!event) return json({ error: `room ${roomId} no longer exists` }, { status: 404 })
 
       /*
          chat carries the relay's timestamp inside its payload: the client

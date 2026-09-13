@@ -151,12 +151,30 @@ export class HttpSocket {
       this.deliver(action === 'create' ? 'createdRoom' : 'joinedRoom', { roomId: res.roomId })
 
       // Replay anything already in the room (the opponent's board state, their
-      // deck, chat) through the same path polled events take.
+      // deck, chat) through the same path polled events take. Our own events are
+      // skipped: they were applied when we sent them, and the opponent re-sends
+      // a full board state on join anyway.
       for (const event of res.events || []) {
-         this.deliver(event.name, event.data, { meta: event })
+         this.cursor = Math.max(this.cursor, event.seq)
+         if (event.from && event.from === this.id) continue
+         this.apply(event)
       }
 
       return res
+   }
+
+   /*
+      Apply one relayed event.
+
+      A member's own events come back on the poll (the room is a single ordered
+      log, so there is no way to receive the opponent's events without also
+      seeing your own). They are handed to listeners with `self: true` so a
+      handler can choose to ignore its own action instead of applying it twice
+      - which is what made a message appear twice in the log.
+   */
+   apply (event) {
+      const self = Boolean(event.from) && event.from === this.id
+      this.deliver(event.name, event.data, { meta: event, self })
    }
 
    /* ------------------------------------------------------------------- wire -- */
@@ -268,7 +286,11 @@ export class HttpSocket {
 
       for (const event of payload.events || []) {
          this.cursor = Math.max(this.cursor, event.seq)
-         this.deliver(event.name, event.data, { meta: event })
+         if (event.from && event.from === this.id) {
+            // our own action: already applied locally when it was sent
+            continue
+         }
+         this.apply(event)
       }
       if (payload.seq) this.cursor = Math.max(this.cursor, payload.seq)
 
@@ -322,7 +344,7 @@ export class HttpSocket {
 
       for (const cb of [...handlers]) {
          try {
-            cb(data, meta)
+            cb(data, meta, { local })
          } catch (err) {
             console.error(`[relay] handler for "${event}" threw`, err)
          }

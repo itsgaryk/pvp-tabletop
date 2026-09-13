@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit'
 import {
+   addMember,
+   createRoom,
+   getRoom,
    getStore,
-   newMemberId,
-   newRoomId,
-   readRoom,
-   writeRoom
+   removeMember
 } from '$lib/relay/store.js'
 
 /*
@@ -29,67 +29,48 @@ export async function POST ({ request }) {
    }
 
    try {
-      const store = getStore()
+      getStore() // fails loudly when no database is configured
       const action = body?.action
 
       if (action === 'create') {
-         const room = {
-            id: newRoomId(),
-            createdAt: Date.now(),
-            seq: 0,
-            events: [],
-            members: {}
-         }
-
-         const memberId = newMemberId()
-         room.members[memberId] = { role: 'host', lastSeen: Date.now() }
-         await writeRoom(room, store)
-
-         return json({ roomId: room.id, memberId, role: 'host', seq: room.seq, events: [] })
+         const { roomId, memberId, role } = await createRoom()
+         return json({ roomId, memberId, role, seq: 0, events: [] })
       }
 
       if (action === 'join') {
          const roomId = String(body?.roomId || '').toUpperCase().trim()
          if (!roomId) return json({ error: 'roomId is required' }, { status: 400 })
 
-         const room = await readRoom(roomId, store)
+         const room = await getRoom(roomId)
          if (!room) return json({ error: `room ${roomId} not found` }, { status: 404 })
 
          /* Re-attach a member we already know (page reload, reconnect). */
-         let memberId = body?.memberId && room.members[body.memberId] ? body.memberId : null
-         let role = memberId ? room.members[memberId].role : null
+         const known = body?.memberId && room.members.some((m) => m.id === body.memberId)
+         let memberId = known ? body.memberId : null
+         let role = known ? room.members.find((m) => m.id === memberId).role : null
 
          if (!memberId) {
-            if (Object.keys(room.members).length >= MAX_MEMBERS) {
+            if (room.members.length >= MAX_MEMBERS) {
                return json({ error: `room ${roomId} is already full` }, { status: 409 })
             }
-            memberId = newMemberId()
+            memberId = crypto.randomUUID()
             role = 'guest'
          }
 
-         room.members[memberId] = { role, lastSeen: Date.now() }
-         await writeRoom(room, store)
+         await addMember(roomId, memberId, role)
 
          return json({
-            roomId: room.id,
+            roomId,
             memberId,
             role,
-            seq: room.seq,
+            seq: room.events.length ? room.events[room.events.length - 1].seq : 0,
             events: room.events
          })
       }
 
       if (action === 'leave') {
          const roomId = String(body?.roomId || '').toUpperCase().trim()
-         const memberId = body?.memberId
-         if (roomId && memberId) {
-            const room = await readRoom(roomId, store)
-            if (room && room.members[memberId]) {
-               delete room.members[memberId]
-               if (Object.keys(room.members).length === 0) await store.del(roomId)
-               else await writeRoom(room, store)
-            }
-         }
+         if (roomId && body?.memberId) await removeMember(roomId, body.memberId)
          return json({ ok: true })
       }
 

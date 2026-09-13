@@ -108,7 +108,15 @@ export function publishLog (message) {
 }
 
 /* the relay stamps chat so both players see the same order */
-socket.on('chatMessage', ({ message, type, time }) => {
+socket.on('chatMessage', ({ message, type, time }, meta, { local }) => {
+   /*
+      publishToChat already wrote this line locally, and the transport hands a
+      sent event straight back to local listeners so a player sees their own
+      board moves. Both would append the sender's own message a second time,
+      labelled as the opponent's, so ignore them here.
+   */
+   if (local || meta?.self) return
+
    chat.update(history => {
       history.push({ message, time: time ?? Date.now(), type, self: 0 })
       return history
