@@ -27,31 +27,52 @@ export function createOpponent () {
    /* which player this mirror belongs to; null means "whoever is not me" */
    let clientId = null
 
+   /*
+      Whether relayed events may land in this mirror at all. A spectator builds
+      two mirrors for the players it watches but also leaves the normal
+      two-player mirror alive (it is created at module level and never unmounts);
+      that idle mirror would collect both players' cards into the same slots.
+      Switching it off keeps the state on screen the only state in play.
+   */
+   let enabled = true
+
    const reload = (deckList) => {
       cards.set(deckList)
       reset()
    }
 
+   /*
+      A mirror can legitimately be missing a card (events applied out of order,
+      or a mirror that is not the one on screen). `pile.remove` does
+      `splice(indexOf(card), 1)`, which with an absent card becomes
+      `splice(-1, 1)` and silently deletes the last entry - so never call it
+      with nothing, and never push a missing card into a pile.
+   */
    const removeCard = (id, pile) => {
+      if (!pile) return null
+
       if (pile === stadium) {
          const card = stadium.get()
          stadium.set(null)
          return card
-      } else {
-         const card = pile.get().find(c => c._id === id)
-         pile.remove(card)
-         return card
       }
+
+      const card = pile.get().find(c => c._id === id)
+      if (!card) return null
+      pile.remove(card)
+      return card
    }
 
    const moveCards = (ids, source, target) => {
+      if (!target) return
       for (const id of ids) {
          const card = removeCard(id, source)
-         target.push(card)
+         if (card) target.push(card)
       }
    }
 
    const removeSlot = (s) => {
+      if (!s) return
       if (active.get() === s) active.set(null)
       else bench.remove(s)
    }
@@ -75,7 +96,8 @@ export function createOpponent () {
          const id = regexRes[1]
          const type = regexRes[2]
          const s = findSlot(id)
-         return s[type]
+         /* a slot we do not have yet - return nothing rather than throwing */
+         return s ? s[type] : null
       }
 
       else if (name === 'stadium') return stadium
@@ -135,12 +157,18 @@ export function createOpponent () {
       cardsMoved: ({ cards: ids, from, to }) => {
          const pile1 = getPile(from)
          const pile2 = getPile(to)
-         for (const id of ids) pile2.push(removeCard(id, pile1))
+         if (!pile2) return
+         for (const id of ids) {
+            const card = removeCard(id, pile1)
+            if (card) pile2.push(card)
+         }
       },
       slotsMoved: ({ slots: ids, to }) => {
          const pile = getPile(to)
+         if (!pile) return
          for (const id of ids) {
             const s = findSlot(id)
+            if (!s) continue
             removeSlot(s)
             pile.merge([...s.trainer.get(), ...s.energy.get(), ...s.pokemon.get()])
          }
@@ -149,35 +177,45 @@ export function createOpponent () {
          const pile = getPile(from)
          for (const { cardId, slotId } of items) {
             const card = removeCard(cardId, pile)
+            if (!card) continue
             bench.add(slot(card, slotId))
          }
       },
       activeBenched: () => {
          const s = active.get()
+         if (!s) return
          active.set(null)
          bench.add(s)
       },
       cardPromoted: ({ cardId, slotId, from }) => {
          const card = removeCard(cardId, getPile(from))
+         if (!card) return
          if (active.get()) bench.add(active.get())
          active.set(slot(card, slotId))
       },
       slotPromoted: ({ slotId }) => {
          const pokemon = bench.get().find(s => s.id === slotId)
+         if (!pokemon) return
          bench.remove(pokemon)
          if (active.get()) bench.add(active.get())
          active.set(pokemon)
       },
       cardsEvolved: ({ slotId, cards: ids, from }) => {
          const s = findSlot(slotId)
-         const pile = getPile(from)
-         for (const id of ids) s.pokemon.push(removeCard(id, pile))
-      },
-      cardsAttached: ({ slotId, cards: ids, from }) => {
-         const s = findSlot(slotId)
+         if (!s) return
          const pile = getPile(from)
          for (const id of ids) {
             const card = removeCard(id, pile)
+            if (card) s.pokemon.push(card)
+         }
+      },
+      cardsAttached: ({ slotId, cards: ids, from }) => {
+         const s = findSlot(slotId)
+         if (!s) return
+         const pile = getPile(from)
+         for (const id of ids) {
+            const card = removeCard(id, pile)
+            if (!card) continue
             if (card.card_type === 'trainer') s.trainer.push(card)
             else s.energy.push(card)
          }
@@ -196,6 +234,7 @@ export function createOpponent () {
       },
       stadiumPlayed: ({ cardId, from }) => {
          const card = removeCard(cardId, getPile(from))
+         if (!card) return
          stadium.set(card)
          // discard your own stadium (if applicable) as a response
          discardStadium()
@@ -210,7 +249,11 @@ export function createOpponent () {
       get clientId () { return clientId },
       set clientId (id) { clientId = id },
 
+      get enabled () { return enabled },
+      set enabled (value) { enabled = !!value },
+
       apply (name, data, from) {
+         if (!enabled) return
          if (!accepts(from)) return
          const handler = handlers[name]
          if (handler) handler(data)
@@ -260,11 +303,35 @@ function register (instance) {
    Spectator mirrors, one per player. Each is registered so relay events reach
    it, and it only accepts events from the player it was given.
 */
+/*
+   Point one spectator mirror at a player.
+
+   An empty seat switches the mirror off rather than leaving it with
+   `clientId === null`, which would mean "accept every player" and mirror the
+   other player a second time.
+*/
+function seat (mirror, id) {
+   if (!id) {
+      mirror.enabled = false
+      mirror.clientId = null
+      mirror.clear()
+      return
+   }
+
+   if (mirror.clientId !== id) {
+      mirror.clear()
+      mirror.clientId = id
+   }
+   mirror.enabled = true
+}
+
 export function createSpectatorOpponents () {
    const top = createOpponent()
    const bottom = createOpponent()
    register(top)
    register(bottom)
+   seat(top, null)
+   seat(bottom, null)
 
    return {
       top,
@@ -277,21 +344,13 @@ export function createSpectatorOpponents () {
       */
       setPlayers (playerIds) {
          const [first, second] = (playerIds || []).filter(Boolean)
-         if (top.clientId !== first) {
-            top.clear()
-            top.clientId = first || null
-         }
-         if (bottom.clientId !== second) {
-            bottom.clear()
-            bottom.clientId = second || null
-         }
+         seat(top, first)
+         seat(bottom, second)
       },
 
       clear () {
-         top.clientId = null
-         bottom.clientId = null
-         top.clear()
-         bottom.clear()
+         seat(top, null)
+         seat(bottom, null)
       }
    }
 }
@@ -315,16 +374,40 @@ const RELAY_EVENTS = [
 
 for (const name of RELAY_EVENTS) {
    socket.on(name, (data, meta) => {
-      for (const instance of instances) instance.apply(name, data, meta?.from)
+      /*
+         Every mirror is offered every event, and each one decides whether it
+         applies. One mirror failing must not stop the others: a spectator keeps
+         an unrendered "default" mirror alongside its two real ones, and that
+         default accumulates both players' state, so slot lookups fail there
+         first. Without this guard its exception starved the mirrors that are
+         actually on screen - a trainer attached to a Pokemon in play, for
+         example, never reached the spectator's board.
+      */
+      for (const instance of instances) {
+         try {
+            instance.apply(name, data, meta?.from)
+         } catch (err) {
+            console.error(`[opponent] mirror failed to apply "${name}"`, err)
+         }
+      }
    })
 }
 
 socket.on('leftRoom', () => {
    spectatorOpponents.clear()
+   /* back to the normal two-player mirror for the next room */
+   defaultOpponent.enabled = true
    for (const instance of instances) instance.clear()
 })
 
 /* the relay tells us who holds the playing seats; seat them on the two halves */
 socket.on('seated', ({ players }) => {
    spectatorOpponents.setPlayers(players)
+
+   /*
+      A spectator does not render the normal two-player mirror, but it is never
+      unmounted either, so it would quietly collect both players' cards into the
+      same slots while the two real mirrors are on screen. Switch it off.
+   */
+   defaultOpponent.enabled = !socket.spectating
 })

@@ -48,6 +48,8 @@ export class HttpSocket {
       this.listeners = new Map() // event name -> Set<fn>
       this.anyListeners = new Set()
       this.opponentPresent = null // null = not yet known
+      this.players = [] // members holding the two playing seats, in join order
+      this.seats = [] // the seats `seated` was last raised with
 
       this.controller = null
       this.loop = null
@@ -140,6 +142,7 @@ export class HttpSocket {
       this.cursor = 0
       this.role = null
       this.players = []
+      this.seats = []
       this.opponentPresent = null
       this.deliver('leftRoom', {})
       return { ok: true }
@@ -162,6 +165,7 @@ export class HttpSocket {
       this.roomId = res.roomId
       this.role = res.role || 'guest'
       this.players = res.players || []
+      this.seats = this.players.slice()
       this.cursor = res.seq || 0
       this.opponentPresent = false
       this.setConnected(true)
@@ -310,6 +314,7 @@ export class HttpSocket {
 
       this.setConnected(true)
       this.trackPresence(payload.opponent)
+      this.trackSeats(payload.players)
 
       for (const event of payload.events || []) {
          this.cursor = Math.max(this.cursor, event.seq)
@@ -353,6 +358,22 @@ export class HttpSocket {
          this.deliver(present ? 'opponentJoined' : 'opponentLeft', {})
          this.deliver('opponentPresent', { present })
       }
+   }
+
+   /*
+      The two playing seats, as reported by the relay. They are not fixed when a
+      spectator arrives - the second player may sit down later - so every poll
+      carries them, and `seated` is raised whenever they actually change.
+   */
+   trackSeats (players) {
+      if (!Array.isArray(players)) return
+
+      const same = players.length === this.seats.length &&
+         players.every((id, index) => id === this.seats[index])
+      if (same) return
+
+      this.seats = players.slice()
+      this.deliver('seated', { players: this.seats })
    }
 
    setConnected (value) {
