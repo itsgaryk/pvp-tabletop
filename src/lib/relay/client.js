@@ -143,6 +143,13 @@ export class HttpSocket {
       this.opponentPresent = false
       this.setConnected(true)
 
+      /*
+         Tell the app it is in a room. Under socket.io the server sent these,
+         so the store relied on them; here the client has to raise them itself,
+         otherwise `room` stays null and the UI never leaves the lobby.
+      */
+      this.deliver(action === 'create' ? 'createdRoom' : 'joinedRoom', { roomId: res.roomId })
+
       // Replay anything already in the room (the opponent's board state, their
       // deck, chat) through the same path polled events take.
       for (const event of res.events || []) {
