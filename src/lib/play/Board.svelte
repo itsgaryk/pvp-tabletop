@@ -4,7 +4,7 @@
    import { publishLog, spectating } from '$lib/stores/connection.js'
    import { pick, shuffle, pokemonHidden, handRevealed } from '$lib/stores/player.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
-   import { defaultOpponent, spectatorOpponents } from '$lib/stores/opponent.js'
+   import { defaultOpponent, spectatorOpponents, spectatorFlipped } from '$lib/stores/opponent.js'
 
    import Hand from './board/Hand.svelte'
    import Deck from './board/Deck.svelte'
@@ -54,10 +54,15 @@
       A spectator watches two players, so it needs a mirror per player: the top
       and bottom halves of this board show a different one. A player keeps the
       single default mirror (own board below, opponent above). The mirrors and
-      their assignment live in the opponent store.
+      their assignment live in the opponent store, and a spectator can swap the
+      two halves for itself without telling anyone.
    */
-   $: topStore = $spectating ? spectatorOpponents.top : defaultOpponent
-   $: bottomStore = $spectating ? spectatorOpponents.bottom : defaultOpponent
+   $: topStore = $spectating
+      ? ($spectatorFlipped ? spectatorOpponents.bottom : spectatorOpponents.top)
+      : defaultOpponent
+   $: bottomStore = $spectating
+      ? ($spectatorFlipped ? spectatorOpponents.top : spectatorOpponents.bottom)
+      : defaultOpponent
 
    let inspectionModal
    let selectionModal

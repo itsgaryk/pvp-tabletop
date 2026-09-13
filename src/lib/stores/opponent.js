@@ -1,3 +1,5 @@
+import { writable } from 'svelte/store'
+
 import { board } from './custom/board.js'
 import { slot } from './custom/cards.js'
 import { socket } from './connection.js'
@@ -365,6 +367,13 @@ export function registerOpponent (instance) {
 */
 export const spectatorOpponents = createSpectatorOpponents()
 
+/*
+   Which half of a spectator's screen shows which player. Flipping is a local
+   view change: it swaps the two mirrors on screen and tells the relay nothing,
+   so neither player's own view moves.
+*/
+export const spectatorFlipped = writable(false)
+
 const RELAY_EVENTS = [
    'boardState', 'deckLoaded', 'boardReset', 'cardsMoved', 'slotsMoved',
    'cardsBenched', 'activeBenched', 'cardPromoted', 'slotPromoted',
@@ -395,6 +404,7 @@ for (const name of RELAY_EVENTS) {
 
 socket.on('leftRoom', () => {
    spectatorOpponents.clear()
+   spectatorFlipped.set(false)
    /* back to the normal two-player mirror for the next room */
    defaultOpponent.enabled = true
    for (const instance of instances) instance.clear()
