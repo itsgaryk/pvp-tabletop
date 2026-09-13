@@ -335,7 +335,7 @@ export async function joinRoom (roomId, { memberId = null, role = 'guest' } = {}
    const existing = memberId ? room.members.find((m) => m.id === memberId) : null
    if (existing) {
       await addMember(id, memberId, existing.role)
-      return { roomId: id, memberId, role: existing.role, room }
+      return { roomId: id, memberId, role: existing.role, room: await getRoom(id) }
    }
 
    let assigned
@@ -353,7 +353,11 @@ export async function joinRoom (roomId, { memberId = null, role = 'guest' } = {}
    const newId = newMemberId()
    await addMember(id, newId, assigned)
 
-   return { roomId: id, memberId: newId, role: assigned, room }
+   /*
+      Re-read after adding the caller so `room.members` includes them; the route
+      builds the `players` list from it and a joiner must see themselves seated.
+   */
+   return { roomId: id, memberId: newId, role: assigned, room: await getRoom(id) }
 }
 
 export async function roomExists (roomId) {

@@ -139,6 +139,7 @@ export class HttpSocket {
       this.roomId = null
       this.cursor = 0
       this.role = null
+      this.players = []
       this.opponentPresent = null
       this.deliver('leftRoom', {})
       return { ok: true }
@@ -160,6 +161,7 @@ export class HttpSocket {
       this.id = res.memberId
       this.roomId = res.roomId
       this.role = res.role || 'guest'
+      this.players = res.players || []
       this.cursor = res.seq || 0
       this.opponentPresent = false
       this.setConnected(true)
@@ -171,6 +173,9 @@ export class HttpSocket {
       */
       if (this.spectating) this.deliver('spectatingRoom', { roomId: res.roomId, role: this.role })
       else this.deliver(action === 'create' ? 'createdRoom' : 'joinedRoom', { roomId: res.roomId, role: this.role })
+
+      /* who holds the two playing seats - a spectator seats them on screen */
+      this.deliver('seated', { players: this.players })
 
       // Replay anything already in the room (the opponent's board state, their
       // deck, chat) through the same path polled events take. Our own events are
@@ -336,13 +341,17 @@ export class HttpSocket {
 
       if (this.opponentPresent === null) {
          this.opponentPresent = present
-         if (present) this.deliver('opponentJoined', {})
+         if (present) {
+            this.deliver('opponentJoined', {})
+            this.deliver('opponentPresent', { present })
+         }
          return
       }
 
       if (present !== this.opponentPresent) {
          this.opponentPresent = present
          this.deliver(present ? 'opponentJoined' : 'opponentLeft', {})
+         this.deliver('opponentPresent', { present })
       }
    }
 

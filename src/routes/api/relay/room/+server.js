@@ -68,9 +68,18 @@ export async function POST ({ request }) {
          let summary = null
          if (role === 'spectator') summary = await announceSpectators(roomId)
 
+         /*
+            Which members hold the playing seats. A spectator needs this to know
+            whose board goes on which half of its screen.
+         */
+         const players = room.members
+            .filter((m) => m.role === 'host' || m.role === 'guest')
+            .map((m) => m.id)
+
          return json({
             roomId,
             memberId,
+            players,
             role,
             seq: room.events.length ? room.events[room.events.length - 1].seq : 0,
             events: room.events,

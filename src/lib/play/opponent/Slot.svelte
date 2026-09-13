@@ -3,22 +3,25 @@
    import { cardImage } from '$lib/util/assets.js'
    import cardback from '$lib/assets/cardback_int.png'
 
-   import { pokemonHidden } from '$lib/stores/opponent.js'
+   import { defaultOpponent } from '$lib/stores/opponent.js'
    const { openOppSlotDetails, openOppSlotMenu, openDetails } = getContext('boardActions')
 
+   /* which player's board this component shows */
+   export let store = defaultOpponent
    export let slot
 
+   /* these are piles belonging to the slot itself, not to the mirrored board */
    $: ({ pokemon, trainer, energy, damage, marker } = slot)
    $: top = $pokemon[ $pokemon.length - 1]
 
    function onClick (e) {
-      if ($pokemonHidden) return
+      if ($store.pokemonHidden) return
       if (e.altKey) openDetails(top)
       else openOppSlotDetails(slot)
    }
 
    function onCtx (e) {
-      if ($pokemonHidden) return
+      if ($store.pokemonHidden) return
       openOppSlotMenu(e.clientX, e.clientY, slot)
    }
 </script>
@@ -37,8 +40,8 @@
 
    {#if top}
       <img
-         src="{$pokemonHidden ? cardback : cardImage(top, 'xs')}"
-         alt="{$pokemonHidden ? 'Hidden Pokémon' : top.name}"
+         src="{$store.pokemonHidden ? cardback : cardImage(top, 'xs')}"
+         alt="{$store.pokemonHidden ? 'Hidden Pokémon' : top.name}"
          class="card pokemon relative z-10" draggable=false>
    {/if}
 
