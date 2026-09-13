@@ -1,7 +1,7 @@
 2-player version of the Pokémon TCG tabletop app.
 Built with Svelte 4 + SvelteKit.
 
-**[Live Demo](https://pvp-tabletop-27e7a.ondigitalocean.app)**
+**[Live Demo](https://pvp-tabletop-27e7a.ondigitalocean.app)** — this demo also hosts the socket.io relay server on the same origin, so rooms work there. The Vercel deployment below serves the static client only.
 
 ## Getting Started
 To run it locally, download the repository, run `npm ci` to install dependencies, copy `.env.example` to `.env` (or `.env.development`), and then run `npm run dev`.
@@ -32,11 +32,11 @@ All three are **optional** and all three are **client-side**. The app is a stati
 
 | Variable | What it controls | Example value | Unset behaviour |
 | --- | --- | --- | --- |
-| `VITE_PVP_SERVER` | Origin of the socket.io server that relays moves and chat between the two players. The browser opens a websocket to it directly, so it must be reachable from the public internet and must accept your Vercel domain as an origin. | `https://pvp-tabletop-27e7a.ondigitalocean.app` | Falls back to that public demo server and logs a warning in the browser console |
+| `VITE_PVP_SERVER` | Origin of the socket.io server that relays moves and chat between the two players. The browser opens a websocket to it directly, so it must be reachable from the public internet and must accept your Vercel domain as an origin. | `https://pvp-tabletop.vercel.app` | Falls back to `https://pvp-tabletop.vercel.app` and logs a warning in the browser console |
 | `VITE_LIMITLESS_WEB` | Base URL of the Limitless TCG API used by "Import Deck" / "Import Random Deck" (`/api/dm/import`, `/api/dm/random`). | `https://limitlesstcg.com` | Falls back to `https://limitlesstcg.com` |
 | `VITE_ENV` | Debug switch. When set to `dev`, every shared socket event is logged to the browser console. | `prod` | Treated as `prod` (no event logging) |
 
-You can leave all three blank on a first deploy: the app builds and runs against the public demo server. Set `VITE_PVP_SERVER` once you host your own relay server (see *Server* below) — otherwise everyone using your deployment shares the demo server's rooms.
+> **The default `VITE_PVP_SERVER` is the app's own origin, which only relays games if a socket.io server is hosted there.** This Vercel project serves the static client only — `/socket.io/` currently returns 404 on it, so creating or joining a room fails until you deploy the relay server (see *Server* below) and point `VITE_PVP_SERVER` at wherever it lives.
 
 Do not confuse these `VITE_*` variables with Vercel's own system variables (`VERCEL_URL`, `VERCEL_ENV`, …). Vercel shows its system variables alongside yours in that screen; only the three above are read by this project.
 
