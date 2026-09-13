@@ -1,47 +1,86 @@
 /*
    Room storage for the in-project relay.
 
-   A room is a single JSON document:
+   Keys (all namespaced under the room):
 
-      {
-         id        : 'ABCD12',
-         createdAt : 1699999999999,
-         seq       : 42,                 // last event id handed out
-         events    : [ { seq, ts, name, data } ],   // capped ring of recent events
-         members   : { <memberId>: { role, lastSeen } }
-      }
+      pvp:room:<id>:meta     JSON { id, createdAt }        room existence
+      pvp:room:<id>:seq      integer                       last event number
+      pvp:room:<id>:events   list of JSON events, newest first
+      pvp:room:<id>:m:<mid>  JSON { role, lastSeen }       one key per member
 
-   Every server instance must see the same document, so production uses Redis.
-   Local development falls back to an in-process map, which is correct there
-   because `vite dev` runs a single server process.
+   Every room mutation is a *single-key* atomic Redis command (INCR, LPUSH,
+   SET, DEL). That matters: Vercel runs each request on its own instance and a
+   player's long poll is always in flight, so anything that reads the whole
+   room, mutates and writes it back loses concurrent updates. An earlier
+   version stored the room as one JSON document and did exactly that, which
+   silently dropped events and made the room look like it had vanished.
 
-   Redis transport: this uses the Upstash REST protocol (POST {url} with a JSON
+   Production uses Redis over the Upstash REST protocol (POST {url} with a JSON
    command array), which works from serverless functions without holding a
-   socket open. It works with the Vercel Marketplace Redis/KV integrations and
-   with an Upstash database directly. A plain `REDIS_URL` (redis://) is also
-   accepted and used over TCP.
+   socket open. Local development falls back to an in-process map, which is
+   correct because `vite dev` serves one request at a time.
 */
 
-export const ROOM_TTL_MS = 1000 * 60 * 60 * 6 // rooms are dropped 6h after the last event
+export const ROOM_TTL_S = 60 * 60 * 6 // rooms are dropped 6h after the last write
 export const MAX_EVENTS = 400 // events kept per room
 
 /* ------------------------------------------------------------------ memory -- */
 
 function memoryStore () {
-   const globalKey = Symbol.for('pvp-tabletop.relay.rooms')
-   const rooms = (globalThis[globalKey] ||= new Map())
+   const globalKey = Symbol.for('pvp-tabletop.relay.rooms2')
+   const db = (globalThis[globalKey] ||= { meta: new Map(), seq: new Map(), events: new Map(), members: new Map() })
+
+   const mkey = (id, mid) => `${id}|${mid}`
 
    return {
       kind: 'memory',
-      async get (id) {
-         return rooms.get(id) || null
+
+      async getMeta (id) {
+         return db.meta.get(id) || null
       },
-      async set (room) {
-         rooms.set(room.id, room)
-         return room
+      async setMeta (id, meta, { nx = false } = {}) {
+         if (nx && db.meta.has(id)) return false
+         db.meta.set(id, meta)
+         return true
       },
-      async del (id) {
-         rooms.delete(id)
+      async delRoom (id) {
+         db.meta.delete(id)
+         db.seq.delete(id)
+         db.events.delete(id)
+         for (const key of [...db.members.keys()]) {
+            if (key.startsWith(id + '|')) db.members.delete(key)
+         }
+      },
+
+      async nextSeq (id) {
+         const next = (db.seq.get(id) || 0) + 1
+         db.seq.set(id, next)
+         return next
+      },
+      async pushEvent (id, event) {
+         const list = db.events.get(id) || []
+         list.unshift(event)
+         db.events.set(id, list.slice(0, MAX_EVENTS))
+      },
+      async listEvents (id) {
+         return (db.events.get(id) || []).slice(0, MAX_EVENTS)
+      },
+
+      async setMember (id, mid, member) {
+         db.members.set(mkey(id, mid), member)
+      },
+      async getMember (id, mid) {
+         return db.members.get(mkey(id, mid)) || null
+      },
+      async delMember (id, mid) {
+         db.members.delete(mkey(id, mid))
+      },
+      async listMembers (id) {
+         const out = []
+         for (const [key, member] of db.members) {
+            if (key.startsWith(id + '|')) out.push({ id: key.slice(id.length + 1), ...member })
+         }
+         return out
       }
    }
 }
@@ -59,27 +98,95 @@ function redisRestStore (url, token) {
          body: JSON.stringify(args)
       })
       if (!res.ok) {
-         throw new Error(`redis command ${args[0]} failed: ${res.status} ${await res.text()}`)
+         throw new Error(`redis ${args[0]} failed: ${res.status} ${await res.text()}`)
       }
       const body = await res.json()
       if (body.error) throw new Error(`redis error: ${body.error}`)
       return body.result
    }
 
-   const key = (id) => `pvp-tabletop:room:${id}`
+   /* MULTI/EXEC so a seq bump and its LPUSH/LTRIM land together */
+   async function pipeline (commands) {
+      const res = await fetch(`${url}/pipeline`, {
+         method: 'POST',
+         headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+         },
+         body: JSON.stringify(commands)
+      })
+      if (!res.ok) {
+         throw new Error(`redis pipeline failed: ${res.status} ${await res.text()}`)
+      }
+      const body = await res.json()
+      for (const step of body) {
+         if (step.error) throw new Error(`redis error: ${step.error}`)
+      }
+      return body.map((step) => step.result)
+   }
+
+   const k = {
+      meta: (id) => `pvp:room:${id}:meta`,
+      seq: (id) => `pvp:room:${id}:seq`,
+      events: (id) => `pvp:room:${id}:events`,
+      member: (id, mid) => `pvp:room:${id}:m:${mid}`
+   }
 
    return {
       kind: 'redis-rest',
-      async get (id) {
-         const raw = await command('GET', key(id))
+
+      async getMeta (id) {
+         const raw = await command('GET', k.meta(id))
          return raw ? JSON.parse(raw) : null
       },
-      async set (room) {
-         await command('SET', key(room.id), JSON.stringify(room), 'PX', String(ROOM_TTL_MS))
-         return room
+      async setMeta (id, meta, { nx = false } = {}) {
+         const args = ['SET', k.meta(id), JSON.stringify(meta), 'EX', String(ROOM_TTL_S)]
+         if (nx) args.push('NX')
+         const result = await command(...args)
+         /* with NX, redis replies OK on write and nil when the key existed */
+         return nx ? result === 'OK' : true
       },
-      async del (id) {
-         await command('DEL', key(id))
+      async delRoom (id) {
+         const members = await command('KEYS', k.member(id, '*'))
+         const keys = [k.meta(id), k.seq(id), k.events(id), ...(members || [])]
+         if (keys.length) await command('DEL', ...keys)
+      },
+
+      async nextSeq (id) {
+         const next = await command('INCR', k.seq(id))
+         await command('EXPIRE', k.seq(id), String(ROOM_TTL_S))
+         return next
+      },
+      async pushEvent (id, event) {
+         await pipeline([
+            ['LPUSH', k.events(id), JSON.stringify(event)],
+            ['LTRIM', k.events(id), '0', String(MAX_EVENTS - 1)],
+            ['EXPIRE', k.events(id), String(ROOM_TTL_S)]
+         ])
+      },
+      async listEvents (id) {
+         const raw = await command('LRANGE', k.events(id), '0', String(MAX_EVENTS - 1))
+         return (raw || []).map((line) => JSON.parse(line))
+      },
+
+      async setMember (id, mid, member) {
+         await command('SET', k.member(id, mid), JSON.stringify(member), 'EX', String(ROOM_TTL_S))
+      },
+      async getMember (id, mid) {
+         const raw = await command('GET', k.member(id, mid))
+         return raw ? JSON.parse(raw) : null
+      },
+      async delMember (id, mid) {
+         await command('DEL', k.member(id, mid))
+      },
+      async listMembers (id) {
+         const keys = await command('KEYS', k.member(id, '*'))
+         if (!keys || !keys.length) return []
+         const values = await command('MGET', ...keys)
+         return keys.map((key, i) => {
+            const mid = key.slice(k.member(id, '').length)
+            return { id: mid, ...(values[i] ? JSON.parse(values[i]) : {}) }
+         })
       }
    }
 }
@@ -89,10 +196,6 @@ function redisRestStore (url, token) {
 /*
    Vercel's Redis/KV integrations inject different names depending on which one
    you install, so accept the common spellings.
-
-   Only the HTTP/REST protocol is supported: serverless functions should not
-   hold a TCP connection open, and the Vercel Marketplace integrations expose
-   REST by default.
 */
 function redisConfig () {
    const url =
@@ -105,7 +208,6 @@ function redisConfig () {
       process.env.REDIS_REST_API_TOKEN
 
    if (url && token) return { url, token }
-
    return null
 }
 
@@ -157,59 +259,92 @@ export function newMemberId () {
    return crypto.randomUUID()
 }
 
-/* Drop expired rooms and trim the event ring. */
-function prune (room) {
-   room.events = room.events.slice(-MAX_EVENTS)
-   return room
-}
-
-export async function readRoom (id, store = getStore()) {
-   if (!id) return null
-   return store.get(String(id).toUpperCase())
-}
-
-export async function writeRoom (room, store = getStore()) {
-   return store.set(prune(room))
+export function normalizeRoomId (id) {
+   return String(id || '').toUpperCase().trim()
 }
 
 /*
-   Append an event and hand out the next sequence number.
-
-   Read-modify-write is not atomic, so two simultaneous sends can collide. The
-   relay is a two-player turn-based game where the losing write is a single
-   log line, and every action also re-syncs full board state, so a retry loop
-   is enough here; it is not a general-purpose queue.
+   Create a room. SET NX guards against the (unlikely) id collision, so two
+   simultaneous creates can never adopt each other's room.
 */
-export async function appendEvent (roomId, name, data, { attempts = 4 } = {}) {
+export async function createRoom () {
    const store = getStore()
 
-   for (let i = 0; i < attempts; i++) {
-      const room = await readRoom(roomId, store)
-      if (!room) return null
+   for (let attempt = 0; attempt < 5; attempt++) {
+      const id = newRoomId()
+      const meta = { id, createdAt: Date.now() }
+      const created = await store.setMeta(id, meta, { nx: true })
+      if (!created) continue
 
-      const before = room.seq
-      room.seq = before + 1
-      const event = { seq: room.seq, ts: Date.now(), name, data: data ?? {} }
-      room.events.push(event)
-
-      const written = await store.set(prune(room))
-      // Someone else may have written in between; re-read and confirm our event
-      // survived, otherwise try again with a fresh sequence number.
-      const check = await readRoom(roomId, store)
-      if (check && check.events.some((e) => e.seq === event.seq)) {
-         if (written) return event
-         return event
-      }
+      const memberId = newMemberId()
+      await store.setMember(id, memberId, { role: 'host', lastSeen: Date.now() })
+      return { roomId: id, memberId, role: 'host' }
    }
 
-   return null
+   throw new Error('could not allocate a room id')
 }
 
-export async function touchMember (roomId, memberId, role) {
+export async function getRoom (roomId) {
    const store = getStore()
-   const room = await readRoom(roomId, store)
-   if (!room) return null
+   const id = normalizeRoomId(roomId)
+   const meta = await store.getMeta(id)
+   if (!meta) return null
 
-   room.members[memberId] = { role, lastSeen: Date.now() }
-   return store.set(prune(room))
+   const [events, members] = await Promise.all([
+      store.listEvents(id),
+      store.listMembers(id)
+   ])
+
+   return { ...meta, events: events.reverse(), members }
+}
+
+export async function roomExists (roomId) {
+   const store = getStore()
+   return Boolean(await store.getMeta(normalizeRoomId(roomId)))
+}
+
+/*
+   Append one event. The sequence number comes from an atomic INCR, so two
+   simultaneous sends get distinct numbers instead of overwriting each other.
+*/
+export async function appendEvent (roomId, name, data, { from = null } = {}) {
+   const store = getStore()
+   const id = normalizeRoomId(roomId)
+
+   if (!(await store.getMeta(id))) return null
+
+   const seq = await store.nextSeq(id)
+   const event = { seq, ts: Date.now(), name, from, data: data ?? {} }
+   await store.pushEvent(id, event)
+   return event
+}
+
+export async function addMember (roomId, memberId, role) {
+   const store = getStore()
+   const id = normalizeRoomId(roomId)
+   await store.setMember(id, memberId, { role, lastSeen: Date.now() })
+}
+
+export async function touchMember (roomId, memberId) {
+   if (!memberId) return
+   const store = getStore()
+   const id = normalizeRoomId(roomId)
+
+   const member = await store.getMember(id, memberId)
+   if (!member) return
+   await store.setMember(id, memberId, { ...member, lastSeen: Date.now() })
+}
+
+export async function removeMember (roomId, memberId) {
+   if (!memberId) return 0
+   const store = getStore()
+   const id = normalizeRoomId(roomId)
+
+   await store.delMember(id, memberId)
+   const members = await store.listMembers(id)
+   if (!members.length) {
+      await store.delRoom(id)
+      return 0
+   }
+   return members.length
 }

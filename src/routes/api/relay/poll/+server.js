@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit'
-import { readRoom, touchMember } from '$lib/relay/store.js'
+import { getRoom, touchMember } from '$lib/relay/store.js'
 
 /*
    Long-poll for events after `since`.
@@ -10,7 +10,7 @@ import { readRoom, touchMember } from '$lib/relay/store.js'
    milliseconds and the hold only runs out while the board is idle.
 
    Holding the request open is what costs function time on Vercel (wall clock is
-   billed on Hobby, not just CPU), so the window is deliberately modest.
+   billed, not just CPU), so the window is deliberately modest.
 */
 
 const WAIT_MS = clamp(Number(process.env.RELAY_POLL_WAIT_MS) || 20000, 0, 50000)
@@ -31,6 +31,15 @@ function clamp (value, min, max) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+const opponentState = (room, memberId) => {
+   const now = Date.now()
+   const others = room.members.filter((m) => m.id !== memberId)
+   return {
+      present: others.some((m) => now - (m.lastSeen || 0) < PRESENCE_MS),
+      count: others.length
+   }
+}
+
 /** @type {import('./$types').RequestHandler} */
 export async function GET ({ url }) {
    const roomId = String(url.searchParams.get('roomId') || '').toUpperCase().trim()
@@ -46,17 +55,13 @@ export async function GET ({ url }) {
       /* Refresh our own presence up front: a long poll means "still here". */
       await touchMember(roomId, memberId)
 
-      let room = await readRoom(roomId)
-
-      while (true) {
-         if (!room) {
-            return json({ gone: true, events: [], seq: since })
-         }
+      for (;;) {
+         const room = await getRoom(roomId)
+         if (!room) return json({ gone: true, events: [], seq: since })
 
          const events = room.events.filter((e) => e.seq > since).slice(0, MAX_EVENTS)
 
          if (events.length) {
-            const opponent = opponentState(room, memberId)
             /*
                Refresh again on the way out. Without this, a player who is
                actively receiving events would still look stale to the other
@@ -65,8 +70,8 @@ export async function GET ({ url }) {
             await touchMember(roomId, memberId)
             return json({
                events,
-               seq: room.seq,
-               opponent,
+               seq: room.events[room.events.length - 1].seq,
+               opponent: opponentState(room, memberId),
                waited: Date.now() - started
             })
          }
@@ -74,26 +79,16 @@ export async function GET ({ url }) {
          if (Date.now() - started >= wait) {
             return json({
                events: [],
-               seq: room.seq,
+               seq: room.events.length ? room.events[room.events.length - 1].seq : since,
                opponent: opponentState(room, memberId),
                waited: Date.now() - started
             })
          }
 
          await sleep(POLL_INTERVAL_MS)
-         room = await readRoom(roomId)
       }
    } catch (err) {
       console.error('[relay] poll failed', err)
       return json({ error: err.message }, { status: 500 })
    }
-}
-
-function opponentState (room, memberId) {
-   const now = Date.now()
-   const others = Object.entries(room.members || {}).filter(([id]) => id !== memberId)
-
-   const present = others.some(([, m]) => now - (m.lastSeen || 0) < PRESENCE_MS)
-
-   return { present, count: others.length }
 }
