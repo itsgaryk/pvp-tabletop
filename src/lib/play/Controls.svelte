@@ -125,30 +125,39 @@
    let settings // DOM element binding
 </script>
 
+{#if !$spectating}
 <div class="self-center flex flex-col gap-2 p-3 w-[170px]">
-   <!--
-      A spectator has no board of its own: these all act on the local board
-      (and many of them also write to chat), so only the settings button
-      remains.
-   -->
-   {#if !$spectating}
-      <button class="action" disabled={!deckValid && $autoMulligan} on:click={setup} title="Shortcut: N">Setup</button>
-      <button class="action" on:click={reset}>Reset</button>
+   <button class="action" disabled={!deckValid && $autoMulligan} on:click={setup} title="Shortcut: N">Setup</button>
+   <button class="action" on:click={reset}>Reset</button>
 
-      <div class="flex flex-col rounded-lg border border-gray-400">
-         <button on:click={() => startTurn()} class="p-2 rounded-t-lg" title="Shortcut: C" >Turn <span class="font-bold">{turn}</span></button>
-         <button on:click={() => vstarUsed.set(!$vstarUsed)} class="toggle p-2" class:on={$vstarUsed}>VSTAR Power</button>
-         <button on:click={() => gxUsed.set(!$gxUsed)} class="toggle p-2 rounded-b-lg" class:on={$gxUsed}>GX Attack</button>
-      </div>
+   <div class="flex flex-col rounded-lg border border-gray-400">
+      <button on:click={() => startTurn()} class="p-2 rounded-t-lg" title="Shortcut: C" >Turn <span class="font-bold">{turn}</span></button>
+      <button on:click={() => vstarUsed.set(!$vstarUsed)} class="toggle p-2" class:on={$vstarUsed}>VSTAR Power</button>
+      <button on:click={() => gxUsed.set(!$gxUsed)} class="toggle p-2 rounded-b-lg" class:on={$gxUsed}>GX Attack</button>
+   </div>
 
-      <button class="action" on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
-      <button class="action" on:click={switchVisibility} title="Shortcut: Z">{$pokemonHidden ? 'Show' : 'Hide'} Pokémon</button>
-   {/if}
+   <button class="action" on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
+   <button class="action" on:click={switchVisibility} title="Shortcut: Z">{$pokemonHidden ? 'Show' : 'Hide'} Pokémon</button>
 
    <button on:click|stopPropagation={() => settings.open()}>
       <Icon path={cog} />
    </button>
 </div>
+{:else}
+   <!--
+      A spectator gets no controls at all: every button here acts on the local
+      board and many of them also write to chat. Leaving the empty column in
+      place would push the board off centre, so the settings button moves to the
+      top right corner of the window and the board keeps the whole width.
+   -->
+   <button
+      class="fixed top-3 right-3 z-20 rounded-md bg-[var(--bg-color-two)] p-1 shadow"
+      title="Settings"
+      on:click|stopPropagation={() => settings.open()}
+   >
+      <Icon path={cog} />
+   </button>
+{/if}
 
 <Settings bind:this={settings} />
 
