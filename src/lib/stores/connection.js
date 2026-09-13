@@ -108,12 +108,11 @@ export function publishLog (message) {
 }
 
 /* the relay stamps chat so both players see the same order */
-socket.on('chatMessage', ({ message, type, time }, meta, { local }) => {
+socket.on('chatMessage', ({ message, type, time }, meta, { local } = {}) => {
    /*
-      publishToChat already wrote this line locally, and the transport hands a
-      sent event straight back to local listeners so a player sees their own
-      board moves. Both would append the sender's own message a second time,
-      labelled as the opponent's, so ignore them here.
+      publishToChat already wrote this line locally, so the sender's own copy is
+      never rendered again: the transport skips it on the poll, and `local`/`self`
+      cover the case where it is handed back some other way.
    */
    if (local || meta?.self) return
 
