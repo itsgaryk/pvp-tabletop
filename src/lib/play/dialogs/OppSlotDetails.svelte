@@ -1,7 +1,7 @@
 <script>
    import Card from '../opponent/Card.svelte'
    import Popup from './Popup.svelte'
-   import { share } from '$lib/stores/connection.js'
+   import { share, spectating } from '$lib/stores/connection.js'
 
    let popup
    let id, pokemon, trainer, energy, damage
@@ -26,13 +26,15 @@
    <div class="w-fit m-auto">
       <div class="flex flex-col gap-2 items-center p-2">
          <span class="font-bold">{$pokemon[$pokemon.length - 1]?.name}</span>
-         <div class="flex bg-[rgba(255,255,255,0.6)] rounded-md">
-            <input type="text" class="p-1 rounded-md border border-black w-20"
-               bind:value={$damage}
-               on:keydown|stopPropagation
-               on:change={updateDamage}>
-            <span class="p-2 text-black">Damage</span>
-         </div>
+         {#if !$spectating}
+            <div class="flex bg-[rgba(255,255,255,0.6)] rounded-md">
+               <input type="text" class="p-1 rounded-md border border-black w-20"
+                  bind:value={$damage}
+                  on:keydown|stopPropagation
+                  on:change={updateDamage}>
+               <span class="p-2 text-black">Damage</span>
+            </div>
+         {/if}
       </div>
 
       <div class="flex flex-col gap-2 p-3 items-center">

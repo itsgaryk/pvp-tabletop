@@ -3,7 +3,7 @@
    import ContextMenu from '$lib/components/ContextMenu.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
 
-   import { share, publishLog } from '$lib/stores/connection.js'
+   import { share, publishLog, spectating } from '$lib/stores/connection.js'
    const { openOppSlotDetails } = getContext('boardActions')
 
    let slot
@@ -27,7 +27,8 @@
 </script>
 
 <ContextMenu bind:this={menu} heading={slot?.name}>
-   <ContextMenuOption click={setDamage} text="Set Damage" />
-   <ContextMenuOption click={target} text="Declare Target" />
+   <!-- setting damage and declaring a target both change the game -->
+   <ContextMenuOption click={setDamage} text="Set Damage" disabled={$spectating} />
+   <ContextMenuOption click={target} text="Declare Target" disabled={$spectating} />
    <ContextMenuOption click={() => openOppSlotDetails(slot)} text="Show All" />
 </ContextMenu>
