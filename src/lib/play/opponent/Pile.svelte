@@ -14,8 +14,12 @@
 </div>
 
 <style>
+   /*
+      The count is rotated back by whoever flips this half (see .flip in
+      Board.svelte), so it reads upright whether this pile is shown on a player's
+      rotated top half or on a spectator's board, which is never rotated.
+   */
    .count {
-      transform: scale(-1, -1); /* "unscale" the number */
       background-color: var(--overlay-color);
       @apply absolute z-10 top-1 left-1 font-bold p-1 rounded-md;
    }

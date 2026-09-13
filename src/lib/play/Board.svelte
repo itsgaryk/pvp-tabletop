@@ -318,12 +318,12 @@
          </div>
 
          <!--
-            Flipped only while spectating: then this half holds the opponent-side
-            mirror, which is built for a rotated container. A player's own hand
-            must stay upright, and its pile context menu renders inside this div,
-            so flipping it would turn both the cards and the menu upside down.
+            Never flipped, for a player or a spectator: this half holds either the
+            player's own hand, whose pile context menu renders inside this div, or
+            a spectator's mirror of the player on the bottom half. Rotating it
+            turned the cards and the menu upside down.
          -->
-         <div class="hand" class:flip={$spectating} class:revealed={$handRevealed && !$spectating}>
+         <div class="hand" class:revealed={$handRevealed && !$spectating}>
             {#if $spectating}
             <OppHand store={bottomStore} />
          {:else}
@@ -494,6 +494,21 @@
 
    .flip :global(img.card) {
       filter: drop-shadow(-1px -1px 2px var(--shadow-color));
+   }
+
+   /*
+      The opponent-side components are drawn for a half that is rotated (see
+      .flip): their cards face the player sitting on that side of the table.
+      Anything that has to stay readable by whoever is looking at that half - a
+      pile's count, a damage counter - is rotated back here, in the one place
+      that knows the half is flipped.
+
+      A spectator's board has no flipped half at all, so nothing is rotated back
+      there and every card and number reads the same way up on both halves.
+   */
+   .flip :global(.count),
+   .flip :global(.counter) {
+      transform: scale(-1, -1);
    }
 
    .veil {

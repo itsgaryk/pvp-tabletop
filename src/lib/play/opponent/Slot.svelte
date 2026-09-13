@@ -62,9 +62,9 @@
       @apply box-content border-2 border-transparent rounded-md;
    }
 
+   /* rotated back by the flipped half this slot is shown in (see Board.svelte) */
    .counter {
       width: calc(var(--card-width) * var(--card-scale) / 2.5);
       height: calc(var(--card-width) * var(--card-scale) / 2.5);
-      transform: scale(-1, -1);
    }
 </style>
