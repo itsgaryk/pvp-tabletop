@@ -312,7 +312,13 @@
          {/if}
          </div>
 
-         <div class="hand flip" class:revealed={$handRevealed && !$spectating}>
+         <!--
+            Flipped only while spectating: then this half holds the opponent-side
+            mirror, which is built for a rotated container. A player's own hand
+            must stay upright, and its pile context menu renders inside this div,
+            so flipping it would turn both the cards and the menu upside down.
+         -->
+         <div class="hand" class:flip={$spectating} class:revealed={$handRevealed && !$spectating}>
             {#if $spectating}
             <OppHand store={bottomStore} />
          {:else}
