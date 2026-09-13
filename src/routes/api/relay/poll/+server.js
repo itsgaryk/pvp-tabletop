@@ -31,6 +31,17 @@ function clamp (value, min, max) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/*
+   Which members hold the two playing seats, in join order. A spectator needs
+   this to know whose board goes on which half of its screen, and it is sent on
+   every poll because the seats are not fixed when the watcher arrives: the
+   second player may only sit down later.
+*/
+const seats = (room) => room.members
+   .filter((m) => m.role === 'host' || m.role === 'guest')
+   .map((m) => m.id)
+   .slice(0, 2)
+
 const opponentState = (room, memberId) => {
    const now = Date.now()
    const others = room.members.filter((m) => m.id !== memberId)
@@ -82,6 +93,7 @@ export async function GET ({ url }) {
                events,
                seq: room.events[room.events.length - 1].seq,
                opponent: opponentState(room, memberId),
+               players: seats(room),
                waited: Date.now() - started
             })
          }
@@ -91,6 +103,7 @@ export async function GET ({ url }) {
                events: [],
                seq: room.events.length ? room.events[room.events.length - 1].seq : since,
                opponent: opponentState(room, memberId),
+               players: seats(room),
                waited: Date.now() - started
             })
          }
