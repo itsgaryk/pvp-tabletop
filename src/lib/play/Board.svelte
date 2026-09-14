@@ -241,35 +241,36 @@
       <div class="gameboard min-h-0 relative flex-1">
 
          <!--
-            A player sees this half rotated, which already puts its bar under the
-            hand and its number above the bar. A spectator sees it upright, so
-            the bar and the count are moved there by hand ("upright").
+            A player sees this half rotated, which is what puts its bar under the
+            hand, its counts above the bar, and the right spacing around both. A
+            spectator sees both halves, so its copy of this half is laid out the
+            same way and the cards are turned back up again ("upright").
          -->
          <div class="hand2" class:flip={!$spectating} class:upright={$spectating}>
             <OppHand store={topStore} />
          </div>
 
-         <div class="prizes2" class:flip={!$spectating}>
+         <div class="prizes2" class:flip={!$spectating} class:upright={$spectating}>
             <OppPrizes store={topStore} />
          </div>
 
-         <div class="deck2" class:flip={!$spectating}>
+         <div class="deck2" class:flip={!$spectating} class:upright={$spectating}>
             <OppDeck store={topStore} />
          </div>
 
-         <div class="discard2" class:flip={!$spectating}>
+         <div class="discard2" class:flip={!$spectating} class:upright={$spectating}>
             <OppDiscard store={topStore} />
          </div>
 
-         <div class="lz2" class:flip={!$spectating}>
+         <div class="lz2" class:flip={!$spectating} class:upright={$spectating}>
             <OppLostZone store={topStore} />
          </div>
 
-         <div class="bench2" class:flip={!$spectating}>
+         <div class="bench2" class:flip={!$spectating} class:upright={$spectating}>
             <OppBench store={topStore} />
          </div>
 
-         <div class="play2" class:flip={!$spectating}>
+         <div class="play2" class:flip={!$spectating} class:upright={$spectating}>
             <OppTable store={topStore} />
          </div>
 
@@ -281,7 +282,7 @@
          {/if}
          </div>
 
-         <div class="stadium2" class:flip={!$spectating}>
+         <div class="stadium2" class:flip={!$spectating} class:upright={$spectating}>
             <OppStadium store={topStore} />
          </div>
 
@@ -294,7 +295,7 @@
          </div>
 
          <div class="active">
-            <div class="active2" class:flip={!$spectating}>
+            <div class="active2" class:flip={!$spectating} class:upright={$spectating}>
                <OppActive store={topStore} />
             </div>
             <div class="active1">
@@ -394,25 +395,6 @@
       font-weight: 700;
       color: var(--text-color-two);
       pointer-events: none;
-   }
-
-   /*
-      For a player the top half is rotated, so its hand bar ends up under the
-      cards and its count above the bar. A spectator's copy is not rotated, so
-      the same two things are moved down there instead - otherwise the bar sat
-      above the hand and the count above the bar, mirrored against every other
-      hand on the board.
-   */
-   .hand2.upright {
-      border-top: none;
-      border-bottom: 2px solid var(--text-color);
-   }
-
-   .hand2.upright :global(.count) {
-      top: auto;
-      bottom: 0.25rem;
-      left: auto;
-      right: 0.25rem;
    }
 
    .gameboard {
@@ -557,18 +539,35 @@
    }
 
    /*
-      The opponent-side components are drawn for a half that is rotated (see
-      .flip): their cards face the player sitting on that side of the table.
-      Anything that has to stay readable by whoever is looking at that half - a
-      pile's count, a damage counter - is rotated back here, in the one place
-      that knows the half is flipped.
+      A spectator's top half is laid out exactly like a player's rotated one, so
+      the hand bar, the counts and the spacing around them land where they do on
+      the other half of the board - but the cards are turned back up, because a
+      spectator reads both halves and the cards themselves must face nobody in
+      particular.
+   */
+   .upright {
+      transform: scale(-1, -1);
+   }
 
-      A spectator's board has no flipped half at all, so nothing is rotated back
-      there and every card and number reads the same way up on both halves.
+   .upright :global(img.card) {
+      transform: scale(-1, -1);
+   }
+
+   /*
+      The opponent-side components are drawn for a half that is rotated (see
+      .flip and .upright): their cards face the player sitting on that side of
+      the table. Anything that has to stay readable by whoever is looking at that
+      half - a pile's count, a damage counter, a status marker - is rotated back
+      here, in the one place that knows the half is flipped.
+
+      The bottom half is never rotated, so nothing is rotated back there.
    */
    .flip :global(.count),
+   .upright :global(.count),
    .flip :global(.counter),
-   .flip :global(.marker) {
+   .upright :global(.counter),
+   .flip :global(.marker),
+   .upright :global(.marker) {
       transform: scale(-1, -1);
    }
 
