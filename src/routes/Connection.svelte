@@ -97,20 +97,10 @@
       if (!window.confirm('Sure?')) return
       leaveRoom()
    }
-
-   /*
-      What a spectator sees at the top of the panel. The watcher count belongs
-      in this line, so there is no separately labelled line for it (and no
-      "read only" note - the missing controls say that already). Until the count
-      arrives from the relay the number is left out rather than shown as zero.
-   */
-   $: spectatorHeading = $spectators > 0 ? `Spectating - ${$spectators} 👀` : 'Spectating 👀'
 </script>
 
 <div class="p-4 min-w-[350px] w-[min(20%,500px)] flex flex-col h-screen">
    {#if !$room}
-      <div class="text-center mb-4 italic font-bold">not connected</div>
-
       {#if relay.state === 'error'}
          <div class="bg-red-500 text-white text-sm rounded-md p-3 mb-4">
             <div class="font-bold mb-1">Game relay unavailable</div>
@@ -162,18 +152,14 @@
 
    {:else}
       <div class="flex flex-col gap-1 mb-5">
+         {#if !$connected}
+            <div class="flex gap-3 items-center justify-center bg-yellow-400 text-black p-1 rounded-md mb-2">
+               lost connection
+               <Spinner />
+            </div>
+         {/if}
+
          <div class="text-center font-bold">
-            {#if $connected}
-               <!-- a player's own side needs no label; a spectator watches two -->
-               {#if $spectating}
-                  {spectatorHeading}
-               {/if}
-            {:else}
-               <div class="flex gap-3 items-center justify-center bg-yellow-400 text-black p-1 rounded-md mb-2">
-                  lost connection
-                  <Spinner />
-               </div>
-            {/if}
             <div class="flex items-center justify-center gap-1 text-sm text-[var(--text-color-two)]">
                <span>{$room}</span>
                <button
