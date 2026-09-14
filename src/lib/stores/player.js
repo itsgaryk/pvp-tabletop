@@ -16,7 +16,7 @@ import {
 export const {
    cards, deck, hand, prizes, discard, lz,
    bench, active, stadium, table, pickup,
-   powerMarker,
+   powerMarker, powerMarkerUsed,
    prizesFlipped, handRevealed, pokemonHidden,
    exportBoard, findSlot,
    reset: resetBoard
@@ -406,7 +406,8 @@ export function setStatus (id) {
 /*
    The VSTAR / GX marker this player shows on their side of the board - 'none',
    'vstar' or 'gx', never both. It is shared like any other board change, so the
-   opponent and any spectator see it, and using one is written to the game log.
+   opponent and any spectator see it. Picking one is a setting, so it says nothing
+   in the game log; the marker's used state does (see below).
 */
 export function setPowerMarker (marker) {
    if (isSpectator()) return
@@ -414,10 +415,26 @@ export function setPowerMarker (marker) {
    if (marker === powerMarker.get()) return
 
    powerMarker.set(marker)
-   share('powerMarker', { marker })
+   /* a different token starts unused */
+   powerMarkerUsed.set(false)
 
-   if (marker === 'vstar') publishLog('Used VSTAR Power')
-   else if (marker === 'gx') publishLog('Used GX Attack')
+   share('powerMarker', { marker })
+   share('powerMarkerUsed', { used: false })
+}
+
+/*
+   Clicking a marker says the power has been used (and clicking again takes that
+   back). Using it is the thing worth logging, so that is where the log line goes.
+*/
+export function togglePowerMarkerUsed () {
+   if (isSpectator()) return
+   if (powerMarker.get() === 'none') return
+
+   const used = !powerMarkerUsed.get()
+   powerMarkerUsed.set(used)
+
+   share('powerMarkerUsed', { used })
+   if (used) publishLog(`Used ${powerMarker.get() === 'vstar' ? 'VStar' : 'GX'}`)
 }
 
 /* take every status effect off at once */
