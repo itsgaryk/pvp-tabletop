@@ -2,6 +2,7 @@
    import { onMount } from 'svelte'
    import Chat from './Chat.svelte'
    import Spinner from './Spinner.svelte'
+   import GameActions from '$lib/play/GameActions.svelte'
    import Icon from '$lib/components/Icon.svelte'
    import { check, copy } from '$lib/icons/paths.js'
    import { PVP_SERVER } from '$lib/util/env.js'
@@ -182,6 +183,9 @@
       </div>
 
       <Chat />
+
+      <!-- the game actions sit under the chat, so the board gets the full width -->
+      <GameActions />
 
       <button class="mt-4 text-center" on:click={leave}>{$spectating ? 'Stop Spectating' : 'Leave Room'}</button>
 

@@ -1,6 +1,6 @@
 <script>
    import { browser } from '$app/environment'
-   import { autoMulligan, scale, darkMode } from '$lib/stores/settings.js'
+   import { autoMulligan, scale } from '$lib/stores/settings.js'
    import { powerMarker, setPowerMarker } from '$lib/stores/player.js'
    import { spectating } from '$lib/stores/connection.js'
    import Popup from './Popup.svelte'
@@ -67,10 +67,9 @@
       </div>
 
       <div class="p-4 bg-[var(--bg-color-zero)] rounded-b-md">
-         <label class="px-1">
-            <input type="checkbox" bind:checked={$darkMode}>
-            Use dark mode
-         </label>
+         <p class="px-1 text-sm">
+            The board is always shown in dark mode.
+         </p>
       </div>
    </div>
 
