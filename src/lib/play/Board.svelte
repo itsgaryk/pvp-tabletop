@@ -317,7 +317,7 @@
 
          <div class="veil" class:applied={$pokemonHidden}></div>
 
-         <div class="lz">
+         <div class="lz" class:spectated={$spectating}>
             {#if $spectating}
             <OppLostZone store={bottomStore} />
          {:else}
@@ -333,7 +333,7 @@
          {/if}
          </div>
 
-         <div class="deck">
+         <div class="deck" class:spectated={$spectating}>
             {#if $spectating}
             <OppDeck store={bottomStore} />
          {:else}
@@ -395,6 +395,25 @@
       font-weight: 700;
       color: var(--text-color-two);
       pointer-events: none;
+   }
+
+   /*
+      Two gaps that a player's rotated half leaves wider than a spectator's copy
+      of the same board, so they are opened back up here. The whole pile moves,
+      not just its card, so its count badge stays on the corner of the card.
+
+      - the top player's discard sat against the hand's bar. That half is
+        mirrored, so its nudge goes the other way round on screen.
+      - the bottom player's deck and lost zone sat against the top player's
+        prizes, which run down to the middle of the board.
+   */
+   .discard2.upright > :global(div) {
+      translate: 0 -30px;
+   }
+
+   .deck.spectated > :global(div),
+   .lz.spectated > :global(div) {
+      translate: 0 30px;
    }
 
    .gameboard {
