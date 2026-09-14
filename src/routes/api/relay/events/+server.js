@@ -35,6 +35,7 @@ const EVENTS = new Set([
    'slotDiscarded',
    'stadiumPlayed',
    'pokemonToggle',
+   'powerMarker',
    'prizeToggle',
    'handToggle',
    'oppDamageUpdated'

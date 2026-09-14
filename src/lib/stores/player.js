@@ -16,7 +16,7 @@ import {
 export const {
    cards, deck, hand, prizes, discard, lz,
    bench, active, stadium, table, pickup,
-   vstarUsed, gxUsed,
+   powerMarker,
    prizesFlipped, handRevealed, pokemonHidden,
    exportBoard, findSlot,
    reset: resetBoard
@@ -403,9 +403,25 @@ export function setStatus (id) {
    }
 }
 
-/* take every status effect off at once */
-export function clearStatus () {
+/*
+   The VSTAR / GX marker this player shows on their side of the board - 'none',
+   'vstar' or 'gx', never both. It is shared like any other board change, so the
+   opponent and any spectator see it, and using one is written to the game log.
+*/
+export function setPowerMarker (marker) {
    if (isSpectator()) return
+   if (!['none', 'vstar', 'gx'].includes(marker)) return
+   if (marker === powerMarker.get()) return
+
+   powerMarker.set(marker)
+   share('powerMarker', { marker })
+
+   if (marker === 'vstar') publishLog('Used VSTAR Power')
+   else if (marker === 'gx') publishLog('Used GX Attack')
+}
+
+/* take every status effect off at once */
+export function clearStatus () {   if (isSpectator()) return
    if (!slotSelection.get().length) return
 
    for (const slot of slotSelection.get()) {

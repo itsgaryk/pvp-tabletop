@@ -17,8 +17,11 @@ export function board () {
    const table = pile('table')
    const pickup = pile('pickup')
 
-   const vstarUsed = writable(false)
-   const gxUsed = writable(false)
+   /*
+      The VSTAR / GX marker this board shows on its side of the board: 'none',
+      'vstar' or 'gx'. Only ever one at a time, and off by default.
+   */
+   const powerMarker = writable('none')
 
    const prizesFlipped = writable(false)
    const handRevealed = writable(false)
@@ -40,8 +43,7 @@ export function board () {
       deck.clear()
       loadDeck()
 
-      vstarUsed.set(false)
-      gxUsed.set(false)
+      powerMarker.set('none')
       prizesFlipped.set(false)
 
       hand.clear()
@@ -77,8 +79,7 @@ export function board () {
          stadium: stadium.get()?._id,
          table: expPile(table),
          pickup: expPile(pickup),
-         vstarUsed: vstarUsed.get(),
-         gxUsed: gxUsed.get(),
+         powerMarker: powerMarker.get(),
          prizesFlipped: prizesFlipped.get(),
          handRevealed: handRevealed.get(),
          pokemonHidden: pokemonHidden.get()
@@ -88,7 +89,7 @@ export function board () {
    return {
       cards, deck, hand, prizes, discard, lz,
       bench, active, stadium, table, pickup,
-      vstarUsed, gxUsed,
+      powerMarker,
       prizesFlipped, handRevealed, pokemonHidden,
       exportBoard, reset,
       // utility function used in multiple files
