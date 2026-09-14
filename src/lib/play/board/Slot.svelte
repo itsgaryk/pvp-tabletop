@@ -7,10 +7,10 @@
 
    import {
       discard, slotSelection as selection, selectSlot, removeSlot,
-      attaching, evolving, attachSelection, cardSelection
+      attaching, evolving, attachSelection, cardSelection, selectCard
    } from '$lib/stores/player.js'
 
-   const { openSlotDetails, openSlotMenu, openDetails } = getContext('boardActions')
+   const { openSlotDetails, openSlotMenu, openDetails, openCardMenu } = getContext('boardActions')
 
    export let slot
 
@@ -80,6 +80,20 @@
 
       openSlotMenu(e.clientX, e.clientY)
    }
+
+   /*
+      An attached card can be taken off on its own, without disturbing the
+      Pokémon it is attached to: right-clicking it selects that one card and
+      opens the same menu a card in hand gets, so it can be moved anywhere from
+      there ("Attach" starts the usual attach, for moving it onto another
+      Pokémon).
+   */
+   function onCardCtx (e, card, pile) {
+      e.stopPropagation() // the slot's own menu must not open as well
+
+      selectCard(card, pile, false)
+      openCardMenu(e.clientX, e.clientY, true)
+   }
 </script>
 
 <div class="slot relative w-max z-15" style="margin-right: calc({$energy.length * 25 + $trainer.length * 35}px * var(--card-scale))"
@@ -105,12 +119,14 @@
 
    {#each $energy as nrg, i (nrg._id)}
       <img src="{cardImage(nrg, 'xs')}" alt="{nrg.name}" class="card absolute" draggable=false
-         style="bottom: calc(17px * var(--card-scale)); left: calc({(i + 1)* 25}px * var(--card-scale)); z-index: {9 - i}">
+         style="bottom: calc(17px * var(--card-scale)); left: calc({(i + 1)* 25}px * var(--card-scale)); z-index: {9 - i}"
+         on:contextmenu={(e) => onCardCtx(e, nrg, energy)}>
    {/each}
 
    {#each $trainer as tool, i (tool._id)}
       <img src="{cardImage(tool, 'xs')}" alt="{tool.name}" class="card absolute" draggable=false
-         style="bottom: calc(34px * var(--card-scale)); left: calc({$energy.length * 25 + (i + 1) * 35}px * var(--card-scale)); z-index: {9 - i - $energy.length}">
+         style="bottom: calc(34px * var(--card-scale)); left: calc({$energy.length * 25 + (i + 1) * 35}px * var(--card-scale)); z-index: {9 - i - $energy.length}"
+         on:contextmenu={(e) => onCardCtx(e, tool, trainer)}>
    {/each}
 </div>
 
