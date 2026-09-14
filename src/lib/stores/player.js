@@ -10,7 +10,7 @@ import { logStatus, logStatusCleared } from './logger.js'
 import {
    logMove, logSlotMove, logPickup,
    logBenched, logPromoted, logStadium,
-   logAttachment, logEvolve
+   logAttachment, logEvolve, logAbilityUsed
 } from './logger.js'
 
 export const {
@@ -451,6 +451,23 @@ export function clearStatus () {   if (isSpectator()) return
    }
 }
 
+/*
+   Mark the selected Pokémon's ability as used, or clear that again. The card
+   wears a stripe while it is set, and each change is named in the game log.
+*/
+export function toggleAbilityUsed () {
+   if (isSpectator()) return
+   if (!slotSelection.get().length) return
+
+   for (const slot of slotSelection.get()) {
+      const used = !slot.abilityUsed.get()
+
+      slot.abilityUsed.set(used)
+      share('abilityUpdated', { slotId: slot.id, used })
+      logAbilityUsed(slot.name, used)
+   }
+}
+
 /* full board sharing */
 
 export function shareBoardstate () {
@@ -500,4 +517,12 @@ react('statusUpdated', ({ slotId, status }) => {
    if (!slot) return
    slot.status.set(normalizeStatus(status))
    share('statusUpdated', { slotId, status: normalizeStatus(status) })
+})
+
+/* the same for the ability stripe, which either player can mark */
+react('abilityUpdated', ({ slotId, used }) => {
+   const slot = findSlot(slotId)
+   if (!slot) return
+   slot.abilityUsed.set(Boolean(used))
+   share('abilityUpdated', { slotId, used: Boolean(used) })
 })

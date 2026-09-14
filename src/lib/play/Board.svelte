@@ -689,7 +689,9 @@
    .flip :global(.counter),
    .upright :global(.counter),
    .flip :global(.marker),
-   .upright :global(.marker) {
+   .upright :global(.marker),
+   .flip :global(.ability-stripe),
+   .upright :global(.ability-stripe) {
       transform: scale(-1, -1);
    }
 

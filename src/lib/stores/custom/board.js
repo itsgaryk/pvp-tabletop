@@ -69,7 +69,8 @@ export function board () {
          energy: expPile(s.energy),
          trainer: expPile(s.trainer),
          damage: s.damage.get(),
-         status: s.status.get()
+         status: s.status.get(),
+         abilityUsed: s.abilityUsed.get()
       })
 
       return {

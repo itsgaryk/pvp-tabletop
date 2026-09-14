@@ -111,6 +111,11 @@ export function slot (card = null, id = null) {
          $lib/util/status.js)
       */
       status: writable({ left: [], right: [] }),
+      /*
+         whether this Pokémon's ability has been used this game; the card shows a
+         stripe across it and the game log records it
+      */
+      abilityUsed: writable(false),
       get name() {
          return pokemon.get().at(-1)?.name
       }
