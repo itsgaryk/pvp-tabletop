@@ -156,9 +156,9 @@
 
    {#each $energy as nrg, i (nrg._id)}
       <img src="{cardImage(nrg, 'xs')}" alt="{nrg.name}" class="card absolute" draggable=false
-         style="bottom: calc(17px * var(--card-scale)); left: calc({(i + 1)* 25}px * var(--card-scale)); z-index: {9 - i}"
+         style="bottom: calc(17px * var(--card-scale)); left: calc({(i + 1)* 25}px * var(--card-scale)); z-index: {$cardSelection.includes(nrg) ? 12 : 9 - i}"
          data-attached="energy"
-         class:card-selected={$cardSelection.includes(nrg)}
+         class:card-attached-selected={$cardSelection.includes(nrg)}
          on:click={(e) => onCardClick(e, nrg, energy)}
          on:contextmenu={(e) => onCardCtx(e, nrg, energy)}
          use:dnd={cardDnd(nrg, energy)}>
@@ -166,9 +166,9 @@
 
    {#each $trainer as tool, i (tool._id)}
       <img src="{cardImage(tool, 'xs')}" alt="{tool.name}" class="card absolute" draggable=false
-         style="bottom: calc(34px * var(--card-scale)); left: calc({$energy.length * 25 + (i + 1) * 35}px * var(--card-scale)); z-index: {9 - i - $energy.length}"
+         style="bottom: calc(34px * var(--card-scale)); left: calc({$energy.length * 25 + (i + 1) * 35}px * var(--card-scale)); z-index: {$cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
          data-attached="trainer"
-         class:card-selected={$cardSelection.includes(tool)}
+         class:card-attached-selected={$cardSelection.includes(tool)}
          on:click={(e) => onCardClick(e, tool, trainer)}
          on:contextmenu={(e) => onCardCtx(e, tool, trainer)}
          use:dnd={cardDnd(tool, trainer)}>
@@ -184,10 +184,18 @@
       @apply border-[var(--selection-color)];
    }
 
-   /* an attached card shows its selection as an outline, so the layout holds */
-   img.card-selected {
+   /*
+      An attached card shows its selection as a glow around the card, and comes
+      to the front (see the z-index in the markup) so the whole card can be seen
+      - otherwise most of it hides behind the Pokémon in front of it and a glow
+      on a sliver is easy to miss. The .slot part outranks the plain card
+      drop-shadow rule in Board.svelte.
+   */
+   .slot img.card-attached-selected {
       outline: 2px solid var(--selection-color);
       outline-offset: -2px;
+      filter: drop-shadow(0 0 6px var(--selection-color));
+      --shadow-color: transparent;
    }
 
    .target {

@@ -226,17 +226,26 @@
       <OppSlotDetails bind:this={oppSlotModal} />
       <OppSlotMenu bind:this={oppSlotMenu} />
 
-      <!-- whose board is on each half, so it is clear who is who -->
+      <!--
+         Whose board is on each half. The top player's label sits on the right,
+         above their hand count, because a top half is read bottom-up: its bar
+         and number are at the bottom of the hand row there.
+      -->
       {#if topName}
-         <div class="nameplate top-1">{topName}</div>
+         <div class="nameplate top-1 right-2">{topName}</div>
       {/if}
       {#if bottomName}
-         <div class="nameplate bottom-1">{bottomName}</div>
+         <div class="nameplate bottom-1 left-2">{bottomName}</div>
       {/if}
 
       <div class="gameboard min-h-0 relative flex-1">
 
-         <div class="hand2" class:flip={!$spectating}>
+         <!--
+            A player sees this half rotated, which already puts its bar under the
+            hand and its number above the bar. A spectator sees it upright, so
+            the bar and the count are moved there by hand ("upright").
+         -->
+         <div class="hand2" class:flip={!$spectating} class:upright={$spectating}>
             <OppHand store={topStore} />
          </div>
 
@@ -380,12 +389,30 @@
    /* whose board is on this half; the top label hangs off the opponent's hand */
    .nameplate {
       position: absolute;
-      left: 0.5rem;
       z-index: 12;
       font-size: 0.75rem;
       font-weight: 700;
       color: var(--text-color-two);
       pointer-events: none;
+   }
+
+   /*
+      For a player the top half is rotated, so its hand bar ends up under the
+      cards and its count above the bar. A spectator's copy is not rotated, so
+      the same two things are moved down there instead - otherwise the bar sat
+      above the hand and the count above the bar, mirrored against every other
+      hand on the board.
+   */
+   .hand2.upright {
+      border-top: none;
+      border-bottom: 2px solid var(--text-color);
+   }
+
+   .hand2.upright :global(.count) {
+      top: auto;
+      bottom: 0.25rem;
+      left: auto;
+      right: 0.25rem;
    }
 
    .gameboard {
