@@ -119,3 +119,8 @@ export function logStatus (name, label, applied) {
 export function logStatusCleared (name) {
    publishLog(`Cleared status effects from {${name}}`)
 }
+
+/* an ability being used (or cleared) is worth a line of its own */
+export function logAbilityUsed (name, used) {
+   publishLog(`[${name}] ability ${used ? 'used' : 'reset'}`)
+}

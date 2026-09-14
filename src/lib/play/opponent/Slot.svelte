@@ -4,6 +4,7 @@
    import cardback from '$lib/assets/cardback_int.png'
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import StatusMarker from '$lib/play/StatusMarker.svelte'
+   import AbilityStripe from '$lib/play/AbilityStripe.svelte'
    const { openOppSlotDetails, openOppSlotMenu, openDetails } = getContext('boardActions')
 
    /* which player's board this component shows */
@@ -16,7 +17,7 @@
    $: isActive = active.get() === slot
 
    /* these are piles belonging to the slot itself, not to the mirrored board */
-   $: ({ pokemon, trainer, energy, damage, status } = slot)
+   $: ({ pokemon, trainer, energy, damage, status, abilityUsed } = slot)
    $: top = $pokemon[ $pokemon.length - 1]
 
    function onClick (e) {
@@ -42,10 +43,13 @@
    <StatusMarker status={$status} />
 
    {#if top}
-      <img
-         src="{$pokemonHidden ? cardback : cardImage(top, 'xs')}"
-         alt="{$pokemonHidden ? 'Hidden PokÃ©mon' : top.name}"
-         class="card pokemon relative z-10" draggable=false>
+      <div class="pokemon-card relative">
+         <img
+            src="{$pokemonHidden ? cardback : cardImage(top, 'xs')}"
+            alt="{$pokemonHidden ? 'Hidden PokÃ©mon' : top.name}"
+            class="card pokemon relative z-10" draggable=false>
+         <AbilityStripe used={abilityUsed} />
+      </div>
    {/if}
 
    {#each $energy as nrg, i (nrg._id)}

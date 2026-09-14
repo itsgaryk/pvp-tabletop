@@ -4,6 +4,7 @@
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import { share } from '$lib/stores/connection.js'
    import StatusMarker from '$lib/play/StatusMarker.svelte'
+   import AbilityStripe from '$lib/play/AbilityStripe.svelte'
 
    import {
       discard, slotSelection as selection, selectSlot, removeSlot,
@@ -14,7 +15,7 @@
 
    export let slot
 
-   $: ({ pokemon, trainer, energy, damage, status } = slot)
+   $: ({ pokemon, trainer, energy, damage, status, abilityUsed } = slot)
    $: if (!$pokemon.length) {
       // discard the slot if it contains no pokemon (they can be moved away through the details view)
       discard.merge([ ...$trainer, ...$energy ])
@@ -147,11 +148,14 @@
    <StatusMarker status={$status} />
 
    {#if top}
-      <img src="{cardImage(top, 'xs')}" alt="{top.name}" draggable=false
-         class="card pokemon relative z-10"
-         class:selected={$selection.includes(slot)}
-         class:target={$attaching || $evolving}
-         class:attach={$attaching} class:evolve={$evolving}>
+      <div class="pokemon-card relative">
+         <img src="{cardImage(top, 'xs')}" alt="{top.name}" draggable=false
+            class="card pokemon relative z-10"
+            class:selected={$selection.includes(slot)}
+            class:target={$attaching || $evolving}
+            class:attach={$attaching} class:evolve={$evolving}>
+         <AbilityStripe used={abilityUsed} />
+      </div>
    {/if}
 
    {#each $energy as nrg, i (nrg._id)}

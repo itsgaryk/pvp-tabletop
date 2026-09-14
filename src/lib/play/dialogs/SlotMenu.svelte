@@ -9,7 +9,7 @@
    import {
       hand, discard, active,
       moveSelection, toActive, toBench, removeSlot,
-      setStatus, clearStatus
+      setStatus, clearStatus, toggleAbilityUsed
    } from '$lib/stores/player.js'
 
    const { openSlotDetails } = getContext('boardActions')
@@ -35,6 +35,15 @@
 
    function applyClear () {
       clearStatus()
+      menu.close()
+   }
+
+   /*
+      The ability stripe is per Pokémon rather than per corner, so it is a plain
+      toggle and its tick shows on the entry itself.
+   */
+   function toggleAbility () {
+      toggleAbilityUsed()
       menu.close()
    }
 
@@ -129,6 +138,12 @@
    <ContextMenuOption click={damage} text="Damage" />
    <ContextMenuOption click={heal} text="Heal" />
    <ContextMenuOption click={setDamage} text="Set Damage" />
+
+   <!-- a stripe marks the ability as used, and the log names the Pokémon -->
+   <ContextMenuOption
+      click={toggleAbility}
+      text="Ability Used"
+      shortcut={$selection.length === 1 && $selection[0].abilityUsed.get() ? '✓' : null} />
 
    <!--
       A status effect only applies to the Active Pokémon, so it is offered for

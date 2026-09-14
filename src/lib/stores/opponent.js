@@ -123,6 +123,7 @@ export function createOpponent () {
          moveCards(data.trainer, deck, p.trainer)
          p.damage.set(data.damage)
          p.status.set(normalizeStatus(data.status))
+         p.abilityUsed.set(Boolean(data.abilityUsed))
          return p
       }
 
@@ -230,6 +231,10 @@ export function createOpponent () {
       statusUpdated: ({ slotId, status }) => {
          const s = findSlot(slotId)
          if (s) s.status.set(normalizeStatus(status))
+      },
+      abilityUpdated: ({ slotId, used }) => {
+         const s = findSlot(slotId)
+         if (s) s.abilityUsed.set(Boolean(used))
       },
       slotDiscarded: ({ slotId }) => {
          const s = findSlot(slotId)
@@ -384,7 +389,7 @@ const RELAY_EVENTS = [
    'boardState', 'deckLoaded', 'boardReset', 'cardsMoved', 'slotsMoved',
    'cardsBenched', 'activeBenched', 'cardPromoted', 'slotPromoted',
    'cardsEvolved', 'cardsAttached', 'damageUpdated', 'statusUpdated',
-   'slotDiscarded', 'stadiumPlayed', 'pokemonToggle', 'powerMarker', 'powerMarkerUsed', 'prizeToggle', 'handToggle'
+   'slotDiscarded', 'stadiumPlayed', 'pokemonToggle', 'powerMarker', 'powerMarkerUsed', 'prizeToggle', 'handToggle', 'abilityUpdated'
 ]
 
 for (const name of RELAY_EVENTS) {
