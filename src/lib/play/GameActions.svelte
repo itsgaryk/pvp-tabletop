@@ -82,6 +82,11 @@
       turn++
    }
 
+   /* right-clicking takes a turn back, and there is no turn before the first */
+   function previousTurn () {
+      if (turn > 1) turn--
+   }
+
    /* Misc. Actions */
 
    function flipCoin () {
@@ -130,7 +135,10 @@
       <button on:click={reset}>Reset</button>
       <button on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
       <button on:click={switchVisibility} title="Shortcut: Z">{$pokemonHidden ? 'Show' : 'Hide'} Pokémon</button>
-      <button on:click={startTurn} title="Shortcut: C">Turn <span class="font-bold">{turn}</span></button>
+      <button
+         on:click={startTurn}
+         on:contextmenu|preventDefault={previousTurn}
+         title="Shortcut: C — right-click to go back a turn">Turn <span class="font-bold">{turn}</span></button>
    </div>
 {/if}
 
