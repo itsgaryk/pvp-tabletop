@@ -1,11 +1,21 @@
 <script>
    import { chat, publishToChat, spectating } from '$lib/stores/connection.js'
-   import { tick } from 'svelte'
+   import { tick, afterUpdate } from 'svelte'
 
    let message = ''
 
+   /*
+      Two streams share this window: the game log (what happened on the board)
+      and chat (what the players and spectators said). Only the chat stream can
+      be written to, so the box and button are locked while the log is showing.
+   */
+   let tab = 'game'
+
+   $: entries = $chat.filter((entry) => (tab === 'chat') === (entry.type === 'chat'))
+   $: locked = tab === 'game'
+
    function sendMessage () {
-      if (!message) return
+      if (locked || !message) return
       publishToChat(message, 'chat')
       message = ''
    }
@@ -26,12 +36,20 @@
       await tick()
       autoscroll()
    })
+
+   /* switching tabs changes what is in the list, so scroll again */
+   afterUpdate(autoscroll)
 </script>
 
 <div class="flex-1 flex flex-col gap-2 -mx-1 overflow-hidden">
 
+   <div class="tabs">
+      <button class:active={tab === 'game'} on:click={() => (tab = 'game')}>Game</button>
+      <button class:active={tab === 'chat'} on:click={() => (tab = 'chat')}>Chat</button>
+   </div>
+
    <div class="chat" bind:this={chatNode}>
-      {#each $chat as entry}
+      {#each entries as entry}
          <p>
             <span class="text-[var(--text-color-two)] text-sm font-">[{entry.name || (entry.self ? 'YOU' : 'OPP')}] {chatTime(entry.time)}</span>
             <span
@@ -47,29 +65,48 @@
    <!-- the quick messages are game actions ("Pass"), so a spectator does not get them -->
    {#if !$spectating}
       <div class="quick-messages">
-         <button on:click={() => publishToChat('Turn End', 'chat')}>Pass</button>
-         <button on:click={() => publishToChat('🤔', 'chat')}>🤔</button>
-         <button on:click={() => publishToChat('😠', 'chat')}>😠</button>
+         <button disabled={locked} on:click={() => publishToChat('Turn End', 'chat')}>Pass</button>
+         <button disabled={locked} on:click={() => publishToChat('🤔', 'chat')}>🤔</button>
+         <button disabled={locked} on:click={() => publishToChat('😠', 'chat')}>😠</button>
       </div>
    {/if}
 
    <form class="flex" on:submit|preventDefault={sendMessage}>
       <input
          class="chat-input" type="text" name="message"
+         disabled={locked}
+         placeholder={locked ? 'Switch to Chat to send a message' : ''}
          on:keydown|stopPropagation bind:value={message}
          autocomplete="off">
-      <button class="chat-button">Send</button>
+      <button class="chat-button" disabled={locked}>Send</button>
    </form>
 
 </div>
 
 <style>
+   .tabs {
+      @apply flex gap-1;
+   }
+
+   .tabs button {
+      @apply px-3 py-1 text-sm font-bold rounded-md bg-[var(--bg-color-two)] text-[var(--text-color-two)];
+   }
+
+   .tabs button.active {
+      @apply text-white bg-[var(--primary-color)];
+   }
+
    .chat {
       @apply flex-1 p-2 border border-dark-50 rounded-md overflow-y-scroll bg-[var(--input-color)];
    }
 
    .chat-input {
       @apply flex-1 p-2 border border-dark-50 border-r-0 rounded-l-md outline-none;
+   }
+
+   .chat-input:disabled,
+   .chat-button:disabled {
+      @apply opacity-50 cursor-not-allowed;
    }
 
    .chat-button {
@@ -92,8 +129,11 @@
       @apply rounded-r-md;
    }
 
+   .quick-messages button:disabled {
+      @apply opacity-50 cursor-not-allowed;
+   }
+
    .opp-message {
       color: var(--message-color);
    }
 </style>
-
