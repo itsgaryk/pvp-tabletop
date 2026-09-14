@@ -6,6 +6,7 @@
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import { defaultOpponent, spectatorOpponents, spectatorFlipped } from '$lib/stores/opponent.js'
    import { playerName } from '$lib/stores/settings.js'
+   import { message } from '$lib/stores/message.js'
 
    import Hand from './board/Hand.svelte'
    import Deck from './board/Deck.svelte'
@@ -18,7 +19,6 @@
    import Table from './board/Temp.svelte'
 
    import DndCard from './DndCard.svelte'
-   import Controls from './Controls.svelte'
 
    import OppHand from './opponent/Hand.svelte'
    import OppDeck from './opponent/Deck.svelte'
@@ -136,6 +136,14 @@
       messageAlert.show(message)
    }
 
+   /*
+      Actions that live outside the board (the game buttons under the chat) show
+      their messages through a store rather than the board's context.
+   */
+   message.subscribe((current) => {
+      if (current) messageAlert?.show(current.text)
+   })
+
    function openCardMenu (x, y, revealed = true) {
       cardMenu.open(x, y, selectionPile, revealed)
    }
@@ -224,8 +232,6 @@
 </script>
 
 <DndCard />
-
-<Controls />
 
 <div class="h-screen overflow-y-auto flex-1" on:contextmenu|capture|preventDefault>
    <div class="game flex flex-col h-full max-w-[1920px] m-auto select-none relative">
