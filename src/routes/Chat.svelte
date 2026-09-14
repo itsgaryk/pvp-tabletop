@@ -62,10 +62,9 @@
       {/each}
    </div>
 
-   <!-- the quick messages are game actions ("Pass"), so a spectator does not get them -->
+   <!-- quick replies; "Pass" is a game action and lives with the others under the chat -->
    {#if !$spectating}
       <div class="quick-messages">
-         <button disabled={locked} on:click={() => publishToChat('Turn End', 'chat')}>Pass</button>
          <button disabled={locked} on:click={() => publishToChat('🤔', 'chat')}>🤔</button>
          <button disabled={locked} on:click={() => publishToChat('😠', 'chat')}>😠</button>
       </div>

@@ -7,8 +7,6 @@
    import { check, copy } from '$lib/icons/paths.js'
    import { PVP_SERVER } from '$lib/util/env.js'
    import { playerName } from '$lib/stores/settings.js'
-   import { cards } from '$lib/stores/player.js'
-   import { openDeckInput } from '$lib/stores/deckInput.js'
    import {
       connected, room, spectating, spectators,
       createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary
@@ -56,8 +54,6 @@
    }
 
    async function create () {
-      if (needsDeck()) return
-
       busy = true
       failure = null
       const res = await createRoom()
@@ -65,21 +61,7 @@
       busy = false
    }
 
-   /*
-      There is nothing to play with until a deck has been imported, so the click
-      opens the import panel instead of failing later on.
-   */
-   function needsDeck () {
-      if ($cards.length) return false
-
-      failure = 'Import a deck before creating or joining a room.'
-      openDeckInput()
-      return true
-   }
-
    async function join () {
-      if (needsDeck()) return
-
       busy = true
       failure = null
       const res = await joinRoom(roomId)
@@ -161,12 +143,6 @@
             <div class="text-xs text-center text-[var(--text-color-two)]">
                This lobby is full - {status.players}/{status.maxPlayers} players.
                You can watch as a spectator.
-            </div>
-         {/if}
-
-         {#if $cards.length === 0}
-            <div class="text-xs text-center text-[var(--text-color-two)]">
-               Import a deck first - creating or joining a room will open the deck import panel.
             </div>
          {/if}
 

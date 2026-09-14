@@ -1,13 +1,9 @@
 <script>
 	import { slide } from './slide.js'
    import { importDeck } from '$lib/stores/player.js'
-   import { deckInputRequested } from '$lib/stores/deckInput.js'
    import Spinner from './Spinner.svelte'
 
    let isOpen = true
-
-   /* the lobby asks for this panel when there is no deck to play with yet */
-   $: if ($deckInputRequested > 0) isOpen = true
 
    let txt = ''
    let response = ''

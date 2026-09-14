@@ -1,7 +1,7 @@
 <script>
    import { onMount } from 'svelte'
    import { autoMulligan } from '$lib/stores/settings.js'
-   import { share, publishLog, spectating } from '$lib/stores/connection.js'
+   import { share, publishLog, publishToChat, spectating } from '$lib/stores/connection.js'
    import { showMessage } from '$lib/stores/message.js'
 
    import {
@@ -82,9 +82,9 @@
       turn++
    }
 
-   /* right-clicking takes a turn back, and there is no turn before the first */
+   /* the "-" end of the turn row; there is no turn before turn 0 */
    function previousTurn () {
-      if (turn > 1) turn--
+      turn = Math.max(0, turn - 1)
    }
 
    /* Misc. Actions */
@@ -128,17 +128,22 @@
    <!--
       The game actions sit under the chat, in the same style as the quick
       messages there, so the board gets the whole width of the window. A
-      spectator only watches, so it gets none of them.
+      spectator only watches, so it gets none of them. Pass counts as a game
+      action: it says the turn is over, so it stays usable whatever the chat
+      window is showing.
    -->
    <div class="game-actions">
       <button disabled={!deckValid && $autoMulligan} on:click={setup} title="Shortcut: N">Setup</button>
       <button on:click={reset}>Reset</button>
       <button on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
+      <button on:click={() => publishToChat('Turn End', 'chat')}>Pass</button>
       <button on:click={switchVisibility} title="Shortcut: Z">{$pokemonHidden ? 'Show' : 'Hide'} Pokémon</button>
-      <button
-         on:click={startTurn}
-         on:contextmenu|preventDefault={previousTurn}
-         title="Shortcut: C — right-click to go back a turn">Turn <span class="font-bold">{turn}</span></button>
+   </div>
+
+   <div class="turn-row">
+      <button class="end" on:click={previousTurn} title="One turn back" aria-label="One turn back">−</button>
+      <span class="count">Turn <span class="font-bold">{turn}</span></span>
+      <button class="end" on:click={startTurn} title="Next turn (Shortcut: C)" aria-label="Next turn">+</button>
    </div>
 {/if}
 
@@ -153,5 +158,25 @@
 
    .game-actions button:disabled {
       @apply opacity-50;
+   }
+
+   .turn-row {
+      @apply flex gap-1 mt-1;
+   }
+
+   .turn-row .count {
+      @apply flex-1 text-center font-bold py-1.5 text-white bg-[var(--primary-color)];
+   }
+
+   .turn-row .end {
+      @apply w-10 text-lg font-bold leading-none text-white bg-[var(--primary-color)] rounded-md;
+   }
+
+   .turn-row .end:first-child {
+      @apply rounded-l-md;
+   }
+
+   .turn-row .end:last-child {
+      @apply rounded-r-md;
    }
 </style>
