@@ -2,13 +2,17 @@
    import Card from '../board/Card.svelte'
    import Popup from './Popup.svelte'
    import { share, publishLog } from '$lib/stores/connection.js'
+   import { markAbilityUsed } from '$lib/stores/player.js'
 
    let popup
    let id, pokemon, trainer, energy, damage
+   /* the slot itself, so the ability button can mark it */
+   let current
 
    $: if (!$pokemon?.length) popup?.close()
 
    export function open (slot) {
+      current = slot
       id = slot.id
       pokemon = slot.pokemon
       trainer = slot.trainer
@@ -37,6 +41,18 @@
       popup.close()
    }
 
+   /*
+      Calling the ability is the thing the "Ability Used" stripe is for, so using
+      it from here marks the Pokémon: the log gets the ability's name and then the
+      same "[Card] ability used" the context menu writes. It only ever sets the
+      stripe - taking it back is the menu's job, so a once-a-turn ability can be
+      called again without clearing it first.
+   */
+   function useAbility (name) {
+      markAbilityUsed(current, true)
+      announce(`Ability: ${name}`)
+   }
+
    function updateDamage () {
       share('damageUpdated', { slotId: id, damage: damage.get() })
    }
@@ -59,11 +75,12 @@
          <!--
             The ability comes first: it is the move a player most often calls
             out, and it is called out as "Ability: ...", so it is picked out in
-            bold red rather than looking like one of the attacks.
+            bold red rather than looking like one of the attacks. Calling it also
+            marks the Ability Used stripe on the Pokémon.
          -->
          <div class="flex gap-2">
             {#each abilities as ability}
-               <button class="attack ability" on:click={() => announce(`Ability: ${ability}`)}>{ability}</button>
+               <button class="attack ability" on:click={() => useAbility(ability)}>{ability}</button>
             {/each}
          </div>
 

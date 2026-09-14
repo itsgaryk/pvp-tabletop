@@ -452,19 +452,27 @@ export function clearStatus () {   if (isSpectator()) return
 }
 
 /*
-   Mark the selected Pokémon's ability as used, or clear that again. The card
-   wears a stripe while it is set, and each change is named in the game log.
+   Mark one Pokémon's ability as used (or clear that again). The card wears a
+   stripe while it is set, and each change is named in the game log. This is the
+   one place that writes it, so the context menu's toggle and the ability button
+   in the card's details behave the same way.
 */
+export function markAbilityUsed (slot, used) {
+   if (isSpectator()) return
+   if (!slot || used === slot.abilityUsed.get()) return
+
+   slot.abilityUsed.set(used)
+   share('abilityUpdated', { slotId: slot.id, used })
+   logAbilityUsed(slot.name, used)
+}
+
+/* the context menu's entry: on if it was off, off if it was on */
 export function toggleAbilityUsed () {
    if (isSpectator()) return
    if (!slotSelection.get().length) return
 
    for (const slot of slotSelection.get()) {
-      const used = !slot.abilityUsed.get()
-
-      slot.abilityUsed.set(used)
-      share('abilityUpdated', { slotId: slot.id, used })
-      logAbilityUsed(slot.name, used)
+      markAbilityUsed(slot, !slot.abilityUsed.get())
    }
 }
 
