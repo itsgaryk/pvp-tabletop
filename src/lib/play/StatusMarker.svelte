@@ -44,7 +44,12 @@
 
 <style>
    .marker {
-      --size: calc(var(--card-width) * var(--card-scale) / 2.5);
+      /*
+         Small enough that a corner's markers stay in the top half of the card:
+         the ability stripe crosses its middle, and a marker that reached it would
+         cover the words.
+      */
+      --size: calc(var(--card-width) * var(--card-scale) / 4);
       width: var(--size);
       height: var(--size);
       font-size: calc(var(--size) / 2);
