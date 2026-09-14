@@ -48,7 +48,8 @@
       cardSelection, slotSelection, selectionPile, selectPile,
       moveSelection, toBench, toActive, toStadium,
       startAttachEvolve,
-      resetSelection
+      resetSelection,
+      powerMarker as myPowerMarker
    } from '$lib/stores/player.js'
 
    /*
@@ -78,6 +79,17 @@
    $: bottomName = $spectating
       ? seat($spectatorFlipped ? 0 : 1)?.name
       : $playerName
+
+   /*
+      The VSTAR / GX marker each half shows. A spectator takes both from the
+      mirrors it is watching, so the only markers on its board are the players'
+      own; a player shows their own on their half and the opponent's on the
+      other. Either way the marker is the one belonging to the player on that
+      half, so flipping a spectator's board carries it along.
+   */
+   $: topMarker = $spectating ? topStore.powerMarker : defaultOpponent.powerMarker
+   $: bottomMarker = $spectating ? bottomStore.powerMarker : myPowerMarker
+   $: markerImage = (marker) => marker === 'vstar' ? '/vstar.png' : '/gx.png'
 
    let inspectionModal
    let selectionModal
@@ -238,6 +250,19 @@
          <div class="nameplate bottom-1 left-2">{bottomName}</div>
       {/if}
 
+      <!--
+         The VSTAR / GX marker each player shows, in the free space past the
+         opponent's deck on their own side: under the top player's deck for the
+         bottom half, and the matching spot the other way up for the top half.
+         Kept upright in both views so it can always be read.
+      -->
+      {#if $topMarker !== 'none'}
+         <img class="power-marker marker-top" src={markerImage($topMarker)} alt={$topMarker === 'vstar' ? 'VSTAR' : 'GX'}>
+      {/if}
+      {#if $bottomMarker !== 'none'}
+         <img class="power-marker marker-bottom" src={markerImage($bottomMarker)} alt={$bottomMarker === 'vstar' ? 'VSTAR' : 'GX'}>
+      {/if}
+
       <div class="gameboard min-h-0 relative flex-1">
 
          <!--
@@ -395,6 +420,29 @@
       font-weight: 700;
       color: var(--text-color-two);
       pointer-events: none;
+   }
+
+   /*
+      The VSTAR / GX marker: one per player, sitting in the space just past the
+      opponent's deck on that player's side of the board. It only exists while a
+      player has one turned on in Settings.
+   */
+   .power-marker {
+      position: absolute;
+      z-index: 12;
+      width: calc(var(--card-width) * var(--card-scale) * 1.15);
+      pointer-events: none;
+      filter: drop-shadow(0 0 6px var(--selection-color));
+   }
+
+   .marker-top {
+      right: 16%;
+      top: 41%;
+   }
+
+   .marker-bottom {
+      left: 15%;
+      top: 54%;
    }
 
    /*

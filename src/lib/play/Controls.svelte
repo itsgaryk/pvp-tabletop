@@ -9,7 +9,7 @@
 
    import {
       cards, deck, hand, prizes, draw,
-      vstarUsed, gxUsed, pokemonHidden,
+      pokemonHidden,
       reset as resetBoard,
       shareBoardstate
    } from '$lib/stores/player.js'
@@ -147,8 +147,6 @@
 
    <div class="flex flex-col rounded-lg border border-gray-400">
       <button on:click={() => startTurn()} class="p-2 rounded-t-lg" title="Shortcut: C" >Turn <span class="font-bold">{turn}</span></button>
-      <button on:click={() => vstarUsed.set(!$vstarUsed)} class="toggle p-2" class:on={$vstarUsed}>VSTAR Power</button>
-      <button on:click={() => gxUsed.set(!$gxUsed)} class="toggle p-2 rounded-b-lg" class:on={$gxUsed}>GX Attack</button>
    </div>
 
    <button class="action" on:click={flipCoin} title="Shortcut: F">Flip Coin</button>

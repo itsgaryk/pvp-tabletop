@@ -23,7 +23,7 @@ export function createOpponent () {
 
    const { cards, deck, hand, prizes, discard, lz,
       bench, active, stadium, table, pickup,
-      vstarUsed, gxUsed,
+      powerMarker,
       prizesFlipped, handRevealed, pokemonHidden,
       reset, findSlot } = b
 
@@ -134,8 +134,7 @@ export function createOpponent () {
          stadium.set(card)
       }
 
-      if (state.vstarUsed) vstarUsed.set(true)
-      if (state.gxUsed) gxUsed.set(true)
+      if (state.powerMarker) powerMarker.set(state.powerMarker)
       if (state.pokemonHidden) pokemonHidden.set(true)
       if (state.prizesFlipped) prizesFlipped.set(true)
       if (state.handRevealed) handRevealed.set(true)
@@ -243,6 +242,7 @@ export function createOpponent () {
          discardStadium()
       },
       pokemonToggle: ({ hidden }) => pokemonHidden.set(hidden),
+      powerMarker: ({ marker }) => powerMarker.set(marker || 'none'),
       prizeToggle: ({ flipped }) => prizesFlipped.set(flipped),
       handToggle: ({ revealed }) => handRevealed.set(revealed)
    }
@@ -287,7 +287,7 @@ register(defaultOpponent)
 export const {
    cards, deck, hand, prizes, discard, lz,
    bench, active, stadium, table, pickup,
-   vstarUsed, gxUsed,
+   powerMarker,
    prizesFlipped, handRevealed, pokemonHidden,
    reset, findSlot
 } = defaultOpponent
@@ -382,7 +382,7 @@ const RELAY_EVENTS = [
    'boardState', 'deckLoaded', 'boardReset', 'cardsMoved', 'slotsMoved',
    'cardsBenched', 'activeBenched', 'cardPromoted', 'slotPromoted',
    'cardsEvolved', 'cardsAttached', 'damageUpdated', 'statusUpdated',
-   'slotDiscarded', 'stadiumPlayed', 'pokemonToggle', 'prizeToggle', 'handToggle'
+   'slotDiscarded', 'stadiumPlayed', 'pokemonToggle', 'powerMarker', 'prizeToggle', 'handToggle'
 ]
 
 for (const name of RELAY_EVENTS) {

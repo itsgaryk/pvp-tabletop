@@ -1,6 +1,8 @@
 <script>
    import { browser } from '$app/environment'
    import { autoMulligan, scale, darkMode } from '$lib/stores/settings.js'
+   import { powerMarker, setPowerMarker } from '$lib/stores/player.js'
+   import { spectating } from '$lib/stores/connection.js'
    import Popup from './Popup.svelte'
 
    let popup
@@ -13,6 +15,13 @@
    }
 
    $: setScale($scale)
+
+   /* the marker shows on the player's own side of the board, and in the log */
+   const markers = [
+      { value: 'none', label: 'Off' },
+      { value: 'vstar', label: 'VStar' },
+      { value: 'gx', label: 'GX' }
+   ]
 </script>
 
 <Popup bind:this={popup}>
@@ -25,6 +34,26 @@
          <p class="text-sm">
             Disable this option when using cards like Talonflame (STS-96) that break the normal rules of setup.
          </p>
+      </div>
+
+      <div class="p-4 bg-[var(--bg-color-zero)]">
+         <div class="px-1 font-bold">VSTAR / GX marker</div>
+         {#each markers as marker (marker.value)}
+            <label class="px-1 block">
+               <input
+                  type="radio" name="powerMarker" value={marker.value}
+                  checked={$powerMarker === marker.value}
+                  disabled={$spectating}
+                  on:change={() => setPowerMarker(marker.value)}>
+               {marker.label}
+            </label>
+         {/each}
+         <p class="text-sm">
+            Shows a marker on your side of the board once you have used that power, and writes it to the game log.
+         </p>
+         {#if $spectating}
+            <p class="text-sm italic">A spectator does not show a marker of their own.</p>
+         {/if}
       </div>
 
       <div class="p-4 bg-[var(--bg-color-zero)]">
