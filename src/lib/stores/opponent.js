@@ -4,6 +4,7 @@ import { board } from './custom/board.js'
 import { slot } from './custom/cards.js'
 import { socket } from './connection.js'
 import { discardStadium } from './player.js'
+import { normalizeStatus } from '$lib/util/status.js'
 
 /* every mirror ever created, so relay events can reach the right ones */
 const instances = new Set()
@@ -121,7 +122,7 @@ export function createOpponent () {
          moveCards(data.energy, deck, p.energy)
          moveCards(data.trainer, deck, p.trainer)
          p.damage.set(data.damage)
-         p.status.set(data.status || null)
+         p.status.set(normalizeStatus(data.status))
          return p
       }
 
@@ -228,7 +229,7 @@ export function createOpponent () {
       },
       statusUpdated: ({ slotId, status }) => {
          const s = findSlot(slotId)
-         if (s) s.status.set(status || null)
+         if (s) s.status.set(normalizeStatus(status))
       },
       slotDiscarded: ({ slotId }) => {
          const s = findSlot(slotId)

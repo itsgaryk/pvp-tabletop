@@ -56,15 +56,20 @@
       </div>
 
       <flex class="flex flex-col gap-2 m-2 items-center">
+         <!--
+            The ability comes first: it is the move a player most often calls
+            out, and it is called out as "Ability: ...", so it is picked out in
+            bold red rather than looking like one of the attacks.
+         -->
          <div class="flex gap-2">
-            {#each attacks as attack}
-               <button class="attack primary" on:click={() => announce(`Attack: ${attack}`)}>{attack}</button>
+            {#each abilities as ability}
+               <button class="attack ability" on:click={() => announce(`Ability: ${ability}`)}>{ability}</button>
             {/each}
          </div>
 
          <div class="flex gap-2">
-            {#each abilities as ability}
-               <button class="attack primary" on:click={() => announce(`Ability: ${ability}`)}>{ability}</button>
+            {#each attacks as attack}
+               <button class="attack primary" on:click={() => announce(`Attack: ${attack}`)}>{attack}</button>
             {/each}
          </div>
       </flex>
@@ -98,5 +103,9 @@
 
    button.attack {
       @apply p-2 rounded-lg;
+   }
+
+   button.ability {
+      @apply font-bold text-red-600 bg-red-50 border border-red-300;
    }
 </style>
