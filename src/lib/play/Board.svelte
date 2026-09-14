@@ -1,10 +1,11 @@
 <script>
    import { setContext, onMount } from 'svelte'
    import { dragging } from '$lib/dnd/pointer.js'
-   import { publishLog, spectating } from '$lib/stores/connection.js'
+   import { publishLog, spectating, seatedPlayers, myId } from '$lib/stores/connection.js'
    import { pick, shuffle, pokemonHidden, handRevealed } from '$lib/stores/player.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import { defaultOpponent, spectatorOpponents, spectatorFlipped } from '$lib/stores/opponent.js'
+   import { playerName } from '$lib/stores/settings.js'
 
    import Hand from './board/Hand.svelte'
    import Deck from './board/Deck.svelte'
@@ -63,6 +64,20 @@
    $: bottomStore = $spectating
       ? ($spectatorFlipped ? spectatorOpponents.top : spectatorOpponents.bottom)
       : defaultOpponent
+
+   /*
+      Whose board is on which half, for the name labels. A spectator knows both
+      seats from the relay (the first is the top half, unless it has flipped its
+      board); a player knows their own name and takes the other seat as the
+      opponent's.
+   */
+   $: seat = (index) => $seatedPlayers[index] || null
+   $: topName = $spectating
+      ? seat($spectatorFlipped ? 1 : 0)?.name
+      : $seatedPlayers.find((player) => player.id !== $myId)?.name
+   $: bottomName = $spectating
+      ? seat($spectatorFlipped ? 0 : 1)?.name
+      : $playerName
 
    let inspectionModal
    let selectionModal
@@ -211,6 +226,14 @@
       <OppSlotDetails bind:this={oppSlotModal} />
       <OppSlotMenu bind:this={oppSlotMenu} />
 
+      <!-- whose board is on each half, so it is clear who is who -->
+      {#if topName}
+         <div class="nameplate top-1">{topName}</div>
+      {/if}
+      {#if bottomName}
+         <div class="nameplate bottom-1">{bottomName}</div>
+      {/if}
+
       <div class="gameboard min-h-0 relative flex-1">
 
          <div class="hand2" class:flip={!$spectating}>
@@ -352,6 +375,17 @@
 
    .game :global(img.card) {
       filter: drop-shadow(1px 1px 2px var(--shadow-color));
+   }
+
+   /* whose board is on this half; the top label hangs off the opponent's hand */
+   .nameplate {
+      position: absolute;
+      left: 0.5rem;
+      z-index: 12;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-color-two);
+      pointer-events: none;
    }
 
    .gameboard {

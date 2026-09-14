@@ -110,3 +110,12 @@ export function logEvolve (slot, cards, from) {
 export function logStadium (card, from) {
    publishLog(`Moved [${card.name}] from ${pileName(from)} to Stadium`)
 }
+
+/* status effects, logged where they are applied so each change appears once */
+export function logStatus (name, label, applied) {
+   publishLog(`${applied ? 'Applied' : 'Removed'} [${label}] ${applied ? 'to' : 'from'} {${name}}`)
+}
+
+export function logStatusCleared (name) {
+   publishLog(`Cleared status effects from {${name}}`)
+}

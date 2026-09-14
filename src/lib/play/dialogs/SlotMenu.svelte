@@ -4,7 +4,7 @@
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import { share } from '$lib/stores/connection.js'
    import { logMove } from '$lib/stores/logger.js'
-   import { STATUSES } from '$lib/util/status.js'
+   import { STATUSES, statusesOn } from '$lib/util/status.js'
 
    import {
       hand, discard, active,
@@ -133,8 +133,8 @@
    <!--
       A status effect only applies to the Active Pokémon, so it is offered for
       that one alone. Confusion, paralysis and sleep share the left corner of the
-      card and poison and burn share the right, so they do not replace each
-      other; choosing the status a corner already has takes that one off.
+      card, poison and burn share the right (both at once); choosing a status the
+      corner already has takes that one off.
    -->
    {#if $selection.length === 1 && $selection[0] === $active}
       <ContextMenuOption
@@ -148,12 +148,12 @@
                <span class="flex items-center gap-2 pl-3">
                   <span class="w-4 text-center">{status.emoji}</span>
                   {status.label}
-                  {#if $active.status.get()[status.side] === status.id}<span class="ml-auto">✓</span>{/if}
+                  {#if statusesOn($active.status.get(), status.side).includes(status.id)}<span class="ml-auto">✓</span>{/if}
                </span>
             </ContextMenuOption>
          {/each}
 
-         {#if $active.status.get().left || $active.status.get().right}
+         {#if statusesOn($active.status.get(), 'left').length || statusesOn($active.status.get(), 'right').length}
             <ContextMenuOption click={applyClear}>
                <span class="pl-3">Clear Status Effects</span>
             </ContextMenuOption>

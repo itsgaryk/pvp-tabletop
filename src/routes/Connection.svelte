@@ -5,6 +5,7 @@
    import Icon from '$lib/components/Icon.svelte'
    import { check, copy } from '$lib/icons/paths.js'
    import { PVP_SERVER } from '$lib/util/env.js'
+   import { playerName } from '$lib/stores/settings.js'
    import {
       connected, room, spectating, spectators,
       createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary
@@ -125,6 +126,13 @@
       {/if}
 
       <div class="flex flex-col justify-center gap-3">
+         <!-- the name is asked for first: it shows in chat and on the board -->
+         <input
+            class="p-2 border border-[var(--bg-color-three)] rounded-lg"
+            type="text" name="playerName" bind:value={$playerName}
+            placeholder="Your Name" maxlength="24" on:keydown|stopPropagation
+         >
+
          <button class="connect" on:click={create} disabled={busy}>Create Room</button>
          <hr>
          <form class="flex flex-col gap-2" on:submit|preventDefault={join}>
@@ -156,10 +164,9 @@
       <div class="flex flex-col gap-1 mb-5">
          <div class="text-center font-bold">
             {#if $connected}
+               <!-- a player's own side needs no label; a spectator watches two -->
                {#if $spectating}
                   {spectatorHeading}
-               {:else}
-                  connected to
                {/if}
             {:else}
                <div class="flex gap-3 items-center justify-center bg-yellow-400 text-black p-1 rounded-md mb-2">
@@ -180,7 +187,8 @@
             </div>
          </div>
 
-         {#if !$spectating && $spectators > 0}
+         <!-- the same watcher line for a player and for a spectator -->
+         {#if $spectators > 0}
             <div class="text-center text-xs text-[var(--text-color-two)]">
                {$spectators} {$spectators === 1 ? 'spectator' : 'spectators'}
             </div>

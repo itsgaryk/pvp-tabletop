@@ -14,13 +14,17 @@
 import { PVP_SERVER, APP_ENV } from '$lib/util/env.js'
 import { HttpSocket } from '$lib/relay/client.js'
 import { writable } from './custom/writable.js'
+import { playerName } from './settings.js'
 
 export let room = writable(null)
 export let connected = writable(false)
 export let chat = writable([])
 export let spectating = writable(false)
 export let spectators = writable(0)
+/* the two playing seats: [{ id, name }] in join order */
 export let seatedPlayers = writable([])
+/* our own member id, so a player can tell which seat is theirs */
+export let myId = writable(null)
 
 export const socket = new HttpSocket({ baseUrl: PVP_SERVER })
 
@@ -40,7 +44,7 @@ function connect () {
 
 export function createRoom () {
    connect()
-   return socket.createRoom().catch((err) => {
+   return socket.createRoom(playerName.get()).catch((err) => {
       console.error('[pvp-tabletop] could not create a room', err)
       return null
    })
@@ -48,7 +52,7 @@ export function createRoom () {
 
 export function joinRoom (roomId) {
    connect()
-   return socket.joinRoom(roomId).catch((err) => {
+   return socket.joinRoom(roomId, playerName.get()).catch((err) => {
       console.error(`[pvp-tabletop] could not join room ${roomId}`, err)
       return null
    })
@@ -57,7 +61,7 @@ export function joinRoom (roomId) {
 /* Watch a game without taking a playing seat. */
 export function spectateRoom (roomId) {
    connect()
-   return socket.spectateRoom(roomId).catch((err) => {
+   return socket.spectateRoom(roomId, playerName.get()).catch((err) => {
       console.error(`[pvp-tabletop] could not spectate room ${roomId}`, err)
       return null
    })
@@ -92,23 +96,26 @@ async function refreshSummary (roomId) {
 
 socket.on('createdRoom', ({ roomId, role }) => {
    spectating.set(role === 'spectator')
+   myId.set(socket.id)
    room.set(roomId)
    refreshSummary(roomId)
 })
 
 socket.on('joinedRoom', ({ roomId, role }) => {
    spectating.set(role === 'spectator')
+   myId.set(socket.id)
    room.set(roomId)
    refreshSummary(roomId)
 })
 
 socket.on('spectatingRoom', ({ roomId }) => {
    spectating.set(true)
+   myId.set(socket.id)
    room.set(roomId)
    refreshSummary(roomId)
 })
 
-/* which two members hold the playing seats, so a spectator can seat them */
+/* which two members hold the playing seats, and what they are called */
 socket.on('seated', ({ players }) => {
    seatedPlayers.set(players || [])
 })
@@ -117,6 +124,8 @@ socket.on('leftRoom', () => {
    room.set(null)
    spectating.set(false)
    spectators.set(0)
+   seatedPlayers.set([])
+   myId.set(null)
    chat.set([])
 })
 
@@ -141,7 +150,9 @@ function updateChat (message, type, self) {
          message,
          time: Date.now(),
          type,
-         self
+         self,
+         /* our own lines carry our name; the relay names everyone else's */
+         name: self ? (playerName.get() || null) : null
       })
       return history
    })
@@ -166,8 +177,8 @@ export function publishLog (message) {
    publishToChat(message, 'log')
 }
 
-/* the relay stamps chat so both players see the same order */
-socket.on('chatMessage', ({ message, type, time }, meta, { local } = {}) => {
+/* the relay stamps chat so both players see the same order, and names the sender */
+socket.on('chatMessage', ({ message, type, time, name }, meta, { local } = {}) => {
    /*
       publishToChat already wrote this line locally, so the sender's own copy is
       never rendered again: the transport skips it on the poll, and `local`/`self`
@@ -176,7 +187,7 @@ socket.on('chatMessage', ({ message, type, time }, meta, { local } = {}) => {
    if (local || meta?.self) return
 
    chat.update(history => {
-      history.push({ message, time: time ?? Date.now(), type, self: 0 })
+      history.push({ message, time: time ?? Date.now(), type, self: 0, name: name || null })
       return history
    })
 })

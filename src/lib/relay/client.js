@@ -110,17 +110,17 @@ export class HttpSocket {
 
    /* ------------------------------------------------------------------ rooms -- */
 
-   async createRoom () {
-      return this.room('create')
+   async createRoom (name = null) {
+      return this.room('create', { name })
    }
 
-   async joinRoom (roomId) {
-      return this.room('join', { roomId })
+   async joinRoom (roomId, name = null) {
+      return this.room('join', { roomId, name })
    }
 
    /* watch only - never takes a playing seat */
-   async spectateRoom (roomId) {
-      return this.room('join', { roomId, role: 'spectator' })
+   async spectateRoom (roomId, name = null) {
+      return this.room('join', { roomId, role: 'spectator', name })
    }
 
    get spectating () {
@@ -165,7 +165,7 @@ export class HttpSocket {
       this.roomId = res.roomId
       this.role = res.role || 'guest'
       this.players = res.players || []
-      this.seats = this.players.slice()
+      this.seats = this.players.map((player) => player?.id ?? null)
       this.cursor = res.seq || 0
       this.opponentPresent = false
       this.setConnected(true)
@@ -361,19 +361,21 @@ export class HttpSocket {
    }
 
    /*
-      The two playing seats, as reported by the relay. They are not fixed when a
-      spectator arrives - the second player may sit down later - so every poll
-      carries them, and `seated` is raised whenever they actually change.
+      The two playing seats, as reported by the relay: each is { id, name }. They
+      are not fixed when a spectator arrives - the second player may sit down
+      later - so every poll carries them, and `seated` is raised whenever the
+      seats actually change.
    */
    trackSeats (players) {
       if (!Array.isArray(players)) return
 
-      const same = players.length === this.seats.length &&
-         players.every((id, index) => id === this.seats[index])
+      const ids = players.map((player) => player?.id ?? null)
+      const same = ids.length === this.seats.length &&
+         ids.every((id, index) => id === this.seats[index])
       if (same) return
 
-      this.seats = players.slice()
-      this.deliver('seated', { players: this.seats })
+      this.seats = ids
+      this.deliver('seated', { players })
    }
 
    setConnected (value) {

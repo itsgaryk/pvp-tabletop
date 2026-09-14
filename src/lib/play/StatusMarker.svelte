@@ -1,17 +1,16 @@
 <script>
-   import { statusById, SIDES } from '$lib/util/status.js'
+   import { statusById, statusesOn } from '$lib/util/status.js'
 
-   /* the status effects a Pokémon has: { left, right }, each a status id or null */
+   /* the status effects a Pokémon has: { left, right }, each a list of ids */
    export let status = null
 
    /*
-      One entry per corner that is actually marked, keyed by that corner: the two
-      corners are independent, so a card can carry both at once.
+      One entry per marker, keyed by corner and row: a corner can hold more than
+      one (poison and burn share the right one, stacked).
    */
-   $: effects = SIDES.map((side) => {
-      const effect = statusById(status?.[side])
-      return effect ? { side, effect } : null
-   }).filter(Boolean)
+   $: markers = ['left', 'right'].flatMap((side) =>
+      statusesOn(status, side).map((id, row) => ({ side, row, effect: statusById(id) }))
+   )
 
    /*
       Class names are spelled out here rather than in the status table so the
@@ -28,7 +27,7 @@
    const POSITIONS = { left: 'left-1', right: 'right-1' }
 </script>
 
-{#each effects as { side, effect } (side)}
+{#each markers as { side, row, effect } (`${side}-${effect.id}`)}
    <!--
       "marker" carries the same size as a damage counter, and opts into the rule
       that turns readable things back the right way up inside a flipped half
@@ -36,17 +35,21 @@
       there would be upside down.
    -->
    <span
-      class="marker absolute top-1 z-15 rounded-full flex justify-center items-center select-none
+      class="marker absolute z-15 rounded-full flex justify-center items-center select-none
          {BACKGROUNDS[effect.id]} {POSITIONS[side]}"
+      style="--row: {row}"
       title={effect.label}
    >{effect.emoji}</span>
 {/each}
 
 <style>
    .marker {
-      width: calc(var(--card-width) * var(--card-scale) / 2.5);
-      height: calc(var(--card-width) * var(--card-scale) / 2.5);
-      font-size: calc(var(--card-width) * var(--card-scale) / 4.5);
+      --size: calc(var(--card-width) * var(--card-scale) / 2.5);
+      width: var(--size);
+      height: var(--size);
+      font-size: calc(var(--size) / 2);
       line-height: 1;
+      /* the first marker sits at the corner, the next one under it */
+      top: calc(0.25rem + var(--row, 0) * (var(--size) + 0.25rem));
    }
 </style>
