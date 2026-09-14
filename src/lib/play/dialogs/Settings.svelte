@@ -1,6 +1,6 @@
 <script>
    import { browser } from '$app/environment'
-   import { autoMulligan, scale } from '$lib/stores/settings.js'
+   import { autoMulligan, scale, zoneBorders } from '$lib/stores/settings.js'
    import { powerMarker, setPowerMarker } from '$lib/stores/player.js'
    import { spectating } from '$lib/stores/connection.js'
    import Popup from './Popup.svelte'
@@ -63,6 +63,16 @@
          </label>
          <p class="text-sm">
             Scale down the size of card images if the field doesn't fit your screen.
+         </p>
+      </div>
+
+      <div class="p-4 bg-[var(--bg-color-zero)]">
+         <label class="px-1">
+            <input type="checkbox" bind:checked={$zoneBorders}>
+            Show borders around the board zones
+         </label>
+         <p class="text-sm">
+            Outlines each area of the board - hand, deck, discard, lost zone, prizes, bench, active, stadium and play - for both players.
          </p>
       </div>
 

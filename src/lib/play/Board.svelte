@@ -5,7 +5,7 @@
    import { pick, shuffle, pokemonHidden, handRevealed } from '$lib/stores/player.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import { defaultOpponent, spectatorOpponents, spectatorFlipped } from '$lib/stores/opponent.js'
-   import { playerName } from '$lib/stores/settings.js'
+   import { playerName, zoneBorders } from '$lib/stores/settings.js'
    import { message } from '$lib/stores/message.js'
 
    import Hand from './board/Hand.svelte'
@@ -286,7 +286,7 @@
             on:click|stopPropagation={togglePowerMarkerUsed}>
       {/if}
 
-      <div class="gameboard min-h-0 relative flex-1">
+      <div class="gameboard min-h-0 relative flex-1" class:zone-borders={$zoneBorders}>
 
          <!--
             A player sees this half rotated, which is what puts its bar under the
@@ -486,6 +486,22 @@
    }
 
    /*
+      Optional zone outlines, from Settings: they draw where each area of the
+      board begins and ends, for both players. The active area holds one zone per
+      player, and the veil is only a shading over the whole board, so neither is
+      outlined as one.
+   */
+   .gameboard.zone-borders > :global(div:not(.veil)) {
+      outline: 1px dashed var(--zone-border-color);
+      outline-offset: -1px;
+   }
+
+   .gameboard.zone-borders .active > :global(div) {
+      outline: 1px dashed var(--zone-border-color);
+      outline-offset: -1px;
+   }
+
+   /*
       Two gaps that a player's rotated half leaves wider than a spectator's copy
       of the same board, so they are opened back up here. The whole pile moves,
       not just its card, so its count badge stays on the corner of the card.
@@ -505,8 +521,7 @@
    }
 
    .gameboard {
-      display: grid;
-      grid-template-columns: 0.8fr 0.8fr 1fr 1.5fr 1fr 0.8fr 0.8fr;
+      display: grid;      grid-template-columns: 0.8fr 0.8fr 1fr 1.5fr 1fr 0.8fr 0.8fr;
       grid-template-rows: 0.9fr 1fr 1fr 1fr 1fr 0.9fr;
       grid-template-areas:
          "hand2 hand2 hand2 hand2 hand2 hand2 hand2"
