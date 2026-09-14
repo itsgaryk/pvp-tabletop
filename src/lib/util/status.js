@@ -1,11 +1,10 @@
 /*
    Status effects a Pokémon can have.
 
-   There are two markers, one per corner of the card, and they are independent:
-   confusion, paralysis and sleep all take the left corner and replace each
-   other there, while poison and burn take the right corner and replace each
-   other there. A Pokémon can carry one of each at the same time - putting it to
-   sleep does not take its poison off, and poisoning it does not wake it up.
+   A card has two marked corners. Confusion, paralysis and sleep share the left
+   one and replace each other there. Poison and burn share the right one, and a
+   card can carry both at once - the second one sits under the first - because a
+   Pokémon can be poisoned and burned at the same time.
 */
 export const STATUSES = [
    { id: 'confusion', label: 'Confusion', emoji: '❓', side: 'left' },
@@ -17,30 +16,57 @@ export const STATUSES = [
 
 export const SIDES = ['left', 'right']
 
-export const NO_STATUS = { left: null, right: null }
+/* how many markers fit on a corner, top to bottom */
+const CAPACITY = { left: 1, right: 2 }
 
 export function statusById (id) {
    return STATUSES.find(status => status.id === id) || null
 }
 
+/* the status ids on one corner of the card, in the order they are drawn */
+export function statusesOn (status, side) {
+   const value = status?.[side]
+   const list = Array.isArray(value) ? value : (value ? [value] : [])
+   return list.filter(id => statusById(id)).slice(0, CAPACITY[side])
+}
+
+export function emptyStatus () {
+   return { left: [], right: [] }
+}
+
 /*
    Coerce whatever arrived - over the relay, or from a board state - into the
-   { left, right } shape. An id on its own is accepted too, so a client that
-   still sends the old single-status payload only loses the other corner.
+   { left, right } shape. A single id is accepted too, so a payload from an
+   earlier version still lands in the right corner.
 */
 export function normalizeStatus (value) {
-   const status = { ...NO_STATUS }
+   const status = { left: [], right: [] }
    if (!value) return status
 
    if (typeof value === 'string') {
       const effect = statusById(value)
-      if (effect) status[effect.side] = effect.id
+      if (effect) status[effect.side] = [effect.id]
       return status
    }
 
-   for (const side of SIDES) {
-      const effect = statusById(value[side])
-      status[side] = effect ? effect.id : null
-   }
+   for (const side of SIDES) status[side] = statusesOn(value, side)
    return status
+}
+
+/*
+   Add a status to its own corner, or take it off if it is already there. The
+   other corner is never touched, so poisoning a sleeping Pokémon leaves it
+   asleep.
+*/
+export function toggleStatus (status, id) {
+   const effect = statusById(id)
+   const current = normalizeStatus(status)
+   if (!effect) return current
+
+   const onSide = current[effect.side]
+   const next = onSide.includes(effect.id)
+      ? onSide.filter(each => each !== effect.id)
+      : [...onSide, effect.id].slice(-CAPACITY[effect.side])
+
+   return { ...current, [effect.side]: next }
 }

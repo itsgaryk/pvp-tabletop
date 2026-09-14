@@ -32,14 +32,15 @@ function clamp (value, min, max) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /*
-   Which members hold the two playing seats, in join order. A spectator needs
-   this to know whose board goes on which half of its screen, and it is sent on
-   every poll because the seats are not fixed when the watcher arrives: the
-   second player may only sit down later.
+   Which members hold the two playing seats, in join order, with their names. A
+   spectator needs this to know whose board goes on which half of its screen, and
+   both players label the halves with it - so it is sent on every poll, because
+   the seats are not fixed when the watcher arrives: the second player may only
+   sit down later.
 */
 const seats = (room) => room.members
    .filter((m) => m.role === 'host' || m.role === 'guest')
-   .map((m) => m.id)
+   .map((m) => ({ id: m.id, name: m.name || null }))
    .slice(0, 2)
 
 const opponentState = (room, memberId) => {

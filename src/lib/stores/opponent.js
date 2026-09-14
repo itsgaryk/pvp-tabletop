@@ -342,11 +342,14 @@ export function createSpectatorOpponents () {
 
       /*
          Seat the two players on the two halves of the screen. The relay tells
-         us who they are, so this is decided up front rather than guessed from
-         whichever board state happens to arrive first.
+         us who they are - as { id, name } since the seats carry names now - so
+         this is decided up front rather than guessed from whichever board state
+         happens to arrive first.
       */
-      setPlayers (playerIds) {
-         const [first, second] = (playerIds || []).filter(Boolean)
+      setPlayers (players) {
+         const [first, second] = (players || [])
+            .map((player) => player?.id ?? player)
+            .filter(Boolean)
          seat(top, first)
          seat(bottom, second)
       },

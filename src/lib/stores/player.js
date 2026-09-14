@@ -5,7 +5,8 @@ import { writable } from './custom/writable.js'
 import { share, react, publishLog, spectating } from './connection.js'
 import { fixOld } from './oldCards.js'
 import { s } from '$lib/util/strings.js'
-import { statusById, normalizeStatus, NO_STATUS } from '$lib/util/status.js'
+import { statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
+import { logStatus, logStatusCleared } from './logger.js'
 import {
    logMove, logSlotMove, logPickup,
    logBenched, logPromoted, logStadium,
@@ -379,11 +380,10 @@ export function resetSelection () {
 /*
    Put a status effect on the selected Pokémon, or take it off again.
 
-   Status effects only ever apply to the Active Pokémon. There are two corners -
-   confusion, paralysis and sleep share the left, poison and burn the right - and
-   they are independent, so this only ever touches the corner the chosen status
-   belongs to: putting a Pokémon to sleep leaves its poison alone. Choosing the
-   status that corner already has takes it off.
+   Status effects only ever apply to the Active Pokémon. A card has two marked
+   corners - confusion, paralysis and sleep share the left, poison and burn the
+   right, where both can sit at once - and setting one never touches the other
+   corner, so poisoning a sleeping Pokémon leaves it asleep.
 */
 export function setStatus (id) {
    if (isSpectator()) return
@@ -394,20 +394,27 @@ export function setStatus (id) {
 
    for (const slot of slotSelection.get()) {
       const before = normalizeStatus(slot.status.get())
-      const next = { ...before, [effect.side]: before[effect.side] === effect.id ? null : effect.id }
+      const next = toggleStatus(before, effect.id)
+      const applied = !statusesOn(before, effect.side).includes(effect.id)
+
       slot.status.set(next)
       share('statusUpdated', { slotId: slot.id, status: next })
+      logStatus(slot.name, effect.label, applied)
    }
 }
 
-/* take both corners off at once */
+/* take every status effect off at once */
 export function clearStatus () {
    if (isSpectator()) return
    if (!slotSelection.get().length) return
 
    for (const slot of slotSelection.get()) {
-      slot.status.set({ ...NO_STATUS })
-      share('statusUpdated', { slotId: slot.id, status: { ...NO_STATUS } })
+      const before = normalizeStatus(slot.status.get())
+      if (!statusesOn(before, 'left').length && !statusesOn(before, 'right').length) continue
+
+      slot.status.set(emptyStatus())
+      share('statusUpdated', { slotId: slot.id, status: emptyStatus() })
+      logStatusCleared(slot.name)
    }
 }
 

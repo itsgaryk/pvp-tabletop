@@ -28,6 +28,11 @@ async function announceSpectators (roomId) {
    return summary
 }
 
+/* the two playing seats, with the names their players gave, in join order */
+const seats = (room) => (room?.members || [])
+   .filter((m) => m.role === 'host' || m.role === 'guest')
+   .map((m) => ({ id: m.id, name: m.name || null }))
+
 /** @type {import('./$types').RequestHandler} */
 export async function POST ({ request }) {
    let body
@@ -42,8 +47,17 @@ export async function POST ({ request }) {
       const action = body?.action
 
       if (action === 'create') {
-         const { roomId, memberId, role } = await createRoom()
-         return json({ roomId, memberId, role, seq: 0, events: [], summary: { players: 1, maxPlayers: 2, locked: false, spectators: 0 } })
+         const { roomId, memberId, role } = await createRoom(body?.name)
+         const room = await getRoom(roomId)
+         return json({
+            roomId,
+            memberId,
+            role,
+            players: seats(room),
+            seq: 0,
+            events: [],
+            summary: { players: 1, maxPlayers: 2, locked: false, spectators: 0 }
+         })
       }
 
       if (action === 'join') {
@@ -52,7 +66,8 @@ export async function POST ({ request }) {
 
          const result = await joinRoom(roomId, {
             memberId: body?.memberId || null,
-            role: body?.role === 'spectator' ? 'spectator' : 'guest'
+            role: body?.role === 'spectator' ? 'spectator' : 'guest',
+            name: body?.name ?? null
          })
 
          if (result.error) {
@@ -69,12 +84,11 @@ export async function POST ({ request }) {
          if (role === 'spectator') summary = await announceSpectators(roomId)
 
          /*
-            Which members hold the playing seats. A spectator needs this to know
-            whose board goes on which half of its screen.
+            Which members hold the playing seats, and what they are called. A
+            spectator needs this to know whose board goes on which half of its
+            screen; both players use it to label the halves.
          */
-         const players = room.members
-            .filter((m) => m.role === 'host' || m.role === 'guest')
-            .map((m) => m.id)
+         const players = seats(room)
 
          return json({
             roomId,

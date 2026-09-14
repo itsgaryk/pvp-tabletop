@@ -2,7 +2,8 @@
    import { getContext } from 'svelte'
    import ContextMenu from '$lib/components/ContextMenu.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
-   import { STATUSES, statusById, normalizeStatus, NO_STATUS } from '$lib/util/status.js'
+   import { STATUSES, statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
+   import { logStatus, logStatusCleared } from '$lib/stores/logger.js'
 
    import { share, publishLog, spectating } from '$lib/stores/connection.js'
    const { openOppSlotDetails } = getContext('boardActions')
@@ -30,25 +31,33 @@
       Marking their Pokémon is how a status effect actually gets applied: it is
       shared as a normal status update, so the Pokémon's owner applies it to
       their own board and every board watching sees it. Confusion, paralysis and
-      sleep share the left corner of the card and poison and burn the right, so
-      setting one leaves the other corner alone; choosing the status a corner
-      already has takes that one off.
+      sleep share the left corner of the card, poison and burn the right (both at
+      once), and setting one never touches the other corner.
    */
    function applyStatus (id) {
       const effect = statusById(id)
       if (!effect) return
 
       const before = normalizeStatus(slot.status.get())
-      const next = { ...before, [effect.side]: before[effect.side] === effect.id ? null : effect.id }
+      const next = toggleStatus(before, effect.id)
+      const applied = !statusesOn(before, effect.side).includes(effect.id)
 
       slot.status.set(next)
       share('statusUpdated', { slotId: slot.id, status: next })
+      logStatus(slot.name, effect.label, applied)
       menu.close()
    }
 
    function clearStatusEffects () {
-      slot.status.set({ ...NO_STATUS })
-      share('statusUpdated', { slotId: slot.id, status: { ...NO_STATUS } })
+      const before = normalizeStatus(slot.status.get())
+      if (!statusesOn(before, 'left').length && !statusesOn(before, 'right').length) {
+         menu.close()
+         return
+      }
+
+      slot.status.set(emptyStatus())
+      share('statusUpdated', { slotId: slot.id, status: emptyStatus() })
+      logStatusCleared(slot.name)
       menu.close()
    }
 
@@ -75,12 +84,12 @@
                <span class="flex items-center gap-2 pl-3">
                   <span class="w-4 text-center">{status.emoji}</span>
                   {status.label}
-                  {#if slot.status.get()[status.side] === status.id}<span class="ml-auto">✓</span>{/if}
+                  {#if statusesOn(slot.status.get(), status.side).includes(status.id)}<span class="ml-auto">✓</span>{/if}
                </span>
             </ContextMenuOption>
          {/each}
 
-         {#if slot.status.get().left || slot.status.get().right}
+         {#if statusesOn(slot.status.get(), 'left').length || statusesOn(slot.status.get(), 'right').length}
             <ContextMenuOption click={clearStatusEffects} disabled={$spectating}>
                <span class="pl-3">Clear Status Effects</span>
             </ContextMenuOption>

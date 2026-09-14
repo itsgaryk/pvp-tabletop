@@ -107,10 +107,10 @@ export function slot (card = null, id = null) {
       trainer: pile(`${sid}.trainer`),
       damage: writable(0),
       /*
-         status effects, one per corner of the card: { left, right }, holding a
-         status id or null (see $lib/util/status.js)
+         status effects, per corner of the card: { left: [id], right: [id] } (see
+         $lib/util/status.js)
       */
-      status: writable({ left: null, right: null }),
+      status: writable({ left: [], right: [] }),
       get name() {
          return pokemon.get().at(-1)?.name
       }

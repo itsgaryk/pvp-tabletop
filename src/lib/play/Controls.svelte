@@ -136,6 +136,11 @@
 </script>
 
 {#if !$spectating}
+<!--
+   A spectator gets no controls at all: every button here acts on the local
+   board and many of them also write to chat. Leaving the empty column in place
+   would push the board off centre, so only a player sees it.
+-->
 <div class="self-center flex flex-col gap-2 p-3 w-[170px]">
    <button class="action" disabled={!deckValid && $autoMulligan} on:click={setup} title="Shortcut: N">Setup</button>
    <button class="action" on:click={reset}>Reset</button>
@@ -148,29 +153,21 @@
 
    <button class="action" on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
    <button class="action" on:click={switchVisibility} title="Shortcut: Z">{$pokemonHidden ? 'Show' : 'Hide'} Pokémon</button>
+</div>
+{/if}
 
-   <button on:click|stopPropagation={() => settings.open()}>
+<!-- settings, and for a spectator the board flip, sit in the corner of the window -->
+<div class="fixed top-3 right-3 z-20 flex items-center gap-2">
+   <button
+      class="rounded-md bg-[var(--bg-color-two)] p-1 shadow"
+      title="Settings"
+      aria-label="Settings"
+      on:click|stopPropagation={() => settings.open()}
+   >
       <Icon path={cog} />
    </button>
-</div>
-{:else}
-   <!--
-      A spectator gets no controls at all: every button here acts on the local
-      board and many of them also write to chat. Leaving the empty column in
-      place would push the board off centre, so the two buttons a spectator does
-      need live in the top right corner of the window and the board keeps the
-      whole width.
-   -->
-   <div class="fixed top-3 right-3 z-20 flex items-center gap-2">
-      <button
-         class="rounded-md bg-[var(--bg-color-two)] p-1 shadow"
-         title="Settings"
-         aria-label="Settings"
-         on:click|stopPropagation={() => settings.open()}
-      >
-         <Icon path={cog} />
-      </button>
 
+   {#if $spectating}
       <button
          class="rounded-md bg-[var(--bg-color-two)] p-1 shadow"
          title="Flip Board - switch which player is on which half"
@@ -180,8 +177,8 @@
       >
          <Icon path={flipBoard} />
       </button>
-   </div>
-{/if}
+   {/if}
+</div>
 
 <Settings bind:this={settings} />
 

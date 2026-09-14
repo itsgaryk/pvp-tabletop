@@ -78,11 +78,14 @@ export async function POST ({ request }) {
          return json({ error: 'spectators cannot change the game' }, { status: 403 })
       }
 
-      /* chat is the one event the server reshapes: it stamps the time so both
-         players agree on ordering, and keeps the log/chat distinction. */
+      /*
+         chat is the one event the server reshapes: it stamps the time so both
+         players agree on ordering, keeps the log/chat distinction, and names the
+         sender, who is the only one who knows their own display name.
+      */
       const payload =
          name === 'chatMessage'
-            ? { message: String(data.message ?? '').slice(0, 2000), type: data.type }
+            ? { message: String(data.message ?? '').slice(0, 2000), type: data.type, name: member.name || null }
             : data
 
       /*

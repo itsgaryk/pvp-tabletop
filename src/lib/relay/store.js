@@ -267,7 +267,7 @@ export function normalizeRoomId (id) {
    Create a room. SET NX guards against the (unlikely) id collision, so two
    simultaneous creates can never adopt each other's room.
 */
-export async function createRoom () {
+export async function createRoom (name = null) {
    const store = getStore()
 
    for (let attempt = 0; attempt < 5; attempt++) {
@@ -277,11 +277,20 @@ export async function createRoom () {
       if (!created) continue
 
       const memberId = newMemberId()
-      await store.setMember(id, memberId, { role: 'host', lastSeen: Date.now() })
+      await store.setMember(id, memberId, { role: 'host', name: cleanName(name), lastSeen: Date.now() })
       return { roomId: id, memberId, role: 'host' }
    }
 
    throw new Error('could not allocate a room id')
+}
+
+/* display names are short and never empty (null means "no name given") */
+export const MAX_NAME_LENGTH = 24
+
+export function cleanName (name) {
+   if (typeof name !== 'string') return null
+   const trimmed = name.trim().slice(0, MAX_NAME_LENGTH)
+   return trimmed || null
 }
 
 export async function getRoom (roomId) {
@@ -325,7 +334,7 @@ export async function roomSummary (roomId) {
    arrivals are spectators. A spectator never takes a seat, so they can join a
    full room and any number of them may watch at once.
 */
-export async function joinRoom (roomId, { memberId = null, role = 'guest' } = {}) {
+export async function joinRoom (roomId, { memberId = null, role = 'guest', name = null } = {}) {
    const store = getStore()
    const id = normalizeRoomId(roomId)
 
@@ -334,7 +343,7 @@ export async function joinRoom (roomId, { memberId = null, role = 'guest' } = {}
 
    const existing = memberId ? room.members.find((m) => m.id === memberId) : null
    if (existing) {
-      await addMember(id, memberId, existing.role)
+      await addMember(id, memberId, existing.role, name ?? existing.name)
       return { roomId: id, memberId, role: existing.role, room: await getRoom(id) }
    }
 
@@ -351,7 +360,7 @@ export async function joinRoom (roomId, { memberId = null, role = 'guest' } = {}
    }
 
    const newId = newMemberId()
-   await addMember(id, newId, assigned)
+   await addMember(id, newId, assigned, name)
 
    /*
       Re-read after adding the caller so `room.members` includes them; the route
@@ -381,10 +390,10 @@ export async function appendEvent (roomId, name, data, { from = null } = {}) {
    return event
 }
 
-export async function addMember (roomId, memberId, role) {
+export async function addMember (roomId, memberId, role, name = null) {
    const store = getStore()
    const id = normalizeRoomId(roomId)
-   await store.setMember(id, memberId, { role, lastSeen: Date.now() })
+   await store.setMember(id, memberId, { role, name: cleanName(name), lastSeen: Date.now() })
 }
 
 export async function touchMember (roomId, memberId) {

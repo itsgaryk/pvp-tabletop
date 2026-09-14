@@ -33,7 +33,7 @@
    <div class="chat" bind:this={chatNode}>
       {#each $chat as entry}
          <p>
-            <span class="text-[var(--text-color-two)] text-sm font-">[{entry.self ? 'YOU' : 'OPP'}] {chatTime(entry.time)}</span>
+            <span class="text-[var(--text-color-two)] text-sm font-">[{entry.name || (entry.self ? 'YOU' : 'OPP')}] {chatTime(entry.time)}</span>
             <span
                class:font-semibold={!entry.self}
                class:font-bold={entry.type === 'important'}
