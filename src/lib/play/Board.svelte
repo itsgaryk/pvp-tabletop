@@ -49,7 +49,9 @@
       moveSelection, toBench, toActive, toStadium,
       startAttachEvolve,
       resetSelection,
-      powerMarker as myPowerMarker
+      powerMarker as myPowerMarker,
+      powerMarkerUsed as myPowerMarkerUsed,
+      togglePowerMarkerUsed
    } from '$lib/stores/player.js'
 
    /*
@@ -89,6 +91,8 @@
    */
    $: topMarker = $spectating ? topStore.powerMarker : defaultOpponent.powerMarker
    $: bottomMarker = $spectating ? bottomStore.powerMarker : myPowerMarker
+   $: topUsed = $spectating ? topStore.powerMarkerUsed : defaultOpponent.powerMarkerUsed
+   $: bottomUsed = $spectating ? bottomStore.powerMarkerUsed : myPowerMarkerUsed
    $: markerImage = (marker) => marker === 'vstar' ? '/vstar.png' : '/gx.png'
 
    let inspectionModal
@@ -254,13 +258,26 @@
          The VSTAR / GX marker each player shows, in the free space past the
          opponent's deck on their own side: under the top player's deck for the
          bottom half, and the matching spot the other way up for the top half.
-         Kept upright in both views so it can always be read.
+         A player's own marker can be clicked to mark the power as used, which
+         dims it; the top half's marker faces the player sitting opposite, the way
+         their cards do, and stays upright for a spectator who reads both halves.
       -->
       {#if $topMarker !== 'none'}
-         <img class="power-marker marker-top" src={markerImage($topMarker)} alt={$topMarker === 'vstar' ? 'VSTAR' : 'GX'}>
+         <img
+            class="power-marker marker-top"
+            class:opposite={!$spectating}
+            class:used={$topUsed}
+            src={markerImage($topMarker)}
+            alt={$topMarker === 'vstar' ? 'VSTAR' : 'GX'}>
       {/if}
       {#if $bottomMarker !== 'none'}
-         <img class="power-marker marker-bottom" src={markerImage($bottomMarker)} alt={$bottomMarker === 'vstar' ? 'VSTAR' : 'GX'}>
+         <img
+            class="power-marker marker-bottom"
+            class:mine={!$spectating}
+            class:used={$bottomUsed}
+            src={markerImage($bottomMarker)}
+            alt={$bottomMarker === 'vstar' ? 'VSTAR' : 'GX'}
+            on:click|stopPropagation={togglePowerMarkerUsed}>
       {/if}
 
       <div class="gameboard min-h-0 relative flex-1">
@@ -443,6 +460,23 @@
    .marker-bottom {
       left: 15%;
       top: 54%;
+   }
+
+   /* the top half's marker faces the player sitting opposite, so it is turned */
+   .power-marker.opposite {
+      transform: scale(-1, -1);
+   }
+
+   /* a player's own marker can be clicked: that marks the power as used */
+   .power-marker.mine {
+      pointer-events: auto;
+      cursor: pointer;
+   }
+
+   /* used: dimmed by half, and no longer glowing */
+   .power-marker.used {
+      opacity: 0.5;
+      filter: none;
    }
 
    /*
