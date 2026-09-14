@@ -1,10 +1,17 @@
 <script>
-   import { statusById } from '$lib/util/status.js'
+   import { statusById, SIDES } from '$lib/util/status.js'
 
-   /* the status effect a Pokémon has, as its id, or null for none */
+   /* the status effects a Pokémon has: { left, right }, each a status id or null */
    export let status = null
 
-   $: effect = statusById(status)
+   /*
+      One entry per corner that is actually marked, keyed by that corner: the two
+      corners are independent, so a card can carry both at once.
+   */
+   $: effects = SIDES.map((side) => {
+      const effect = statusById(status?.[side])
+      return effect ? { side, effect } : null
+   }).filter(Boolean)
 
    /*
       Class names are spelled out here rather than in the status table so the
@@ -18,10 +25,10 @@
       burn: 'bg-red-500'
    }
 
-   const SIDES = { left: 'left-1', right: 'right-1' }
+   const POSITIONS = { left: 'left-1', right: 'right-1' }
 </script>
 
-{#if effect}
+{#each effects as { side, effect } (side)}
    <!--
       "marker" carries the same size as a damage counter, and opts into the rule
       that turns readable things back the right way up inside a flipped half
@@ -30,10 +37,10 @@
    -->
    <span
       class="marker absolute top-1 z-15 rounded-full flex justify-center items-center select-none
-         {BACKGROUNDS[effect.id]} {SIDES[effect.side]}"
+         {BACKGROUNDS[effect.id]} {POSITIONS[side]}"
       title={effect.label}
    >{effect.emoji}</span>
-{/if}
+{/each}
 
 <style>
    .marker {

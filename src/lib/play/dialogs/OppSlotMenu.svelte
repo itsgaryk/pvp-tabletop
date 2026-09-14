@@ -2,7 +2,7 @@
    import { getContext } from 'svelte'
    import ContextMenu from '$lib/components/ContextMenu.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
-   import { STATUSES } from '$lib/util/status.js'
+   import { STATUSES, statusById, normalizeStatus, NO_STATUS } from '$lib/util/status.js'
 
    import { share, publishLog, spectating } from '$lib/stores/connection.js'
    const { openOppSlotDetails } = getContext('boardActions')
@@ -29,13 +29,26 @@
    /*
       Marking their Pokémon is how a status effect actually gets applied: it is
       shared as a normal status update, so the Pokémon's owner applies it to
-      their own board and every board watching sees it. Choosing the status it
-      already has takes it off again.
+      their own board and every board watching sees it. Confusion, paralysis and
+      sleep share the left corner of the card and poison and burn the right, so
+      setting one leaves the other corner alone; choosing the status a corner
+      already has takes that one off.
    */
-   function applyStatus (status) {
-      const next = slot.status.get() === status ? null : status
+   function applyStatus (id) {
+      const effect = statusById(id)
+      if (!effect) return
+
+      const before = normalizeStatus(slot.status.get())
+      const next = { ...before, [effect.side]: before[effect.side] === effect.id ? null : effect.id }
+
       slot.status.set(next)
       share('statusUpdated', { slotId: slot.id, status: next })
+      menu.close()
+   }
+
+   function clearStatusEffects () {
+      slot.status.set({ ...NO_STATUS })
+      share('statusUpdated', { slotId: slot.id, status: { ...NO_STATUS } })
       menu.close()
    }
 
@@ -62,14 +75,14 @@
                <span class="flex items-center gap-2 pl-3">
                   <span class="w-4 text-center">{status.emoji}</span>
                   {status.label}
-                  {#if slot.status.get() === status.id}<span class="ml-auto">✓</span>{/if}
+                  {#if slot.status.get()[status.side] === status.id}<span class="ml-auto">✓</span>{/if}
                </span>
             </ContextMenuOption>
          {/each}
 
-         {#if slot.status.get()}
-            <ContextMenuOption click={() => applyStatus(null)} disabled={$spectating}>
-               <span class="pl-3">Clear Status Effect</span>
+         {#if slot.status.get().left || slot.status.get().right}
+            <ContextMenuOption click={clearStatusEffects} disabled={$spectating}>
+               <span class="pl-3">Clear Status Effects</span>
             </ContextMenuOption>
          {/if}
       {/if}

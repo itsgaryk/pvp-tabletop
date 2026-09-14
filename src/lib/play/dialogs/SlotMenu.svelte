@@ -9,7 +9,7 @@
    import {
       hand, discard, active,
       moveSelection, toActive, toBench, removeSlot,
-      setStatus
+      setStatus, clearStatus
    } from '$lib/stores/player.js'
 
    const { openSlotDetails } = getContext('boardActions')
@@ -30,6 +30,11 @@
 
    function applyStatus (status) {
       setStatus(status)
+      menu.close()
+   }
+
+   function applyClear () {
+      clearStatus()
       menu.close()
    }
 
@@ -127,7 +132,9 @@
 
    <!--
       A status effect only applies to the Active Pokémon, so it is offered for
-      that one alone. Choosing the status it already has takes it off again.
+      that one alone. Confusion, paralysis and sleep share the left corner of the
+      card and poison and burn share the right, so they do not replace each
+      other; choosing the status a corner already has takes that one off.
    -->
    {#if $selection.length === 1 && $selection[0] === $active}
       <ContextMenuOption
@@ -141,14 +148,14 @@
                <span class="flex items-center gap-2 pl-3">
                   <span class="w-4 text-center">{status.emoji}</span>
                   {status.label}
-                  {#if $active.status.get() === status.id}<span class="ml-auto">✓</span>{/if}
+                  {#if $active.status.get()[status.side] === status.id}<span class="ml-auto">✓</span>{/if}
                </span>
             </ContextMenuOption>
          {/each}
 
-         {#if $active.status.get()}
-            <ContextMenuOption click={() => applyStatus(null)}>
-               <span class="pl-3">Clear Status Effect</span>
+         {#if $active.status.get().left || $active.status.get().right}
+            <ContextMenuOption click={applyClear}>
+               <span class="pl-3">Clear Status Effects</span>
             </ContextMenuOption>
          {/if}
       {/if}

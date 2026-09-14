@@ -5,6 +5,7 @@ import { writable } from './custom/writable.js'
 import { share, react, publishLog, spectating } from './connection.js'
 import { fixOld } from './oldCards.js'
 import { s } from '$lib/util/strings.js'
+import { statusById, normalizeStatus, NO_STATUS } from '$lib/util/status.js'
 import {
    logMove, logSlotMove, logPickup,
    logBenched, logPromoted, logStadium,
@@ -376,20 +377,37 @@ export function resetSelection () {
 }
 
 /*
-   Put a status effect on the selected Pokémon, or clear it.
+   Put a status effect on the selected Pokémon, or take it off again.
 
-   A status only ever applies to the Active Pokémon and only one can be on it at
-   a time, so this replaces whatever was there - and choosing the status the
-   Pokémon already has clears it, which is how it is taken off again.
+   Status effects only ever apply to the Active Pokémon. There are two corners -
+   confusion, paralysis and sleep share the left, poison and burn the right - and
+   they are independent, so this only ever touches the corner the chosen status
+   belongs to: putting a Pokémon to sleep leaves its poison alone. Choosing the
+   status that corner already has takes it off.
 */
-export function setStatus (status) {
+export function setStatus (id) {
+   if (isSpectator()) return
+   if (!slotSelection.get().length) return
+
+   const effect = statusById(id)
+   if (!effect) return
+
+   for (const slot of slotSelection.get()) {
+      const before = normalizeStatus(slot.status.get())
+      const next = { ...before, [effect.side]: before[effect.side] === effect.id ? null : effect.id }
+      slot.status.set(next)
+      share('statusUpdated', { slotId: slot.id, status: next })
+   }
+}
+
+/* take both corners off at once */
+export function clearStatus () {
    if (isSpectator()) return
    if (!slotSelection.get().length) return
 
    for (const slot of slotSelection.get()) {
-      const next = slot.status.get() === status ? null : status
-      slot.status.set(next)
-      share('statusUpdated', { slotId: slot.id, status: next })
+      slot.status.set({ ...NO_STATUS })
+      share('statusUpdated', { slotId: slot.id, status: { ...NO_STATUS } })
    }
 }
 
@@ -440,6 +458,6 @@ react('oppDamageUpdated', ({ slotId, damage }) => {
 react('statusUpdated', ({ slotId, status }) => {
    const slot = findSlot(slotId)
    if (!slot) return
-   slot.status.set(status)
-   share('statusUpdated', { slotId, status })
+   slot.status.set(normalizeStatus(status))
+   share('statusUpdated', { slotId, status: normalizeStatus(status) })
 })
