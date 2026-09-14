@@ -37,7 +37,14 @@
 
    const allowDrop = () => $source && $source !== 'slot' && $source !== 'stadium'
 
-   function onDragStart () {
+   /* the action hands the pointerdown over as { e } */
+   function onDragStart ({ e }) {
+      /*
+         A pointerdown on an attached card starts a drag of that one card (see
+         cardDnd below), so the slot itself must not also pick it up.
+      */
+      if (e?.target?.closest?.('[data-attached]')) return
+
       draggedCard.set(slot)
       source.set('slot')
    }
@@ -82,18 +89,48 @@
    }
 
    /*
-      An attached card can be taken off on its own, without disturbing the
-      Pokémon it is attached to: right-clicking it selects that one card and
-      opens the same menu a card in hand gets, so it can be moved anywhere from
-      there ("Attach" starts the usual attach, for moving it onto another
-      Pokémon).
+      An attached card can be picked up on its own, without disturbing the
+      Pokémon it is attached to. Left-clicking one selects that card (not the
+      Pokémon), right-clicking opens the same menu a card in hand gets, and
+      dragging one moves just that card - dropping it on another Pokémon attaches
+      it there, dropping it on a pile moves it there.
+
+      While an attach or evolve is in progress the click is left alone, so it
+      still means "put it on this Pokémon".
    */
+   function onCardClick (e, card, pile) {
+      if ($attaching || $evolving) return
+
+      e.stopPropagation()
+      if (e.altKey) openDetails(card)
+      else selectCard(card, pile, holdingCtrlOrCmd(e))
+   }
+
    function onCardCtx (e, card, pile) {
       e.stopPropagation() // the slot's own menu must not open as well
 
       selectCard(card, pile, false)
       openCardMenu(e.clientX, e.clientY, true)
    }
+
+   /*
+      Dragging an attached card drags that card, not the whole slot. (Svelte only
+      allows $store references at the top level of a component, so this reads the
+      store directly instead.)
+   */
+   const cardDnd = (card, pile) => ({
+      start: () => {
+         draggedCard.set(card)
+         source.set(pile)
+      },
+      /* the action hands over the card being dragged as { $card } */
+      drag: (state) => {
+         if (state.$card !== card) return
+         if (!cardSelection.get().includes(card)) {
+            selectCard(card, pile, false)
+         }
+      }
+   })
 </script>
 
 <div class="slot relative w-max z-15" style="margin-right: calc({$energy.length * 25 + $trainer.length * 35}px * var(--card-scale))"
@@ -120,13 +157,21 @@
    {#each $energy as nrg, i (nrg._id)}
       <img src="{cardImage(nrg, 'xs')}" alt="{nrg.name}" class="card absolute" draggable=false
          style="bottom: calc(17px * var(--card-scale)); left: calc({(i + 1)* 25}px * var(--card-scale)); z-index: {9 - i}"
-         on:contextmenu={(e) => onCardCtx(e, nrg, energy)}>
+         data-attached="energy"
+         class:card-selected={$cardSelection.includes(nrg)}
+         on:click={(e) => onCardClick(e, nrg, energy)}
+         on:contextmenu={(e) => onCardCtx(e, nrg, energy)}
+         use:dnd={cardDnd(nrg, energy)}>
    {/each}
 
    {#each $trainer as tool, i (tool._id)}
       <img src="{cardImage(tool, 'xs')}" alt="{tool.name}" class="card absolute" draggable=false
          style="bottom: calc(34px * var(--card-scale)); left: calc({$energy.length * 25 + (i + 1) * 35}px * var(--card-scale)); z-index: {9 - i - $energy.length}"
-         on:contextmenu={(e) => onCardCtx(e, tool, trainer)}>
+         data-attached="trainer"
+         class:card-selected={$cardSelection.includes(tool)}
+         on:click={(e) => onCardClick(e, tool, trainer)}
+         on:contextmenu={(e) => onCardCtx(e, tool, trainer)}
+         use:dnd={cardDnd(tool, trainer)}>
    {/each}
 </div>
 
@@ -137,6 +182,12 @@
 
    img.card.selected {
       @apply border-[var(--selection-color)];
+   }
+
+   /* an attached card shows its selection as an outline, so the layout holds */
+   img.card-selected {
+      outline: 2px solid var(--selection-color);
+      outline-offset: -2px;
    }
 
    .target {
