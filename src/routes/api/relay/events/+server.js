@@ -37,6 +37,7 @@ const EVENTS = new Set([
    'pokemonToggle',
    'powerMarker',
    'powerMarkerUsed',
+   'turnChanged',
    'abilityUpdated',
    'prizeToggle',
    'handToggle',

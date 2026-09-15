@@ -17,6 +17,7 @@ export const {
    cards, deck, hand, prizes, discard, lz,
    bench, active, stadium, table, pickup,
    powerMarker, powerMarkerUsed,
+   turn,
    prizesFlipped, handRevealed, pokemonHidden,
    exportBoard, findSlot,
    reset: resetBoard
@@ -541,6 +542,32 @@ react('statusUpdated', ({ slotId, status }) => {
    if (!slot) return
    slot.status.set(normalizeStatus(status))
    share('statusUpdated', { slotId, status: normalizeStatus(status) })
+})
+
+/*
+   The table's turn number. Whoever changes it says so, and the other player's
+   board takes that number as its own - so the two counters cannot drift apart,
+   and anyone watching follows the same events.
+*/
+export function setTurn (value) {
+   if (isSpectator()) return
+
+   const next = Math.max(0, Number(value) || 0)
+   if (next === turn.get()) return
+
+   turn.set(next)
+   share('turnChanged', { turn: next })
+}
+
+/* the same for the turn number: take their number, then say it as our own */
+react('turnChanged', ({ turn: value }) => {
+   const next = Math.max(0, Number(value) || 0)
+   /* already there means this is our own change coming back: do not re-share it,
+      or the two boards would keep answering each other */
+   if (next === turn.get()) return
+
+   turn.set(next)
+   share('turnChanged', { turn: next })
 })
 
 /* the same for the ability stripe, which either player can mark */
