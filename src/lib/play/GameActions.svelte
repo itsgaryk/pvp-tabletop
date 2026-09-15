@@ -1,14 +1,15 @@
 <script>
    import { onMount } from 'svelte'
    import { autoMulligan } from '$lib/stores/settings.js'
-   import { share, publishLog, publishToChat, spectating } from '$lib/stores/connection.js'
+   import { share, publishLog, spectating } from '$lib/stores/connection.js'
    import { showMessage } from '$lib/stores/message.js'
 
    import {
       cards, deck, hand, prizes, draw,
       pokemonHidden,
       reset as resetBoard,
-      shareBoardstate
+      shareBoardstate,
+      clearAbilities
    } from '$lib/stores/player.js'
 
    /* Game Flow */
@@ -87,6 +88,17 @@
       turn = Math.max(0, turn - 1)
    }
 
+   /*
+      Ending a turn: it goes in the log, the counter moves on, and every Pokémon
+      we have stops showing the Ability Used stripe. Clearing those is silent -
+      the turn is the one line worth reading.
+   */
+   function endTurn () {
+      publishLog('End Turn')
+      startTurn()
+      clearAbilities()
+   }
+
    /* Misc. Actions */
 
    function flipCoin () {
@@ -136,7 +148,7 @@
       <button disabled={!deckValid && $autoMulligan} on:click={setup} title="Shortcut: N">Setup</button>
       <button on:click={reset}>Reset</button>
       <button on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
-      <button on:click={() => publishToChat('Turn End', 'chat')}>Pass</button>
+      <button on:click={endTurn} title="End your turn: logs it, moves the turn on, and clears your Ability Used stripes">End Turn</button>
       <button on:click={switchVisibility} title="Shortcut: Z">{$pokemonHidden ? 'Show' : 'Hide'} Pokémon</button>
    </div>
 

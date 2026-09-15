@@ -476,6 +476,22 @@ export function toggleAbilityUsed () {
    }
 }
 
+/*
+   Ending a turn takes the Ability Used stripe off every Pokémon of ours. It is
+   deliberately silent: the turn itself is one line in the log, not one per
+   Pokémon, and nobody wants a page of "ability reset" at the end of each turn.
+*/
+export function clearAbilities () {
+   if (isSpectator()) return
+
+   for (const slot of [active.get(), ...bench.get()]) {
+      if (!slot || !slot.abilityUsed.get()) continue
+
+      slot.abilityUsed.set(false)
+      share('abilityUpdated', { slotId: slot.id, used: false })
+   }
+}
+
 /* full board sharing */
 
 export function shareBoardstate () {
