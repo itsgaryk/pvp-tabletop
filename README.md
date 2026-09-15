@@ -111,6 +111,13 @@ For reference, one idle client at the default settings costs about **1.7
 commands/second** (roughly 6,000 an hour): one cursor read per second, plus a
 presence write and one room read per poll.
 
+A tab nobody is looking at costs far less. While the document is hidden the
+client asks the server to check its cursor every 20s instead of every second, and
+re-polls the moment the tab is looked at again, so the board is up to date by the
+time it is read. Measured: **~0.27 commands/second** hidden against ~1.7 visible,
+with presence still kept fresh and a missed event on screen within milliseconds of
+regaining focus.
+
 ## Server (optional, self-hosted)
 
 `VITE_PVP_SERVER` predates the in-project relay: it can point at a relay you run

@@ -81,6 +81,13 @@ export async function GET ({ url }) {
    const since = Number(url.searchParams.get('since') || 0)
    const wait = clamp(Number(url.searchParams.get('wait') || WAIT_MS), 0, WAIT_MS)
 
+   /*
+      A client may ask to be checked on *less* often than the default - a board in
+      a hidden tab does exactly that - but never more often, so the cost of one
+      client cannot be raised by the client itself.
+   */
+   const interval = clamp(Number(url.searchParams.get('interval') || POLL_INTERVAL_MS), POLL_INTERVAL_MS, 30000)
+
    if (!roomId) return json({ error: 'roomId is required' }, { status: 400 })
 
    try {
@@ -145,7 +152,7 @@ export async function GET ({ url }) {
             })
          }
 
-         await sleep(POLL_INTERVAL_MS)
+         await sleep(interval)
       }
    } catch (err) {
       console.error('[relay] poll failed', err)
