@@ -26,6 +26,13 @@ export function board () {
    const powerMarker = writable('none')
    const powerMarkerUsed = writable(false)
 
+   /*
+      The table's turn number. It lives with the board so it travels with the rest
+      of the state, and whoever changes it says so, which keeps both players (and
+      any spectator) on the same number.
+   */
+   const turn = writable(0)
+
    const prizesFlipped = writable(false)
    const handRevealed = writable(false)
    const pokemonHidden = writable(false)
@@ -48,6 +55,7 @@ export function board () {
 
       powerMarker.set('none')
       powerMarkerUsed.set(false)
+      turn.set(0)
       prizesFlipped.set(false)
 
       hand.clear()
@@ -86,6 +94,7 @@ export function board () {
          pickup: expPile(pickup),
          powerMarker: powerMarker.get(),
          powerMarkerUsed: powerMarkerUsed.get(),
+         turn: turn.get(),
          prizesFlipped: prizesFlipped.get(),
          handRevealed: handRevealed.get(),
          pokemonHidden: pokemonHidden.get()
@@ -96,6 +105,7 @@ export function board () {
       cards, deck, hand, prizes, discard, lz,
       bench, active, stadium, table, pickup,
       powerMarker, powerMarkerUsed,
+      turn,
       prizesFlipped, handRevealed, pokemonHidden,
       exportBoard, reset,
       // utility function used in multiple files
