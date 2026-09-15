@@ -1,5 +1,5 @@
 <script>
-   import { chat, publishToChat, spectating } from '$lib/stores/connection.js'
+   import { chat, publishToChat } from '$lib/stores/connection.js'
    import { tick, afterUpdate } from 'svelte'
 
    let message = ''
@@ -62,14 +62,6 @@
       {/each}
    </div>
 
-   <!-- quick replies; "Pass" is a game action and lives with the others under the chat -->
-   {#if !$spectating}
-      <div class="quick-messages">
-         <button disabled={locked} on:click={() => publishToChat('🤔', 'chat')}>🤔</button>
-         <button disabled={locked} on:click={() => publishToChat('😠', 'chat')}>😠</button>
-      </div>
-   {/if}
-
    <form class="flex" on:submit|preventDefault={sendMessage}>
       <input
          class="chat-input" type="text" name="message"
@@ -110,26 +102,6 @@
 
    .chat-button {
       @apply py-2 px-3 font-bold text-white bg-[var(--primary-color)] border border-dark-50 border-l-0 rounded-r-md;
-   }
-
-   .quick-messages {
-      @apply flex gap-1;
-   }
-
-   .quick-messages button {
-      @apply font-bold text-white bg-[var(--primary-color)] px-3 py-1.5 w-full;
-   }
-
-   .quick-messages button:first-child {
-      @apply rounded-l-md;
-   }
-
-   .quick-messages button:last-child {
-      @apply rounded-r-md;
-   }
-
-   .quick-messages button:disabled {
-      @apply opacity-50 cursor-not-allowed;
    }
 
    .opp-message {
