@@ -50,12 +50,46 @@ Redeploy after attaching it so the variables are present at build/run time, then
 check `GET /api/relay/health`:
 
 ```json
-{ "ok": true, "relay": true, "store": "redis-rest", "from": "pvptabletop_URL" }
+{ "ok": true, "relay": true, "store": "redis-rest", "from": "pvptabletop_URL",
+  "checked": false, "poll": { "waitMs": 20000, "intervalMs": 2000 } }
 ```
 
 `from` names the variable the store came from (the name is not a secret; the
 token never leaves the server), which makes a mis-named or missing integration
-obvious — `ok: false` means no store was found at all.
+obvious — `ok: false` means no store was found at all. By itself this request
+makes **no store command**: nobody should spend one by looking at the lobby.
+
+Add `?probe=1` to make it ask the store a question — a write of a key that
+expires by itself, because a database over its quota still answers reads and
+refuses writes, so a read-only probe would call it healthy while every room
+action failed:
+
+```
+GET /api/relay/health?probe=1
+{ "ok": false, "checked": true, "store": "redis-rest", "from": "KV_REST_API_URL",
+  "error": "redis SET failed: 400 … max requests limit exceeded …",
+  "hint": "The database is configured but not answering - check its quota and status in Vercel → Storage." }
+```
+
+### Reconnecting, and idle boards
+
+The browser remembers the room and its seat in `localStorage` (`pvp_session`), so
+a reload — or a crash, or a laptop lid — lands back in the same game as the same
+member: the relay knows that member id and hands back the same seat and role,
+rather than seating somebody new or refusing a player their own seat because the
+room still counts them as sitting in it. The board itself is rebuilt from the
+room's event log, which the poll replays. Leaving a room, or finding it gone,
+forgets the session.
+
+A member id is the only thing identifying a player, so treat the room code plus
+that id as the credential they are: anyone holding both can act as that player.
+That is the same trust model as the room code itself.
+
+After ten minutes with nothing happening — no action of your own, no news from
+the other side, no click or key — the board drops to a lazy check (every 30s
+instead of every 2s) and says so on screen, with a **Reconnect** button. Any
+input, or a message from the other side, puts it straight back on the normal
+beat, so a board the opponent is playing on is never slow.
 
 ### Environment variables
 

@@ -36,6 +36,34 @@ socket.on('disconnect', () => {
    connected.set(false)
 })
 
+/*
+   Ten minutes without anything happening on this board: the relay is being
+   checked for lazily, and the player is told, because news can now take up to
+   half a minute to arrive. Any click or key puts it straight back.
+*/
+export let idle = writable(false)
+
+socket.on('idle', ({ idle: value }) => idle.set(Boolean(value)))
+
+export function resume () {
+   idle.set(false)
+   return socket.resume()
+}
+
+/*
+   Coming back to the tab that was in a room: the client remembers the room and
+   the seat, so a reload lands back in the same game rather than the lobby - or,
+   for a player, rather than being refused a seat in their own room because the
+   relay still counts them as sitting in it.
+*/
+export let restored = writable(false)
+
+if (typeof window !== 'undefined') {
+   socket.resumeSession(playerName.get()).then((res) => {
+      restored.set(Boolean(res))
+   })
+}
+
 function connect () {
    socket.connect()
 }
