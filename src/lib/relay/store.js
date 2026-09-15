@@ -3,17 +3,20 @@
 
    Keys (all namespaced under the room):
 
-      pvp:room:<id>:meta     JSON { id, createdAt }        room existence
-      pvp:room:<id>:seq      integer                       last event number
-      pvp:room:<id>:events   list of JSON events, newest first
-      pvp:room:<id>:m:<mid>  JSON { role, lastSeen }       one key per member
+      pvp:room:<id>:meta      JSON { id, createdAt }      room existence
+      pvp:room:<id>:seq       integer                     last event number
+      pvp:room:<id>:events    list of JSON events, newest first
+      pvp:room:<id>:members   hash: memberId -> JSON { role, name, lastSeen }
 
    Every room mutation is a *single-key* atomic Redis command (INCR, LPUSH,
-   SET, DEL). That matters: Vercel runs each request on its own instance and a
-   player's long poll is always in flight, so anything that reads the whole
-   room, mutates and writes it back loses concurrent updates. An earlier
+   HSET, SET, DEL). That matters: Vercel runs each request on its own instance
+   and a player's long poll is always in flight, so anything that reads the
+   whole room, mutates and writes it back loses concurrent updates. An earlier
    version stored the room as one JSON document and did exactly that, which
    silently dropped events and made the room look like it had vanished.
+
+   Members live in one hash rather than a key each: a poll then reads them with
+   a single HGETALL, and nothing anywhere has to run KEYS over the keyspace.
 
    Production uses Redis over the Upstash REST protocol (POST {url} with a JSON
    command array), which works from serverless functions without holding a
@@ -56,6 +59,10 @@ function memoryStore () {
          const next = (db.seq.get(id) || 0) + 1
          db.seq.set(id, next)
          return next
+      },
+      /* null means "no event yet", which is also how redis answers a missing key */
+      async getSeq (id) {
+         return db.seq.has(id) ? db.seq.get(id) : null
       },
       async pushEvent (id, event) {
          const list = db.events.get(id) || []
@@ -129,7 +136,7 @@ function redisRestStore (url, token) {
       meta: (id) => `pvp:room:${id}:meta`,
       seq: (id) => `pvp:room:${id}:seq`,
       events: (id) => `pvp:room:${id}:events`,
-      member: (id, mid) => `pvp:room:${id}:m:${mid}`
+      members: (id) => `pvp:room:${id}:members`
    }
 
    return {
@@ -147,15 +154,17 @@ function redisRestStore (url, token) {
          return nx ? result === 'OK' : true
       },
       async delRoom (id) {
-         const members = await command('KEYS', k.member(id, '*'))
-         const keys = [k.meta(id), k.seq(id), k.events(id), ...(members || [])]
-         if (keys.length) await command('DEL', ...keys)
+         await command('DEL', k.meta(id), k.seq(id), k.events(id), k.members(id))
       },
 
       async nextSeq (id) {
          const next = await command('INCR', k.seq(id))
          await command('EXPIRE', k.seq(id), String(ROOM_TTL_S))
          return next
+      },
+      async getSeq (id) {
+         const raw = await command('GET', k.seq(id))
+         return raw === null || raw === undefined ? null : Number(raw)
       },
       async pushEvent (id, event) {
          await pipeline([
@@ -169,24 +178,29 @@ function redisRestStore (url, token) {
          return (raw || []).map((line) => JSON.parse(line))
       },
 
+      /* one hash, written field by field; the TTL rides along in a pipeline */
       async setMember (id, mid, member) {
-         await command('SET', k.member(id, mid), JSON.stringify(member), 'EX', String(ROOM_TTL_S))
+         await pipeline([
+            ['HSET', k.members(id), mid, JSON.stringify(member)],
+            ['EXPIRE', k.members(id), String(ROOM_TTL_S)]
+         ])
       },
       async getMember (id, mid) {
-         const raw = await command('GET', k.member(id, mid))
+         const raw = await command('HGET', k.members(id), mid)
          return raw ? JSON.parse(raw) : null
       },
       async delMember (id, mid) {
-         await command('DEL', k.member(id, mid))
+         await command('HDEL', k.members(id), mid)
       },
       async listMembers (id) {
-         const keys = await command('KEYS', k.member(id, '*'))
-         if (!keys || !keys.length) return []
-         const values = await command('MGET', ...keys)
-         return keys.map((key, i) => {
-            const mid = key.slice(k.member(id, '').length)
-            return { id: mid, ...(values[i] ? JSON.parse(values[i]) : {}) }
-         })
+         const flat = await command('HGETALL', k.members(id))
+         if (!flat || !flat.length) return []
+
+         const out = []
+         for (let i = 0; i < flat.length; i += 2) {
+            out.push({ id: flat[i], ...(flat[i + 1] ? JSON.parse(flat[i + 1]) : {}) })
+         }
+         return out
       }
    }
 }
@@ -305,6 +319,15 @@ export async function getRoom (roomId) {
    ])
 
    return { ...meta, events: events.reverse(), members }
+}
+
+/*
+   Just the event cursor. A poll that is only waiting for something to happen
+   reads this one key per turn of its loop instead of the whole room.
+*/
+export async function getRoomSeq (roomId) {
+   const store = getStore()
+   return store.getSeq(normalizeRoomId(roomId))
 }
 
 /* Roles that occupy one of the two playing seats. */

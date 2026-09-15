@@ -52,6 +52,7 @@ must never hold secrets and changing one requires a redeploy.
 | `VITE_LIMITLESS_WEB` | Limitless TCG API used by "Import Deck" / "Import Random Deck". | `https://limitlesstcg.com` |
 | `VITE_ENV` | `dev` logs every relayed event to the browser console. | `dev` locally, `prod` in a build |
 | `RELAY_POLL_WAIT_MS` | Server-side long-poll window in ms. Larger = fewer requests but more billed function time. | `20000` |
+| `RELAY_POLL_INTERVAL_MS` | How often a waiting poll re-reads the room's event cursor, in ms. This is the relay's main cost dial: the store sees one cheap read per turn. Larger = fewer store commands, at the price of up to that long before an opponent's move appears. | `400` |
 
 Do not confuse the `VITE_*` names with Vercel's own system variables
 (`VERCEL_URL`, `VERCEL_ENV`, …), which Vercel lists in the same screen.
@@ -78,6 +79,12 @@ lands in milliseconds and the long-poll window only expires while the board is
 idle. `connection.js` exposes the same `socket.on/off/emit` surface the rest of
 the app was already written against, so gameplay code is unaware of the
 transport.
+
+While a poll waits it reads **one key** - the room's event cursor - per turn, and
+only reads the rest of the room when that cursor moves. Members live in a single
+hash, so a poll fetches them with one `HGETALL` and nothing ever runs `KEYS` over
+the keyspace. On a metered Redis (Upstash bills per command) that is what keeps an
+idle client near one command per poll turn instead of four.
 
 Rooms expire 6 hours after their last event, and each room keeps its most recent
 400 events.
