@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit'
 import { getRoom, getRoomSeq, roomExists, touchMember } from '$lib/relay/store.js'
+import { WAIT_MS, POLL_INTERVAL_MS, MAX_REQUESTED_INTERVAL_MS } from '$lib/relay/config.js'
 
 /*
    Long-poll for events after `since`.
@@ -16,17 +17,6 @@ import { getRoom, getRoomSeq, roomExists, touchMember } from '$lib/relay/store.j
    store's command count down to about one per turn while the board is idle.
 */
 
-const WAIT_MS = clamp(Number(process.env.RELAY_POLL_WAIT_MS) || 20000, 0, 50000)
-
-/*
-   How often a waiting poll looks at the room's cursor. This is the relay's cost
-   dial: the store sees one command per turn, per waiting client, whether or not
-   anything happens - so a tournament's worth of commands is spent by boards
-   sitting still, not by the moves themselves. A second keeps an idle client near
-   one command per second and costs at most that long before an opponent's move
-   appears; an event wakes the poll on its very next turn either way.
-*/
-const POLL_INTERVAL_MS = clamp(Number(process.env.RELAY_POLL_INTERVAL_MS) || 1000, 50, 5000)
 const MAX_EVENTS = 200
 
 /*
@@ -86,7 +76,7 @@ export async function GET ({ url }) {
       a hidden tab does exactly that - but never more often, so the cost of one
       client cannot be raised by the client itself.
    */
-   const interval = clamp(Number(url.searchParams.get('interval') || POLL_INTERVAL_MS), POLL_INTERVAL_MS, 30000)
+   const interval = clamp(Number(url.searchParams.get('interval') || POLL_INTERVAL_MS), POLL_INTERVAL_MS, MAX_REQUESTED_INTERVAL_MS)
 
    if (!roomId) return json({ error: 'roomId is required' }, { status: 400 })
 

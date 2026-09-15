@@ -69,7 +69,7 @@ must never hold secrets and changing one requires a redeploy.
 | `VITE_LIMITLESS_WEB` | Limitless TCG API used by "Import Deck" / "Import Random Deck". | `https://limitlesstcg.com` |
 | `VITE_ENV` | `dev` logs every relayed event to the browser console. | `dev` locally, `prod` in a build |
 | `RELAY_POLL_WAIT_MS` | Server-side long-poll window in ms. Larger = fewer requests but more billed function time. | `20000` |
-| `RELAY_POLL_INTERVAL_MS` | How often a waiting poll re-reads the room's event cursor, in ms. This is the relay's main cost dial: the store sees one cheap read per turn, per waiting client, whether or not anything happens. Larger = fewer store commands, at the price of up to that long before an opponent's move appears. | `1000` |
+| `RELAY_POLL_INTERVAL_MS` | How often a waiting poll re-reads the room's event cursor, in ms. This is the relay's main cost dial: the store sees one cheap read per turn, per waiting client, whether or not anything happens. Larger = fewer store commands, at the price of up to that long before an opponent's or a spectator's view catches up. | `2000` |
 
 Do not confuse the `VITE_*` names with Vercel's own system variables
 (`VERCEL_URL`, `VERCEL_ENV`, …), which Vercel lists in the same screen.
@@ -124,15 +124,23 @@ node tools/poll-cost.mjs                         # one idle poll, and what it co
 breakdown; `__keys` shows what is stored and `__reset` zeroes the counters. A
 healthy relay never calls `KEYS`.
 
-For reference, one idle client at the default settings costs about **1.7
-commands/second** (roughly 6,000 an hour): one cursor read per second, plus a
-presence write and one room read per poll.
+For reference, one idle client at the default settings costs about **0.85
+commands/second** (roughly 3,000 an hour): one cursor read every two seconds,
+plus a presence write and one room read per poll. `GET /api/relay/health` reports
+the settings a deployment is running with, so a change in the dashboard is
+visible from outside:
+
+```json
+{ "ok": true, "relay": true, "store": "redis-rest", "from": "KV_REST_API_URL",
+  "poll": { "waitMs": 20000, "intervalMs": 2000 } }
+```
 
 A tab nobody is looking at costs far less. While the document is hidden the
-client asks the server to check its cursor every 20s instead of every second, and
-re-polls the moment the tab is looked at again, so the board is up to date by the
-time it is read. Measured: **~0.27 commands/second** hidden against ~1.7 visible,
-with presence still kept fresh and a missed event on screen within milliseconds of
+client asks the server to check its cursor every 20s instead of on the default
+beat, and re-polls the moment the tab is looked at again, so the board is up to
+date by the time it is read. Measured: **~0.27 commands/second** hidden against
+~1.7 visible at the old one-second default, with presence still kept fresh and a
+missed event on screen within milliseconds of
 regaining focus.
 
 ## Server (optional, self-hosted)
