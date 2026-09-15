@@ -9,7 +9,7 @@
    import { playerName } from '$lib/stores/settings.js'
    import {
       connected, room, spectating, spectators,
-      createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary
+      createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary, roomError
    } from '$lib/stores/connection.js'
 
    let roomId = ''
@@ -53,11 +53,14 @@
       }, 400)
    }
 
+   /* the relay's own message is more use than "could not", so show it too */
+   const why = (fallback) => ($roomError ? `${fallback} (${$roomError})` : fallback)
+
    async function create () {
       busy = true
       failure = null
       const res = await createRoom()
-      if (!res) failure = 'Could not create a room.'
+      if (!res) failure = why('Could not create a room.')
       busy = false
    }
 
@@ -68,7 +71,7 @@
       if (!res) {
          failure = status?.locked
             ? 'That lobby is locked - both seats are taken. Spectate instead.'
-            : `Could not join ${roomId.toUpperCase()}.`
+            : why(`Could not join ${roomId.toUpperCase()}.`)
       }
       busy = false
    }
@@ -77,7 +80,7 @@
       busy = true
       failure = null
       const res = await spectateRoom(roomId)
-      if (!res) failure = `Could not spectate ${roomId.toUpperCase()}.`
+      if (!res) failure = why(`Could not spectate ${roomId.toUpperCase()}.`)
       busy = false
    }
 
