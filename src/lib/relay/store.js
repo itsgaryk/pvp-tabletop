@@ -64,6 +64,9 @@ function memoryStore () {
       async getSeq (id) {
          return db.seq.has(id) ? db.seq.get(id) : null
       },
+      async ping () {
+         return 'OK'
+      },
       async pushEvent (id, event) {
          const list = db.events.get(id) || []
          list.unshift(event)
@@ -166,6 +169,14 @@ function redisRestStore (url, token) {
          const raw = await command('GET', k.seq(id))
          return raw === null || raw === undefined ? null : Number(raw)
       },
+      /*
+         A write, deliberately: a database that has run out of quota answers
+         reads and refuses writes, so a read-only probe would call it healthy
+         while every room action failed. The key expires by itself.
+      */
+      async ping () {
+         return command('SET', 'pvp:health', String(Date.now()), 'EX', '60')
+      },
       async pushEvent (id, event) {
          await pipeline([
             ['LPUSH', k.events(id), JSON.stringify(event)],
@@ -264,15 +275,16 @@ export function getStoreSource () {
 }
 
 /*
-   Is the store not just configured but answering? A health check can only tell
-   you so much from the environment variables - "configured" and "working" are
-   different things, and a database that is over its quota, paused or deleted
-   still looks configured. This reads one key that is never written, so it costs
-   one command and changes nothing.
+   Is the store not just configured but working? Whether it is depends on what it
+   does, not on the environment variables: a database that is over its quota,
+   paused or deleted still looks configured from the outside, and one that is
+   over its quota may well answer reads while refusing writes. So this writes a
+   key that expires by itself - one command, no cleanup, and the same kind of
+   operation every room action needs.
 */
 export async function pingStore () {
    const store = getStore()
-   await store.getSeq('health')
+   await store.ping()
    return true
 }
 
