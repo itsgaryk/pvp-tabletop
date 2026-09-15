@@ -33,6 +33,36 @@ const EVENT_BUFFER = 200 // events fetched per poll
 */
 const HIDDEN_INTERVAL_MS = 20000
 
+/*
+   A board nobody has touched for this long gets the same treatment: checked on
+   lazily rather than every couple of seconds, and the app is told, so it can say
+   so on screen. Any input - a click, a key, an action of our own, or news from
+   the other side - puts it straight back on the normal beat.
+*/
+const IDLE_AFTER_MS = 10 * 60 * 1000
+const IDLE_INTERVAL_MS = 30000
+
+/* where a room and a seat are remembered between page loads */
+const SESSION_KEY = 'pvp_session'
+
+function readSession () {
+   try {
+      const raw = globalThis.localStorage?.getItem(SESSION_KEY)
+      return raw ? JSON.parse(raw) : null
+   } catch {
+      return null
+   }
+}
+
+function writeSession (session) {
+   try {
+      if (session) globalThis.localStorage?.setItem(SESSION_KEY, JSON.stringify(session))
+      else globalThis.localStorage?.removeItem(SESSION_KEY)
+   } catch {
+      /* private mode, or storage disabled: reconnecting is a convenience, not a promise */
+   }
+}
+
 async function readJson (res) {
    const text = await res.text()
    if (!text) return {}
@@ -64,6 +94,10 @@ export class HttpSocket {
 
       this.controller = null
       this.loop = null
+
+      /* when this client last did, or heard, anything */
+      this.lastActivity = Date.now()
+      this.isIdle = false
    }
 
    /* ------------------------------------------------------------ lifecycle -- */
@@ -72,27 +106,81 @@ export class HttpSocket {
       if (this.active) return
       this.active = true
 
-      /* one listener, so a hidden tab slows down and a visible one catches up */
+      /* one listener each, so a hidden tab slows down and a visible one catches up */
       if (typeof document !== 'undefined' && !this.onVisibility) {
-         this.onVisibility = () => { if (!this.hidden()) this.kick() }
+         this.onVisibility = () => { if (!this.hidden()) this.touch() }
          document.addEventListener('visibilitychange', this.onVisibility)
+
+         /*
+            Anything the person does counts as activity: it means somebody is
+            looking at the board, so the lazy beat is no longer appropriate.
+         */
+         this.onInput = () => this.touch()
+         document.addEventListener('pointerdown', this.onInput, true)
+         document.addEventListener('keydown', this.onInput, true)
+      }
+
+      /*
+         Watched for on its own timer rather than only when a poll starts, which
+         can be most of a long-poll away: the point of the notice is that it
+         arrives soon after the board goes quiet.
+      */
+      if (!this.idleTimer) {
+         this.idleTimer = setInterval(() => { if (this.roomId) this.markIdle() }, 5000)
       }
 
       this.loop = this.run()
       if (this.roomId) this.kick()
    }
 
+   markIdle () {
+      if (this.isIdle || this.idleFor() < IDLE_AFTER_MS) return
+      this.isIdle = true
+      this.deliver('idle', { idle: true })
+   }
+
    hidden () {
       return typeof document !== 'undefined' && document.hidden === true
+   }
+
+   /* somebody is here: back to the normal rhythm, and catch up at once */
+   touch () {
+      this.lastActivity = Date.now()
+
+      if (this.isIdle) {
+         this.isIdle = false
+         this.deliver('idle', { idle: false })
+      }
+
+      this.kick()
+   }
+
+   /* the app's "Reconnect" button, and what any input does anyway */
+   resume () {
+      this.touch()
+      return { ok: true }
+   }
+
+   idleFor () {
+      return Date.now() - this.lastActivity
    }
 
    disconnect () {
       this.active = false
       this.setConnected(false)
       this.abortPoll()
-      if (this.onVisibility && typeof document !== 'undefined') {
-         document.removeEventListener('visibilitychange', this.onVisibility)
-         this.onVisibility = null
+      if (typeof document !== 'undefined') {
+         if (this.onVisibility) document.removeEventListener('visibilitychange', this.onVisibility)
+         if (this.onInput) {
+            document.removeEventListener('pointerdown', this.onInput, true)
+            document.removeEventListener('keydown', this.onInput, true)
+         }
+      }
+      this.onVisibility = null
+      this.onInput = null
+      if (this.idleTimer) {
+         clearInterval(this.idleTimer)
+         this.idleTimer = null
       }
       if (this.loop) {
          this.loop.catch(() => {})
@@ -164,6 +252,18 @@ export class HttpSocket {
       } catch (err) {
          console.error('[relay] leave failed', err)
       }
+      this.forget()
+      return { ok: true }
+   }
+
+   /*
+      Out of the room, and no longer worth reconnecting to. The session is what
+      lets a reload come back to the same seat, so it goes when the player leaves
+      on purpose or the room itself is gone.
+   */
+   forget () {
+      writeSession(null)
+      this.id = null
       this.roomId = null
       this.cursor = 0
       this.role = null
@@ -171,7 +271,35 @@ export class HttpSocket {
       this.seats = []
       this.opponentPresent = null
       this.deliver('leftRoom', {})
-      return { ok: true }
+   }
+
+   /*
+      Back to the room this browser was last in, as the same member: the relay
+      knows the id, so it hands back the same seat and role rather than seating
+      somebody new (or refusing a player their own seat because the room is full).
+      The board itself is rebuilt from the event log, which the poll replays from
+      the start of the room's history.
+   */
+   async resumeSession (name = null) {
+      const saved = readSession()
+      if (!saved?.roomId || !saved?.memberId) return null
+
+      this.id = saved.memberId
+      this.connect()
+
+      try {
+         return saved.role === 'spectator'
+            ? await this.spectateRoom(saved.roomId, name)
+            : await this.joinRoom(saved.roomId, name)
+      } catch (err) {
+         console.error('[relay] could not rejoin the last room', err)
+         this.forget()
+         return null
+      }
+   }
+
+   remember () {
+      writeSession({ roomId: this.roomId, memberId: this.id, role: this.role })
    }
 
    async room (action, extra = {}) {
@@ -195,6 +323,8 @@ export class HttpSocket {
       this.cursor = res.seq || 0
       this.opponentPresent = false
       this.setConnected(true)
+      this.lastActivity = Date.now()
+      this.remember()
 
       /*
          Tell the app it is in a room. Under socket.io the server sent these,
@@ -271,7 +401,8 @@ export class HttpSocket {
       })
       if (res.error) throw new Error(res.error)
 
-      this.kick() // re-poll now instead of waiting out the interval
+      /* our own action: certainly not idle, and worth checking for news at once */
+      this.touch()
       return res.event
    }
 
@@ -320,8 +451,16 @@ export class HttpSocket {
          wait: String(this.wait)
       })
 
-      /* only ever asks for a slower cursor check than the server's own default */
+      /*
+         Ask to be checked for lazily when nobody is looking at this board: a
+         hidden tab, or one that has been left alone for ten minutes. The server
+         only ever honours a slower interval than its own default.
+      */
       if (this.hidden()) params.set('interval', String(HIDDEN_INTERVAL_MS))
+      else if (this.isIdle || this.idleFor() >= IDLE_AFTER_MS) {
+         this.markIdle()
+         params.set('interval', String(IDLE_INTERVAL_MS))
+      }
 
       let res
       try {
@@ -336,8 +475,7 @@ export class HttpSocket {
 
       if (payload.gone) {
          // The room expired or no longer exists; drop back to the lobby.
-         this.roomId = null
-         this.deliver('leftRoom', {})
+         this.forget()
          return
       }
 
@@ -351,6 +489,12 @@ export class HttpSocket {
             // our own action: already applied locally when it was sent
             continue
          }
+         /*
+            News from the other side counts as life: a board the opponent is
+            playing on should not be checked for lazily, or their move would sit
+            unseen for half a minute.
+         */
+         this.lastActivity = Date.now()
          this.apply(event)
       }
       if (payload.seq) this.cursor = Math.max(this.cursor, payload.seq)

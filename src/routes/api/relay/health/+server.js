@@ -4,25 +4,24 @@ import { WAIT_MS, POLL_INTERVAL_MS } from '$lib/relay/config.js'
 
 /*
    Health probe. The client uses this to tell "the relay is broken" apart from
-   "you are not in a room yet", so it deliberately touches no room.
+   "you are not in a room yet", so it deliberately touches no room and, by
+   default, makes no store command at all: nobody should spend a command just by
+   looking at the lobby. It reports which environment variables the store came
+   from and the timing this deployment runs with, and that is free.
 
-   It reports:
-     - which environment variables the store came from (setting up a Redis
-       integration is mostly a question of whether the app found it, and a
-       variable name is not a secret - the token is, and stays here);
-     - whether the store is not just configured but working, by making it write a
-       key that expires by itself. A database over its quota still answers reads
-       and refuses writes, so a read-only probe would call it healthy while every
-       room action failed;
-     - the timing a deployment is running with, because the poll interval is what
-       the relay costs and an environment variable set in the dashboard is not
-       otherwise visible from outside.
+   Add ?probe=1 to make it ask the store a question - a write of a key that
+   expires by itself, because a database over its quota still answers reads and
+   refuses writes, and a read-only probe would call it healthy while every room
+   action failed. That is for setting up and troubleshooting an integration, not
+   for page loads.
 */
 
 const POLL_SETTINGS = { waitMs: WAIT_MS, intervalMs: POLL_INTERVAL_MS }
 
 /** @type {import('./$types').RequestHandler} */
-export async function GET () {
+export async function GET ({ url }) {
+   const probe = url.searchParams.get('probe') === '1'
+
    let store
    let from
    try {
@@ -34,6 +33,7 @@ export async function GET () {
             ok: false,
             relay: false,
             store: 'none',
+            checked: false,
             poll: POLL_SETTINGS,
             error: err.message,
             hint: 'Add a Redis/KV integration in the Vercel dashboard, then redeploy.'
@@ -42,9 +42,13 @@ export async function GET () {
       )
    }
 
+   if (!probe) {
+      return json({ ok: true, relay: true, store: store.kind, from, checked: false, poll: POLL_SETTINGS })
+   }
+
    try {
       await pingStore()
-      return json({ ok: true, relay: true, store: store.kind, from, poll: POLL_SETTINGS })
+      return json({ ok: true, relay: true, store: store.kind, from, checked: true, poll: POLL_SETTINGS })
    } catch (err) {
       return json(
          {
@@ -52,6 +56,7 @@ export async function GET () {
             relay: false,
             store: store.kind,
             from,
+            checked: true,
             poll: POLL_SETTINGS,
             error: err.message,
             hint: 'The database is configured but not answering - check its quota and status in Vercel → Storage.'

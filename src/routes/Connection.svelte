@@ -9,7 +9,8 @@
    import { playerName } from '$lib/stores/settings.js'
    import {
       connected, room, spectating, spectators,
-      createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary, roomError
+      createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary, roomError,
+      idle, resume
    } from '$lib/stores/connection.js'
 
    let roomId = ''
@@ -184,6 +185,18 @@
             </div>
          {/if}
       </div>
+
+      <!--
+         Nothing has happened here for ten minutes, so the board is being checked
+         for lazily. Saying so, with a way to catch up at once, beats a board that
+         silently lags behind.
+      -->
+      {#if $idle}
+         <div class="flex items-center gap-2 p-2 mb-2 rounded-md text-sm bg-[var(--bg-color-two)]">
+            <span class="flex-1">Idle for 10 minutes - updates may be delayed.</span>
+            <button class="px-2 py-1 font-bold rounded-md text-white bg-[var(--primary-color)]" on:click={resume}>Reconnect</button>
+         </div>
+      {/if}
 
       <Chat />
 
