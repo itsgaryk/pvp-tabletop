@@ -21,6 +21,15 @@ import { createServer } from 'node:http'
 
 const PORT = Number(process.env.FAKE_REDIS_PORT || 6390)
 
+/*
+   FAKE_REDIS_READONLY mimics a database that is over its quota: reads still
+   answer, writes are refused with Upstash's own message. Handy for checking that
+   the relay's health probe notices - a read-only probe would call it healthy.
+*/
+const READONLY = process.env.FAKE_REDIS_READONLY === '1'
+const WRITES = new Set(['SET', 'DEL', 'INCR', 'EXPIRE', 'LPUSH', 'LTRIM', 'HSET', 'HDEL'])
+const LIMIT_ERROR = 'ERR max requests limit exceeded. Limit: 500000, Usage: 500000.'
+
 const strings = new Map()
 const hashes = new Map()
 const lists = new Map()
@@ -151,8 +160,14 @@ createServer((req, res) => {
       }
 
       if (req.url.startsWith('/pipeline')) {
-         return send(commands.map((args) => ({ result: run(args) })))
+         return send(commands.map((args) => {
+            const name = String(args[0]).toUpperCase()
+            if (READONLY && WRITES.has(name)) return { error: LIMIT_ERROR }
+            return { result: run(args) }
+         }))
       }
+      const name = String(commands[0]).toUpperCase()
+      if (READONLY && WRITES.has(name)) return send({ error: LIMIT_ERROR })
       send({ result: run(commands) })
    })
 }).listen(PORT, '127.0.0.1', () => {
