@@ -38,7 +38,24 @@ environment variables, which is all the relay needs — it reads, in order:
 - `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`
 - `REDIS_REST_API_URL` + `REDIS_REST_API_TOKEN`
 
-Redeploy after attaching it so the variables are present at build/run time.
+A marketplace integration installed with a **custom prefix** renames both
+variables to `<prefix>_URL` and `<prefix>_TOKEN`. Rather than make you match the
+app's expectations, the relay falls back to finding a pair by shape: any
+`..._URL` variable holding an `http(s)` URL that has a matching `..._TOKEN`
+beside it, preferring names mentioning redis, rest or kv and ignoring anything
+`PUBLIC` (a public URL is never a credential). So the prefix can be whatever you
+like.
+
+Redeploy after attaching it so the variables are present at build/run time, then
+check `GET /api/relay/health`:
+
+```json
+{ "ok": true, "relay": true, "store": "redis-rest", "from": "pvptabletop_URL" }
+```
+
+`from` names the variable the store came from (the name is not a secret; the
+token never leaves the server), which makes a mis-named or missing integration
+obvious — `ok: false` means no store was found at all.
 
 ### Environment variables
 
