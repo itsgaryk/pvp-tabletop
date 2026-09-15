@@ -22,6 +22,17 @@ const POLL_TIMEOUT_MS = 26000 // client aborts just after the server gives up
 const POLL_IDLE_MS = 300 // pause before re-polling after an error
 const EVENT_BUFFER = 200 // events fetched per poll
 
+/*
+   A board in a tab nobody is looking at does not need news by the second. While
+   the document is hidden the poll asks the server to check its cursor far less
+   often - that check is where the relay's Redis commands come from - which takes
+   a hidden tab to roughly a fifth of the cost. It still holds the request open,
+   so presence stays fresh and news still arrives, just checked for lazily; a
+   glance back at the tab re-polls at once, so the board is up to date by the time
+   it is read.
+*/
+const HIDDEN_INTERVAL_MS = 20000
+
 async function readJson (res) {
    const text = await res.text()
    if (!text) return {}
@@ -60,14 +71,29 @@ export class HttpSocket {
    connect () {
       if (this.active) return
       this.active = true
+
+      /* one listener, so a hidden tab slows down and a visible one catches up */
+      if (typeof document !== 'undefined' && !this.onVisibility) {
+         this.onVisibility = () => { if (!this.hidden()) this.kick() }
+         document.addEventListener('visibilitychange', this.onVisibility)
+      }
+
       this.loop = this.run()
       if (this.roomId) this.kick()
+   }
+
+   hidden () {
+      return typeof document !== 'undefined' && document.hidden === true
    }
 
    disconnect () {
       this.active = false
       this.setConnected(false)
       this.abortPoll()
+      if (this.onVisibility && typeof document !== 'undefined') {
+         document.removeEventListener('visibilitychange', this.onVisibility)
+         this.onVisibility = null
+      }
       if (this.loop) {
          this.loop.catch(() => {})
          this.loop = null
@@ -293,6 +319,9 @@ export class HttpSocket {
          since: String(this.cursor),
          wait: String(this.wait)
       })
+
+      /* only ever asks for a slower cursor check than the server's own default */
+      if (this.hidden()) params.set('interval', String(HIDDEN_INTERVAL_MS))
 
       let res
       try {
