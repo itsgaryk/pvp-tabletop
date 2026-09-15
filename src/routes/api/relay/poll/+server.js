@@ -17,7 +17,16 @@ import { getRoom, getRoomSeq, roomExists, touchMember } from '$lib/relay/store.j
 */
 
 const WAIT_MS = clamp(Number(process.env.RELAY_POLL_WAIT_MS) || 20000, 0, 50000)
-const POLL_INTERVAL_MS = clamp(Number(process.env.RELAY_POLL_INTERVAL_MS) || 400, 50, 5000)
+
+/*
+   How often a waiting poll looks at the room's cursor. This is the relay's cost
+   dial: the store sees one command per turn, per waiting client, whether or not
+   anything happens - so a tournament's worth of commands is spent by boards
+   sitting still, not by the moves themselves. A second keeps an idle client near
+   one command per second and costs at most that long before an opponent's move
+   appears; an event wakes the poll on its very next turn either way.
+*/
+const POLL_INTERVAL_MS = clamp(Number(process.env.RELAY_POLL_INTERVAL_MS) || 1000, 50, 5000)
 const MAX_EVENTS = 200
 
 /*

@@ -52,7 +52,7 @@ must never hold secrets and changing one requires a redeploy.
 | `VITE_LIMITLESS_WEB` | Limitless TCG API used by "Import Deck" / "Import Random Deck". | `https://limitlesstcg.com` |
 | `VITE_ENV` | `dev` logs every relayed event to the browser console. | `dev` locally, `prod` in a build |
 | `RELAY_POLL_WAIT_MS` | Server-side long-poll window in ms. Larger = fewer requests but more billed function time. | `20000` |
-| `RELAY_POLL_INTERVAL_MS` | How often a waiting poll re-reads the room's event cursor, in ms. This is the relay's main cost dial: the store sees one cheap read per turn. Larger = fewer store commands, at the price of up to that long before an opponent's move appears. | `400` |
+| `RELAY_POLL_INTERVAL_MS` | How often a waiting poll re-reads the room's event cursor, in ms. This is the relay's main cost dial: the store sees one cheap read per turn, per waiting client, whether or not anything happens. Larger = fewer store commands, at the price of up to that long before an opponent's move appears. | `1000` |
 
 Do not confuse the `VITE_*` names with Vercel's own system variables
 (`VERCEL_URL`, `VERCEL_ENV`, …), which Vercel lists in the same screen.
@@ -88,6 +88,28 @@ idle client near one command per poll turn instead of four.
 
 Rooms expire 6 hours after their last event, and each room keeps its most recent
 400 events.
+
+### Measuring what the relay costs
+
+Redis commands are spent by boards **sitting still**, not by moves: a waiting poll
+asks the store whether anything happened once per turn, so an open tab costs
+commands per second whether or not anyone is playing. Two tools make that
+visible without spending anything on a real database:
+
+```sh
+node tools/fake-redis.mjs                        # a stand-in for Upstash's REST API, counting commands
+KV_REST_API_URL=http://127.0.0.1:6390 \
+KV_REST_API_TOKEN=local npm run dev              # point the app at it
+node tools/poll-cost.mjs                         # one idle poll, and what it cost
+```
+
+`curl localhost:6390/__stats` shows the running total and a per-command
+breakdown; `__keys` shows what is stored and `__reset` zeroes the counters. A
+healthy relay never calls `KEYS`.
+
+For reference, one idle client at the default settings costs about **1.7
+commands/second** (roughly 6,000 an hour): one cursor read per second, plus a
+presence write and one room read per poll.
 
 ## Server (optional, self-hosted)
 
