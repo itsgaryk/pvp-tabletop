@@ -263,6 +263,19 @@ export function getStoreSource () {
    return cachedSource
 }
 
+/*
+   Is the store not just configured but answering? A health check can only tell
+   you so much from the environment variables - "configured" and "working" are
+   different things, and a database that is over its quota, paused or deleted
+   still looks configured. This reads one key that is never written, so it costs
+   one command and changes nothing.
+*/
+export async function pingStore () {
+   const store = getStore()
+   await store.getSeq('health')
+   return true
+}
+
 export function getStore () {
    if (cached) return cached
 

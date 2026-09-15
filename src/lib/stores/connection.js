@@ -42,10 +42,18 @@ function connect () {
 
 /* Rooms */
 
+/*
+   What went wrong with the last room request, for the lobby to show. A bare
+   "could not create a room" hides the one thing worth knowing - a database that
+   is over quota, or missing - so the relay's own message is kept.
+*/
+export let roomError = writable(null)
+
 export function createRoom () {
    connect()
    return socket.createRoom(playerName.get()).catch((err) => {
       console.error('[pvp-tabletop] could not create a room', err)
+      roomError.set(err.message)
       return null
    })
 }
@@ -54,6 +62,7 @@ export function joinRoom (roomId) {
    connect()
    return socket.joinRoom(roomId, playerName.get()).catch((err) => {
       console.error(`[pvp-tabletop] could not join room ${roomId}`, err)
+      roomError.set(err.message)
       return null
    })
 }
@@ -63,6 +72,7 @@ export function spectateRoom (roomId) {
    connect()
    return socket.spectateRoom(roomId, playerName.get()).catch((err) => {
       console.error(`[pvp-tabletop] could not spectate room ${roomId}`, err)
+      roomError.set(err.message)
       return null
    })
 }
