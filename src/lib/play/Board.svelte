@@ -51,7 +51,8 @@
       resetSelection,
       powerMarker as myPowerMarker,
       powerMarkerUsed as myPowerMarkerUsed,
-      togglePowerMarkerUsed
+      togglePowerMarkerUsed,
+      toggleAbilityUsed
    } from '$lib/stores/player.js'
 
    /*
@@ -201,6 +202,9 @@
 
       else if (key === 'q') startAE(false)
       else if (key === 'e') startAE(true)
+
+      /* u marks the selected Pokemon's ability as used (or takes that back) */
+      else if (key === 'u') toggleAbilityUsed()
 
       else if (key === 'v') openPile(deck)
       else if (key === 'w') openPile(table)
