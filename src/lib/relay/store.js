@@ -209,30 +209,67 @@ function redisRestStore (url, token) {
 
 /*
    Vercel's Redis/KV integrations inject different names depending on which one
-   you install, so accept the common spellings.
+   you install - and a marketplace integration installed with a "custom prefix"
+   renames both variables to <prefix>_URL and <prefix>_TOKEN. So: try the well
+   known spellings first, then look for a pair by shape, which means any prefix
+   works without the app having to know it.
 */
-function redisConfig () {
-   const url =
-      process.env.KV_REST_API_URL ||
-      process.env.UPSTASH_REDIS_REST_URL ||
-      process.env.REDIS_REST_API_URL
-   const token =
-      process.env.KV_REST_API_TOKEN ||
-      process.env.UPSTASH_REDIS_REST_TOKEN ||
-      process.env.REDIS_REST_API_TOKEN
+const KNOWN_REDIS_NAMES = [
+   ['KV_REST_API_URL', 'KV_REST_API_TOKEN'],
+   ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'],
+   ['REDIS_REST_API_URL', 'REDIS_REST_API_TOKEN'],
+   ['REDIS_REST_URL', 'REDIS_REST_TOKEN'],
+   ['UPSTASH_REDIS_URL', 'UPSTASH_REDIS_TOKEN']
+]
 
-   if (url && token) return { url, token }
+/* a credential pair is only ever a private URL with its token beside it */
+function looksLikeRedisUrl (value) {
+   return /^https?:\/\/\S+$/i.test(String(value || '').trim())
+}
+
+function findRedisConfig () {
+   for (const [urlName, tokenName] of KNOWN_REDIS_NAMES) {
+      const url = process.env[urlName]
+      const token = process.env[tokenName]
+      if (looksLikeRedisUrl(url) && token) return { url: url.trim(), token, source: urlName }
+   }
+
+   /*
+      Nothing familiar: look for any <name>_URL with a matching <name>_TOKEN.
+      Names mentioning redis/rest/kv are preferred, a public URL is never a
+      credential, and the pair has to be complete.
+   */
+   const candidates = Object.keys(process.env)
+      .filter((name) => /_URL$/i.test(name) && !/PUBLIC/i.test(name))
+      .filter((name) => looksLikeRedisUrl(process.env[name]) && process.env[name.replace(/_URL$/i, '_TOKEN')])
+      .sort((a, b) => {
+         const score = (name) => (/REDIS|UPSTASH|KV|REST/i.test(name) ? 0 : 1)
+         return score(a) - score(b) || a.localeCompare(b)
+      })
+
+   if (candidates.length) {
+      const urlName = candidates[0]
+      return { url: process.env[urlName].trim(), token: process.env[urlName.replace(/_URL$/i, '_TOKEN')], source: urlName }
+   }
+
    return null
 }
 
 let cached = null
+let cachedSource = null
+
+export function getStoreSource () {
+   getStore()
+   return cachedSource
+}
 
 export function getStore () {
    if (cached) return cached
 
-   const config = redisConfig()
+   const config = findRedisConfig()
    if (config) {
       cached = redisRestStore(config.url, config.token)
+      cachedSource = config.source
       return cached
    }
 
