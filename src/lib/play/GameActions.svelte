@@ -14,6 +14,7 @@
       setTurn
    } from '$lib/stores/player.js'
    import { spectatorOpponents, spectatorFlipped } from '$lib/stores/opponent.js'
+   import GameTimer from './GameTimer.svelte'
 
    /*
       The turn number is the table's, so it is shown from the shared board: our own
@@ -177,6 +178,9 @@
       <button class="end" on:click={startTurn} title="Next turn (Shortcut: C)" aria-label="Next turn">+</button>
    {/if}
 </div>
+
+<!-- the table's clock, under the turn, and only in a room -->
+<GameTimer />
 
 <style>
    .game-actions {

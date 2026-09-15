@@ -33,6 +33,14 @@ export function board () {
    */
    const turn = writable(0)
 
+   /*
+      The game timer, kept as a value rather than a tick: `remaining`
+      milliseconds as of `at` (a relay-clock timestamp), plus whether it runs.
+      Every client counts down from that itself, so a running clock costs nothing
+      to share - only starting, pausing and adding time are events.
+   */
+   const timer = writable({ running: false, remaining: 0, at: 0 })
+
    const prizesFlipped = writable(false)
    const handRevealed = writable(false)
    const pokemonHidden = writable(false)
@@ -56,6 +64,7 @@ export function board () {
       powerMarker.set('none')
       powerMarkerUsed.set(false)
       turn.set(0)
+      timer.set({ running: false, remaining: 0, at: 0 })
       prizesFlipped.set(false)
 
       hand.clear()
@@ -95,6 +104,7 @@ export function board () {
          powerMarker: powerMarker.get(),
          powerMarkerUsed: powerMarkerUsed.get(),
          turn: turn.get(),
+         timer: timer.get(),
          prizesFlipped: prizesFlipped.get(),
          handRevealed: handRevealed.get(),
          pokemonHidden: pokemonHidden.get()
@@ -106,6 +116,7 @@ export function board () {
       bench, active, stadium, table, pickup,
       powerMarker, powerMarkerUsed,
       turn,
+      timer,
       prizesFlipped, handRevealed, pokemonHidden,
       exportBoard, reset,
       // utility function used in multiple files

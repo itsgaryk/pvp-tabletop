@@ -18,6 +18,7 @@ export const {
    bench, active, stadium, table, pickup,
    powerMarker, powerMarkerUsed,
    turn,
+   timer,
    prizesFlipped, handRevealed, pokemonHidden,
    exportBoard, findSlot,
    reset: resetBoard
@@ -568,6 +569,42 @@ react('turnChanged', ({ turn: value }) => {
 
    turn.set(next)
    share('turnChanged', { turn: next })
+})
+
+/*
+   The game timer. It is shared as a value, not a tick: `remaining` milliseconds
+   as of `at` (the relay's clock), and whether it is running. Each client counts
+   down from that itself, so a running clock costs no traffic at all - starting,
+   pausing and adding time are the only events, and both players may send them.
+
+   `at` has to be the relay's clock rather than whoever set it, or two machines
+   with slightly different clocks would disagree about a timer that is already
+   half spent. The client stamps new values with the relay time it has learned.
+*/
+export function setTimer ({ running, remaining }, at = Date.now()) {
+   if (isSpectator()) return
+
+   const state = {
+      running: Boolean(running),
+      remaining: Math.max(0, Number(remaining) || 0),
+      at: Number(at) || Date.now()
+   }
+
+   timer.set(state)
+   share('timerUpdated', state)
+   return state
+}
+
+/* theirs: keep it, and say it again as our own so anyone watching us follows */
+react('timerUpdated', ({ running, remaining, at }) => {
+   const state = { running: Boolean(running), remaining: Math.max(0, Number(remaining) || 0), at: Number(at) || 0 }
+   const now = timer.get()
+
+   /* our own change coming back: do not answer it */
+   if (now.running === state.running && now.remaining === state.remaining && now.at === state.at) return
+
+   timer.set(state)
+   share('timerUpdated', state)
 })
 
 /* the same for the ability stripe, which either player can mark */
