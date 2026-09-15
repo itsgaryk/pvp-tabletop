@@ -369,7 +369,7 @@
 
          <div class="veil" class:applied={$pokemonHidden}></div>
 
-         <div class="lz" class:spectated={$spectating}>
+         <div class="lz">
             {#if $spectating}
             <OppLostZone store={bottomStore} />
          {:else}
@@ -385,7 +385,7 @@
          {/if}
          </div>
 
-         <div class="deck" class:spectated={$spectating}>
+         <div class="deck">
             {#if $spectating}
             <OppDeck store={bottomStore} />
          {:else}
@@ -506,27 +506,40 @@
    }
 
    /*
-      Two gaps that a player's rotated half leaves wider than a spectator's copy
-      of the same board, so they are opened back up here. The whole pile moves,
-      not just its card, so its count badge stays on the corner of the card.
+      Two gaps that the rotated half leaves tighter than they read, opened up in
+      both views so a player and a spectator see the same board. The whole pile
+      moves, not just its card, so its count badge stays on the corner of the
+      card.
 
       - the top player's discard sat against the hand's bar. That half is
         mirrored, so its nudge goes the other way round on screen.
       - the bottom player's deck and lost zone sat against the top player's
         prizes, which run down to the middle of the board.
    */
-   .discard2.upright > :global(div) {
+   .discard2 > :global(div) {
       translate: 0 -30px;
    }
 
-   .deck.spectated > :global(div),
-   .lz.spectated > :global(div) {
+   .deck > :global(div),
+   .lz > :global(div) {
       translate: 0 30px;
    }
 
+   /*
+      minmax(0, …) keeps every zone exactly its share of the grid: `fr` on its own
+      has an automatic minimum, so a zone with more in it - a full hand, a pile of
+      prizes - grew its row and squeezed the others. With the floors at zero the
+      zones land in the same place, at the same size, in either view and whatever
+      is on the board.
+   */
    .gameboard {
-      display: grid;      grid-template-columns: 0.8fr 0.8fr 1fr 1.5fr 1fr 0.8fr 0.8fr;
-      grid-template-rows: 0.9fr 1fr 1fr 1fr 1fr 0.9fr;
+      display: grid;
+      grid-template-columns:
+         minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.5fr)
+         minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 0.8fr);
+      grid-template-rows:
+         minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1fr)
+         minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr);
       grid-template-areas:
          "hand2 hand2 hand2 hand2 hand2 hand2 hand2"
          ". discard2 bench2 bench2 bench2 prizes2 prizes2"
