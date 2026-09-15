@@ -97,6 +97,8 @@ export async function POST ({ request }) {
             role,
             seq: room.events.length ? room.events[room.events.length - 1].seq : 0,
             events: room.events,
+            /* the relay's clock, so a client can age the events it just replayed */
+            now: Date.now(),
             summary: summary || await roomSummary(roomId)
          })
       }

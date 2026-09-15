@@ -137,6 +137,24 @@ hash, so a poll fetches them with one `HGETALL` and nothing ever runs `KEYS` ove
 the keyspace. On a metered Redis (Upstash bills per command) that is what keeps an
 idle client near one command per poll turn instead of four.
 
+### The game timer
+
+Under the turn row, and only in a room: a table clock both players can start,
+pause and add to (+1, +10, +50 minutes), shown as `MM:SS`, or `HH:MM:SS` once
+there is an hour or more. A spectator sees the clock and none of the buttons.
+
+It is shared as a **value**, not a tick: "this many milliseconds left as of this
+timestamp". Every client counts down from that itself, so a running clock costs
+**no store commands at all** — only starting, pausing and adding time are events.
+The timestamp is the relay's clock, learned from each poll, so a spectator who
+joins halfway through works out the right amount left from the event history
+rather than starting the count again.
+
+Crossing fifteen minutes makes the clock glow briefly (a clock *set* below
+fifteen does not — the glow is for passing the mark). At zero it stops, the words
+*Time on the Round!* cross the screen once, and the host writes a single line to
+the game log.
+
 Rooms expire 6 hours after their last event, and each room keeps its most recent
 400 events.
 

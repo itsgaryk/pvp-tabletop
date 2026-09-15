@@ -38,6 +38,7 @@ const EVENTS = new Set([
    'powerMarker',
    'powerMarkerUsed',
    'turnChanged',
+   'timerUpdated',
    'abilityUpdated',
    'prizeToggle',
    'handToggle',

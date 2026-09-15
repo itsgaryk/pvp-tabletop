@@ -98,6 +98,9 @@ export class HttpSocket {
       /* when this client last did, or heard, anything */
       this.lastActivity = Date.now()
       this.isIdle = false
+
+      /* this browser's clock against the relay's, for events that arrive late */
+      this.skew = 0
    }
 
    /* ------------------------------------------------------------ lifecycle -- */
@@ -141,6 +144,17 @@ export class HttpSocket {
 
    hidden () {
       return typeof document !== 'undefined' && document.hidden === true
+   }
+
+   /*
+      The relay's clock, as this browser understands it. Polls carry the server's
+      own `now`, so a client can tell how long ago a replayed event happened -
+      which is what lets a game timer arriving with a late joiner's history still
+      count down correctly. Only the difference matters, and it is re-estimated on
+      every poll.
+   */
+   serverNow () {
+      return Date.now() + this.skew
    }
 
    /* somebody is here: back to the normal rhythm, and catch up at once */
@@ -315,6 +329,8 @@ export class HttpSocket {
       })
       if (res.error) throw new Error(res.error)
 
+      if (typeof res.now === 'number') this.skew = res.now - Date.now()
+
       this.id = res.memberId
       this.roomId = res.roomId
       this.role = res.role || 'guest'
@@ -359,9 +375,25 @@ export class HttpSocket {
       handler can choose to ignore its own action instead of applying it twice
       - which is what made a message appear twice in the log.
    */
+   /*
+      The relay's timestamp for an event, in this browser's clock - so a client
+      can tell how long ago it happened. An event with no timestamp (or one from
+      before the relay stamped them) is simply "now".
+   */
+   relayTime (event) {
+      return typeof event.ts === 'number' ? event.ts + this.skew : Date.now()
+   }
+
    apply (event) {
       const self = Boolean(event.from) && event.from === this.id
-      this.deliver(event.name, event.data, { meta: event, self })
+      /*
+         Every applied event carries `at`: the relay's clock time for it, as this
+         browser understands it. A client that cares how long ago something
+         happened - the game timer counting down from a replayed event - needs
+         that rather than its own clock.
+      */
+      const data = event.ts ? { ...event.data, at: this.relayTime(event) } : event.data
+      this.deliver(event.name, data, { meta: event, self })
    }
 
    /* ------------------------------------------------------------------- wire -- */
@@ -472,6 +504,8 @@ export class HttpSocket {
 
       const payload = await readJson(res)
       if (!res.ok) throw new Error(payload.error || `poll failed (${res.status})`)
+
+      if (typeof payload.now === 'number') this.skew = payload.now - Date.now()
 
       if (payload.gone) {
          // The room expired or no longer exists; drop back to the lobby.

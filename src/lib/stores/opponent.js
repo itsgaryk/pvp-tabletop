@@ -25,6 +25,7 @@ export function createOpponent () {
       bench, active, stadium, table, pickup,
       powerMarker, powerMarkerUsed,
       turn,
+      timer,
       prizesFlipped, handRevealed, pokemonHidden,
       reset, findSlot } = b
 
@@ -139,6 +140,7 @@ export function createOpponent () {
       if (state.powerMarker) powerMarker.set(state.powerMarker)
       powerMarkerUsed.set(Boolean(state.powerMarkerUsed))
       turn.set(Math.max(0, Number(state.turn) || 0))
+      if (state.timer) timer.set(state.timer)
       if (state.pokemonHidden) pokemonHidden.set(true)
       if (state.prizesFlipped) prizesFlipped.set(true)
       if (state.handRevealed) handRevealed.set(true)
@@ -238,6 +240,8 @@ export function createOpponent () {
          const s = findSlot(slotId)
          if (s) s.abilityUsed.set(Boolean(used))
       },
+      /* the clock they set, with the relay time it was set at */
+      timerUpdated: ({ running, remaining, at }) => timer.set({ running: Boolean(running), remaining: Math.max(0, Number(remaining) || 0), at: Number(at) || 0 }),
       slotDiscarded: ({ slotId }) => {
          const s = findSlot(slotId)
          if (s) removeSlot(s)
@@ -392,7 +396,7 @@ const RELAY_EVENTS = [
    'boardState', 'deckLoaded', 'boardReset', 'cardsMoved', 'slotsMoved',
    'cardsBenched', 'activeBenched', 'cardPromoted', 'slotPromoted',
    'cardsEvolved', 'cardsAttached', 'damageUpdated', 'statusUpdated',
-   'slotDiscarded', 'stadiumPlayed', 'pokemonToggle', 'powerMarker', 'powerMarkerUsed', 'turnChanged', 'prizeToggle', 'handToggle', 'abilityUpdated'
+   'slotDiscarded', 'stadiumPlayed', 'pokemonToggle', 'powerMarker', 'powerMarkerUsed', 'turnChanged', 'timerUpdated', 'prizeToggle', 'handToggle', 'abilityUpdated'
 ]
 
 for (const name of RELAY_EVENTS) {

@@ -124,6 +124,9 @@ export async function GET ({ url }) {
                   seq: room.events[room.events.length - 1].seq,
                   opponent: opponentState(room, memberId),
                   players: seats(room),
+                  /* the relay's clock, so a client can work out how stale a
+                     replayed event is (the game timer counts down from one) */
+                  now: Date.now(),
                   waited: Date.now() - started
                })
             }
@@ -138,6 +141,7 @@ export async function GET ({ url }) {
                seq: room.events.length ? room.events[room.events.length - 1].seq : since,
                opponent: opponentState(room, memberId),
                players: seats(room),
+               now: Date.now(),
                waited: Date.now() - started
             })
          }
