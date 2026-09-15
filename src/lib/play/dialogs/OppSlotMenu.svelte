@@ -3,7 +3,7 @@
    import ContextMenu from '$lib/components/ContextMenu.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import { STATUSES, statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
-   import { logStatus, logStatusCleared, logAbilityUsed } from '$lib/stores/logger.js'
+   import { logStatus, logStatusCleared } from '$lib/stores/logger.js'
 
    import { share, publishLog, spectating } from '$lib/stores/connection.js'
    const { openOppSlotDetails } = getContext('boardActions')
@@ -65,19 +65,6 @@
       publishLog(`Target: ${slot.name}`)
       menu.close()
    }
-
-   /*
-      The ability stripe is on their Pokémon, and marking it works the same way a
-      status effect does: it is shared, their board keeps it, and they publish it
-      again as their own.
-   */
-   function toggleAbility () {
-      const used = !slot.abilityUsed.get()
-      slot.abilityUsed.set(used)
-      share('abilityUpdated', { slotId: slot.id, used })
-      logAbilityUsed(slot.name, used)
-      menu.close()
-   }
 </script>
 
 <ContextMenu bind:this={menu} heading={slot?.name}>
@@ -111,6 +98,5 @@
    {/if}
 
    <ContextMenuOption click={target} text="Declare Target" disabled={$spectating} />
-   <ContextMenuOption click={toggleAbility} text="Ability Used" shortcut={slot?.abilityUsed.get() ? '✓' : null} disabled={$spectating} />
    <ContextMenuOption click={() => openOppSlotDetails(slot)} text="Show All" />
 </ContextMenu>

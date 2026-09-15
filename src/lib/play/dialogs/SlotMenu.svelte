@@ -140,10 +140,13 @@
    <ContextMenuOption click={setDamage} text="Set Damage" />
 
    <!-- a stripe marks the ability as used, and the log names the Pokémon -->
-   <ContextMenuOption
-      click={toggleAbility}
-      text="Ability Used"
-      shortcut={$selection.length === 1 && $selection[0].abilityUsed.get() ? '✓' : null} />
+   <ContextMenuOption click={toggleAbility}>
+      <span class="flex w-full items-center gap-2">
+         Ability Used
+         {#if $selection.length === 1 && $selection[0].abilityUsed.get()}<span>✓</span>{/if}
+         <span class="ml-auto text-[var(--text-color-two)]">u</span>
+      </span>
+   </ContextMenuOption>
 
    <!--
       A status effect only applies to the Active Pokémon, so it is offered for
