@@ -9,7 +9,7 @@
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
 
-   const allowDrop = () => $source && $source !== 'stadium' && ($source !== 'slot' || $draggedCard === $active) && !onOpponentHalf($source)
+   const allowDrop = () => $source && $source !== 'stadium' && ($source !== 'slot' || $draggedCard === $active)
 
    function onDragDrop () {
       toBench()

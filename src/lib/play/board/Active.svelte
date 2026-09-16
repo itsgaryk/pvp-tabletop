@@ -8,7 +8,7 @@
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
 
-   const allowDrop = () => $source && $source !== 'stadium' && $draggedCard !== $active && !onOpponentHalf($source)
+   const allowDrop = () => $source && $source !== 'stadium' && $draggedCard !== $active
       && ($slotSelection.length <= 1 && $cardSelection.length <= 1)
 
    function onDragDrop () {
