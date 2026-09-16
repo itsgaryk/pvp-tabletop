@@ -15,8 +15,10 @@
 
    import { dnd } from '$lib/dnd/actions.js'
    import { source } from '$lib/dnd/store.js'
+   import { onOpponentHalf } from '$lib/stores/solo.js'
 
-   const allowDrop = () => $source && $source !== pile
+   /* in solo, a card from the far half is not yours to move onto your own piles */
+   const allowDrop = () => $source && $source !== pile && !onOpponentHalf($source)
 
    function onDragDrop () {
       moveSelection(pile)

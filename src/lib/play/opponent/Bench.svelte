@@ -4,7 +4,7 @@
    import { dnd } from '$lib/dnd/actions.js'
    import { source } from '$lib/dnd/store.js'
    import { cardSelection } from '$lib/stores/player.js'
-   import { solo, soloCardToPlay } from '$lib/stores/solo.js'
+   import { solo, soloCardToPlay, onOpponentHalf } from '$lib/stores/solo.js'
 
    /* which player's board this component shows */
    export let store = defaultOpponent
@@ -14,7 +14,7 @@
       In solo a card dragged from the far half can be put on its Bench - the same
       drop the player's own Bench accepts.
    */
-   const allowDrop = () => $solo && $source && !$bench.includes($source)
+   const allowDrop = () => $solo && onOpponentHalf($source) && !$bench.includes($source)
 
    function onDrop () {
       if (!$solo || !$source) return
