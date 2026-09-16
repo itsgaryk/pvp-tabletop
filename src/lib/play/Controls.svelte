@@ -16,6 +16,15 @@
       spectatorFlipped.update((flipped) => !flipped)
    }
 
+   /*
+      The settings button toggles the menu it opens: pressing it again puts the
+      menu away, which is what a button beside a popup should do.
+   */
+   function toggleSettings () {
+      if (settings.opened()) settings.close()
+      else settings.open()
+   }
+
    let settings // DOM element binding
 </script>
 
@@ -25,7 +34,7 @@
       class="rounded-md bg-[var(--bg-color-two)] p-1 shadow"
       title="Settings"
       aria-label="Settings"
-      on:click|stopPropagation={() => settings.open()}
+      on:click|stopPropagation={toggleSettings}
    >
       <Icon path={cog} />
    </button>
