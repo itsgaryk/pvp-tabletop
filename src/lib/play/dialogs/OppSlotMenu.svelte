@@ -7,10 +7,16 @@
 
    import { share, publishLog, spectating } from '$lib/stores/connection.js'
    import { solo, soloSlotToDiscard, soloSlotToActive, soloSlotToBench } from '$lib/stores/solo.js'
-   const { openOppSlotDetails } = getContext('boardActions')
+   const { openOppSlotDetails, openDetails } = getContext('boardActions')
 
    let slot
    let isActive = false
+
+   /* their Pokemon's name is a card too, so clicking it shows that card */
+   function showDetails () {
+      const top = slot?.pokemon.get().at(-1)
+      if (top) openDetails(top)
+   }
    /* the status effects are only listed once their menu entry is clicked */
    let statusOpen = false
    let menu
@@ -87,7 +93,7 @@
    }
 </script>
 
-<ContextMenu bind:this={menu} heading={slot?.name}>
+<ContextMenu bind:this={menu} heading={slot?.name} headingClick={slot ? showDetails : null}>
    <!-- setting damage, a status or a target all change the game -->
    <ContextMenuOption click={setDamage} text="Set Damage" disabled={$spectating} />
 

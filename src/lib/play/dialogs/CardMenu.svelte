@@ -19,6 +19,13 @@
 
    $: heading = $selection.length === 1 ? (revealed ? $selection[0].name : 'Hidden card') : `${$selection.length} cards`
 
+   /* one card, and its face is known: the name is worth clicking */
+   $: canShowDetails = $selection.length === 1 && revealed
+
+   function showDetails () {
+      openDetails($selection[0])
+   }
+
    export function open (x, y, _pile, _revealed) {
       pile = _pile
       revealed = _revealed
@@ -41,7 +48,7 @@
    }
 </script>
 
-<ContextMenu bind:this={menu} {heading}>
+<ContextMenu bind:this={menu} {heading} headingClick={canShowDetails ? showDetails : null}>
    {#if pile !== hand}
       <ContextMenuOption click={() => moveTo(hand)} text="To Hand" shortcut="h" disabled={$spectating} />
    {/if}
