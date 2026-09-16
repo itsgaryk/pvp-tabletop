@@ -7,6 +7,7 @@
 
    let popup
    export const open = () => popup.open()
+   export const close = () => popup.close()
 
    const setScale = (scale) => {
       if (browser) {
@@ -22,9 +23,15 @@
       { value: 'vstar', label: 'VStar' },
       { value: 'gx', label: 'GX' }
    ]
+
+   /* the button in the corner toggles this menu, so it has to ask whether it is open */
+   export function opened () {
+      return popup.opened()
+   }
 </script>
 
-<Popup bind:this={popup}>
+<!-- controls asks the popup whether it is open, so the button can close it -->
+<Popup bind:this={popup} anchored>
    <div class="p-4">
       <div class="p-4 bg-[var(--bg-color-zero)] rounded-t-md">
          <label class="px-1">
