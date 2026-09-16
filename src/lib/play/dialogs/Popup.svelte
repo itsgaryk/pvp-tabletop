@@ -65,14 +65,15 @@
 </script>
 
 {#if isOpen}
-   <!-- as wide as what is in it, not as wide as the window -->
-   <div class="absolute top-0 left-0 m-8 z-20 bg-[var(--popup-color)] rounded-md border border-black w-max max-w-[calc(100vw-4rem)]"
+   <!-- as wide as what is in it, and centred rather than pinned to a corner -->
+   <div class="m-8 z-20 bg-[var(--popup-color)] rounded-md border border-black w-max max-w-[calc(100vw-4rem)]"
       class:anchored
       use:clickOutside on:outclick={closed}
       use:escape on:esc={closed}>
 
       <slot></slot>
-      <div class="flex justify-center gap-2 p-2">
+      <!-- one action per line: a panel is not a toolbar -->
+      <div class="flex flex-col items-center gap-2 p-2">
          <slot name="buttons"></slot>
       </div>
    </div>
@@ -80,16 +81,28 @@
 
 <style>
    /*
-      A popup opened by a corner button sits under it, flush with the same edge.
-      Fixed rather than absolute: the button's wrapper is not an ancestor of this
-      component, so an absolute panel would measure itself against the page and
-      land below the fold.
+      The inspection and detail panels sit in the middle of the window. They used
+      to span its full width from the top left, so narrowing them to their content
+      left them looking pinned to the corner.
+   */
+   div {
+      position: fixed;
+      top: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+   }
+
+   /*
+      A popup opened by a corner button instead sits under it, flush with the same
+      edge. Fixed rather than absolute: the button's wrapper is not an ancestor of
+      this component, so an absolute panel would measure itself against the page
+      and land below the fold.
    */
    .anchored {
-      position: fixed;
       top: 3.25rem;
-      right: 0.75rem;
       left: auto;
+      right: 0.75rem;
+      transform: none;
       margin: 0;
    }
 </style>
