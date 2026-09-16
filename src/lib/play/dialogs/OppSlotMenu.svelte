@@ -6,6 +6,7 @@
    import { logStatus, logStatusCleared } from '$lib/stores/logger.js'
 
    import { share, publishLog, spectating } from '$lib/stores/connection.js'
+   import { solo, soloSlotToDiscard, soloSlotToActive, soloSlotToBench } from '$lib/stores/solo.js'
    const { openOppSlotDetails } = getContext('boardActions')
 
    let slot
@@ -65,6 +66,25 @@
       publishLog(`Target: ${slot.name}`)
       menu.close()
    }
+
+   /*
+      In solo the other half is yours, so its Pokémon can be taken off the board
+      or moved between the Active spot and the Bench, the same as your own.
+   */
+   function sendToDiscard () {
+      soloSlotToDiscard(slot)
+      menu.close()
+   }
+
+   function moveToActive () {
+      soloSlotToActive(slot)
+      menu.close()
+   }
+
+   function moveToBench () {
+      soloSlotToBench(slot)
+      menu.close()
+   }
 </script>
 
 <ContextMenu bind:this={menu} heading={slot?.name}>
@@ -98,5 +118,15 @@
    {/if}
 
    <ContextMenuOption click={target} text="Declare Target" disabled={$spectating} />
+
+   {#if $solo}
+      {#if isActive}
+         <ContextMenuOption click={moveToBench} text="Move to Bench" />
+      {:else}
+         <ContextMenuOption click={moveToActive} text="Move to Active" />
+      {/if}
+      <ContextMenuOption click={sendToDiscard} text="Send to Discard" />
+   {/if}
+
    <ContextMenuOption click={() => openOppSlotDetails(slot)} text="Show All" />
 </ContextMenu>

@@ -1,9 +1,23 @@
 <script>
 	import { slide } from './slide.js'
    import { importDeck } from '$lib/stores/player.js'
+   import { importOpponentDeck } from '$lib/stores/solo.js'
    import Spinner from './Spinner.svelte'
 
-   let isOpen = true
+   /*
+      Which deck this panel edits. In solo both sides are the same person, so the
+      second panel gives the opponent's half a deck of its own.
+   */
+   export let target = 'me'
+   $: opponent = target === 'opponent'
+   $: label = opponent ? 'Edit Deck 2' : 'Edit Deck'
+   $: importInto = opponent ? importOpponentDeck : importDeck
+
+   /*
+      The player's own panel opens on arrival; the second one waits to be asked
+      for, so it does not cover the first.
+   */
+   let isOpen = !opponent
 
    let txt = ''
    let response = ''
@@ -12,7 +26,7 @@
 
    function doImport () {
       loading = true
-      importDeck(txt, (res) => {
+      importInto(txt, (res) => {
          const count = res.cards.reduce((c, card) => c + card.count, 0)
          loading = false
          if (res.errors.length) response = res.errors.join("\n")
@@ -26,7 +40,7 @@
 
    function randomImport () {
       loadingRandom = true
-      importDeck(txt, (res) => {
+      importInto(txt, (res) => {
          loadingRandom = false
          isOpen = false
       }, true)
@@ -60,12 +74,17 @@
       </div>
    </div>
 {:else}
-   <button class="fixed z-14 top-0 left-0 bg-blue-500 !rounded-none !rounded-br-md !p-3" on:click={() => isOpen = true}>Edit Deck</button>
+   <button class="fixed z-14 top-0 left-0 bg-blue-500 !rounded-none !rounded-br-md !p-3" class:second={opponent} on:click={() => isOpen = true}>{label}</button>
 {/if}
 
 <style>
    button {
       @apply p-2 rounded-md text-white font-bold;
+   }
+
+   /* the second panel's button sits beside the first */
+   button.second {
+      left: 7.5rem;
    }
 
    .button-with-spinner {
