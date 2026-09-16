@@ -1,9 +1,13 @@
 import { get, post } from '$lib/util/fetch-web.js'
 import { writable } from './custom/writable.js'
+import { solo } from './soloState.js'
 import { resetBoard } from './player.js'
-import { defaultOpponent } from './opponent.js'
+import { defaultOpponent, spectatorFlipped } from './opponent.js'
 import { slot } from './custom/cards.js'
 import { fixOld } from './oldCards.js'
+
+/* re-exported so the rest of the app can ask in one import */
+export { solo }
 
 /*
    Solo mode: playing both sides yourself.
@@ -14,21 +18,23 @@ import { fixOld } from './oldCards.js'
    Deck 2" can give it a deck and why its menus can be used as freely as your own
    in this mode.
 
-   Rooms, chat and the game log all belong to a relay, so in solo they simply
-   never start: the browser's socket is never connected.
+   Rooms, chat and the relay all belong to a room, so in solo they never start:
+   the browser's socket is never connected. The game log still records what
+   happens on the board, locally, because it is the same board either way.
 */
-export const solo = writable(false)
 
 export function startSolo () {
-   /* both halves start empty, ready for their own deck */
+   /* both halves start empty, ready for their own deck, and unflipped */
    resetBoard()
    defaultOpponent.reset()
+   spectatorFlipped.set(false)
    solo.set(true)
 }
 
 export function exitSolo () {
    resetBoard()
    defaultOpponent.reset()
+   spectatorFlipped.set(false)
    solo.set(false)
 }
 

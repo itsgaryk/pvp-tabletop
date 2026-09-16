@@ -1,5 +1,6 @@
 <script>
    import { chat, publishToChat } from '$lib/stores/connection.js'
+   import { solo } from '$lib/stores/solo.js'
    import { tick, afterUpdate } from 'svelte'
 
    let message = ''
@@ -8,10 +9,15 @@
       Two streams share this window: the game log (what happened on the board)
       and chat (what the players and spectators said). Only the chat stream can
       be written to, so the box and button are locked while the log is showing.
+
+      In solo there is nobody to talk to, so the window shows the log alone: no
+      tabs and no message box.
    */
    let tab = 'game'
 
-   $: entries = $chat.filter((entry) => (tab === 'chat') === (entry.type === 'chat'))
+   $: entries = $solo
+      ? $chat.filter((entry) => entry.type !== 'chat')
+      : $chat.filter((entry) => (tab === 'chat') === (entry.type === 'chat'))
    $: locked = tab === 'game'
 
    function sendMessage () {
@@ -43,10 +49,12 @@
 
 <div class="flex-1 flex flex-col gap-2 -mx-1 overflow-hidden">
 
-   <div class="tabs">
-      <button class:active={tab === 'game'} on:click={() => (tab = 'game')}>Game</button>
-      <button class:active={tab === 'chat'} on:click={() => (tab = 'chat')}>Chat</button>
-   </div>
+   {#if !$solo}
+      <div class="tabs">
+         <button class:active={tab === 'game'} on:click={() => (tab = 'game')}>Game</button>
+         <button class:active={tab === 'chat'} on:click={() => (tab = 'chat')}>Chat</button>
+      </div>
+   {/if}
 
    <div class="chat" bind:this={chatNode}>
       {#each entries as entry}
@@ -62,15 +70,17 @@
       {/each}
    </div>
 
-   <form class="flex" on:submit|preventDefault={sendMessage}>
-      <input
-         class="chat-input" type="text" name="message"
-         disabled={locked}
-         placeholder={locked ? 'Switch to Chat to send a message' : ''}
-         on:keydown|stopPropagation bind:value={message}
-         autocomplete="off">
-      <button class="chat-button" disabled={locked}>Send</button>
-   </form>
+   {#if !$solo}
+      <form class="flex" on:submit|preventDefault={sendMessage}>
+         <input
+            class="chat-input" type="text" name="message"
+            disabled={locked}
+            placeholder={locked ? 'Switch to Chat to send a message' : ''}
+            on:keydown|stopPropagation bind:value={message}
+            autocomplete="off">
+         <button class="chat-button" disabled={locked}>Send</button>
+      </form>
+   {/if}
 
 </div>
 

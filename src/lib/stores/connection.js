@@ -15,6 +15,7 @@ import { PVP_SERVER, APP_ENV } from '$lib/util/env.js'
 import { HttpSocket } from '$lib/relay/client.js'
 import { writable } from './custom/writable.js'
 import { playerName } from './settings.js'
+import { solo } from './soloState.js'
 
 export let room = writable(null)
 export let connected = writable(false)
@@ -202,6 +203,15 @@ function updateChat (message, type, self) {
    decides what a member may post.
 */
 export function publishToChat (message, type) {
+   /*
+      In solo there is no room and no relay, but the game log still has something
+      to say - setup, draws, moves - so it is written locally and nothing is sent.
+   */
+   if (solo.get()) {
+      updateChat(message, type, 1)
+      return
+   }
+
    if (!room.get()) return
    updateChat(message, type, 1)
    socket.emit('chatMessage', { message, type })

@@ -158,9 +158,14 @@ the game log.
 ### Solo mode
 
 **Play Solo** on the front panel starts a game against yourself: no room, no code
-and no chat, and because there is no relay involved it costs **no store commands
-at all** — the browser's socket is never connected. Leaving goes back to the front
-panel.
+and no relay, so it costs **no store commands at all** — the browser's socket is
+never connected. Leaving goes back to the front panel.
+
+The game log stays, writing locally instead of relaying, and without the Game /
+Chat tabs or the message box above it — there is nobody to talk to. The timer and
+Hide Pokémon are hidden too: one is a clock against yourself, the other is about
+what the other player can see. The spectator-style **flip** is available, and
+swaps your own board with the other side's.
 
 Both halves of the board are yours, so the second one is playable the same way
 the first is:
@@ -197,11 +202,21 @@ node tools/poll-cost.mjs                         # one idle poll, and what it co
 breakdown; `__keys` shows what is stored and `__reset` zeroes the counters. A
 healthy relay never calls `KEYS`.
 
-For reference, one idle client at the default settings costs about **0.85
-commands/second** (roughly 3,000 an hour): one cursor read every two seconds,
-plus a presence write and one room read per poll. `GET /api/relay/health` reports
-the settings a deployment is running with, so a change in the dashboard is
-visible from outside:
+For reference, one idle client at the default settings — a player alone in a room,
+nobody watching — costs **0.75 commands/second** (~2,700 an hour), measured over
+whole long-polls:
+
+| per 20s poll | commands |
+| --- | --- |
+| the cursor check, every 2s | 10 |
+| "still here" (one HSET) | 1 |
+| assembling the reply (room meta, events, members) | 4 |
+
+Presence is a field of its own in the members hash, so refreshing it is a single
+HSET rather than a read-modify-write of the member record: three commands became
+one, and two clients touching at once can no longer lose each other's role or
+name. `GET /api/relay/health` reports the settings a deployment is running with,
+so a change in the dashboard is visible from outside:
 
 ```json
 { "ok": true, "relay": true, "store": "redis-rest", "from": "KV_REST_API_URL",
