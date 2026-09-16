@@ -19,6 +19,12 @@
    let isOpen = false
 
    export let heading = null
+   /*
+      What a click on the heading does, if anything. A card's name is a card, so
+      clicking it does what the menu's "Show Details" entry does - the name is
+      where the eye goes first.
+   */
+   export let headingClick = null
 
    export function open (_x, _y) {
       x = _x
@@ -77,7 +83,15 @@
       use:escape on:esc={close}>
 
       {#if heading}
-         <span class="font-bold px-3 py-1">{heading}</span>
+         {#if headingClick}
+            <button
+               class="heading clickable"
+               title="Show Details"
+               on:click={() => { headingClick(); close() }}
+            >{heading}</button>
+         {:else}
+            <button class="heading" disabled>{heading}</button>
+         {/if}
          <hr>
       {/if}
       <slot />
@@ -96,5 +110,19 @@
    :global(hr) {
       border-color: var(--bg-color-three);
       background-color: var(--bg-color-three);
+   }
+
+   .heading {
+      @apply px-3 py-1 font-bold text-left;
+      background: none;
+      border: none;
+   }
+
+   .heading.clickable {
+      @apply cursor-pointer;
+   }
+
+   .heading.clickable:hover {
+      background: var(--bg-color-two);
    }
 </style>

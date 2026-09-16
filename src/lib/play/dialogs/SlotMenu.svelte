@@ -12,16 +12,21 @@
       setStatus, clearStatus, toggleAbilityUsed
    } from '$lib/stores/player.js'
 
-   const { openSlotDetails } = getContext('boardActions')
+   const { openSlotDetails, openDetails } = getContext('boardActions')
 
    export let selection
 
-   $: heading = $selection.length === 1 ?
-      $selection[0].pokemon.get().at(-1).name : `${$selection.length} Pokémon`
+   $: top = $selection.length === 1 ? $selection[0].pokemon.get().at(-1) : null
+   $: heading = top ? top.name : `${$selection.length} Pokémon`
 
    let menu
    /* the status effects are only listed once their menu entry is clicked */
    let statusOpen = false
+
+   /* the Pokemon's name is a card, so clicking it shows that card */
+   function showDetails () {
+      if (top) openDetails(top)
+   }
 
    export function open (x, y) {
       statusOpen = false
@@ -134,7 +139,7 @@
 
 </script>
 
-<ContextMenu bind:this={menu} {heading}>
+<ContextMenu bind:this={menu} {heading} headingClick={top ? showDetails : null}>
    <ContextMenuOption click={damage} text="Damage" />
    <ContextMenuOption click={heal} text="Heal" />
    <ContextMenuOption click={setDamage} text="Set Damage" />

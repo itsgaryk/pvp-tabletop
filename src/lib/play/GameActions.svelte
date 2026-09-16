@@ -104,6 +104,17 @@
 
       publishLog('Setup' + ($autoMulligan ? ` - ${mulligans} Mulligans` : ''))
       shareBoardstate()
+
+      /*
+         Setting up hides your Pokemon: a fresh board is not meant to be read over
+         your shoulder, and the button says so by glowing for a moment - it is the
+         one thing that changed that the log line does not mention. Solo is
+         playing both sides yourself, so there is nobody to hide them from.
+      */
+      if (!$solo) {
+         setVisibility(true)
+         glowHideButton()
+      }
    }
 
    function reset () {
@@ -144,19 +155,50 @@
    }
 
    function switchVisibility () {
-      pokemonHidden.update(val => !val)
-      share('pokemonToggle', { hidden: pokemonHidden.get() })
+      setVisibility(!pokemonHidden.get())
+   }
+
+   /* hiding and showing, as a state rather than a toggle */
+   function setVisibility (hidden) {
+      pokemonHidden.set(hidden)
+      share('pokemonToggle', { hidden })
+   }
+
+   /* the Hide Pokemon button says so for a moment when Setup does it for you */
+   let hideGlow = false
+   let glowTimer
+
+   function glowHideButton () {
+      hideGlow = true
+      clearTimeout(glowTimer)
+      glowTimer = setTimeout(() => { hideGlow = false }, 2500)
    }
 
    /* Keyboard shortcuts */
 
+   /*
+      A shortcut must not fire while somebody is typing, or Enter in the chat box
+      would end the turn, and not while a button has focus, or Enter would do both
+      what the button does and what the shortcut does.
+   */
+   function isTyping (target) {
+      if (!target || !target.tagName) return false
+      const tag = target.tagName.toLowerCase()
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || target.isContentEditable
+   }
+
    function keydown (e) {
       /* a spectator only watches - none of these shortcuts apply */
       if ($spectating) return
+      if (isTyping(e.target)) return
 
       const key = e.key.toLowerCase()
 
-      if (key === 'n') {
+      if (key === 'enter') {
+         e.preventDefault()
+         endTurn()
+      }
+      else if (key === 'n') {
          if (window.confirm('Start new game?')) setup()
       }
       else if (key === 'c') startTurn()
@@ -184,10 +226,10 @@
       <button disabled={!deckValid && $autoMulligan} on:click={setup} title="Shortcut: N">Setup</button>
       <button on:click={reset}>Reset</button>
       <button on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
-      <button on:click={endTurn} title="End your turn: logs it, moves the turn on, and clears your Ability Used stripes">End Turn</button>
+      <button on:click={endTurn} title="End your turn (Shortcut: Enter): logs it, moves the turn on, and clears your Ability Used stripes">End Turn</button>
       <!-- hiding Pokemon is about what the other player can see; solo has no other player -->
       {#if !$solo}
-         <button on:click={switchVisibility} title="Shortcut: Z">{$pokemonHidden ? 'Show' : 'Hide'} Pokémon</button>
+         <button class="glowable" class:glow={hideGlow} on:click={switchVisibility} title="Shortcut: Z">{$pokemonHidden ? 'Show' : 'Hide'} Pokémon</button>
       {/if}
    </div>
 {/if}
@@ -225,6 +267,16 @@
 
    .game-actions button:disabled {
       @apply opacity-50;
+   }
+
+   /* Setup hides the board for you, and the button shows which one did it */
+   .game-actions button.glow {
+      animation: hide-glow 1s ease-in-out 2;
+   }
+
+   @keyframes hide-glow {
+      0%, 100% { box-shadow: 0 0 0 rgba(250, 204, 21, 0); }
+      50% { box-shadow: 0 0 14px 3px rgba(250, 204, 21, 0.9); }
    }
 
    .turn-row {

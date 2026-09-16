@@ -606,9 +606,15 @@ export function setTimer ({ running, remaining }, at = null) {
    return { running: Boolean(running), remaining: left }
 }
 
-/* entering a room starts the clock at zero; the room's own events fill it in */
-react('joinedRoom', () => timer.set({ running: false, remaining: 0, at: 0 }))
-react('createdRoom', () => timer.set({ running: false, remaining: 0, at: 0 }))
+/* entering a room starts the clock at zero, with a board that can be read */
+react('joinedRoom', () => {
+   timer.set({ running: false, remaining: 0, at: 0 })
+   pokemonHidden.set(false)
+})
+react('createdRoom', () => {
+   timer.set({ running: false, remaining: 0, at: 0 })
+   pokemonHidden.set(false)
+})
 
 /*
    Their clock: keep it. It is deliberately not passed on again - the relay logs

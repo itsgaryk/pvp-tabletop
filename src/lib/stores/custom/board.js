@@ -71,6 +71,8 @@ export function board () {
          clock or wipe the time left on it. It is cleared when a room is entered.
       */
       prizesFlipped.set(false)
+      /* a fresh board is a board you can read; Setup hides it again afterwards */
+      pokemonHidden.set(false)
 
       hand.clear()
       prizes.clear()
