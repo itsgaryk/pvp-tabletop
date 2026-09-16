@@ -3,6 +3,8 @@
    import { cardImage } from '$lib/util/assets.js'
    import cardback from '$lib/assets/cardback_int.png'
    import { defaultOpponent } from '$lib/stores/opponent.js'
+   import { solo } from '$lib/stores/solo.js'
+   import { spectating } from '$lib/stores/connection.js'
    import StatusMarker from '$lib/play/StatusMarker.svelte'
    import AbilityStripe from '$lib/play/AbilityStripe.svelte'
    const { openOppSlotDetails, openOppSlotMenu, openDetails } = getContext('boardActions')
@@ -20,8 +22,16 @@
    $: ({ pokemon, trainer, energy, damage, status, abilityUsed } = slot)
    $: top = $pokemon[ $pokemon.length - 1]
 
+   /*
+      A player only watches the far half, so a single click on its Pokemon does
+      nothing: inspecting them belongs to a spectator, and to solo, where that
+      half is yours. Right-clicking still opens the menu that records damage,
+      status and the ability use, which is a player's business.
+   */
    function onClick (e) {
       if ($pokemonHidden) return
+      if (!$spectating && !$solo) return
+
       if (e.altKey) openDetails(top)
       else openOppSlotDetails(slot)
    }

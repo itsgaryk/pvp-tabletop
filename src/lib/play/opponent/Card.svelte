@@ -3,6 +3,7 @@
    import { cardImage } from '$lib/util/assets.js'
    import cardback from '$lib/assets/cardback_int.png'
    import { solo } from '$lib/stores/solo.js'
+   import { spectating } from '$lib/stores/connection.js'
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { dragging } from '$lib/dnd/pointer.js'
@@ -16,11 +17,14 @@
    export let revealed = true
 
    /*
-      In solo the other half is yours, so its cards behave like your own: a click
-      selects, a drag picks them up, and a right click opens their menu. Online
-      none of this is wired - the cards there belong to somebody else - which is
-      what the solo guards are for.
+      A player only watches the far half: its cards are not theirs to open, click
+      or drag. Inspecting them is a spectator's job - and solo's, where that half
+      is yours. Left-click selection and dragging are wired in solo only, above.
    */
+   function onDetails () {
+      if (!$spectating && !$solo) return
+      openDetails(card)
+   }
 
    function onDragStart () {
       if (!$solo) return
@@ -54,7 +58,7 @@
 <div
    on:click={onClick}
    on:contextmenu={onCtx}
-   on:dblclick={() => openDetails(card)}
+   on:dblclick={onDetails}
    class="border-2 border-transparent rounded-md"
    class:dragged={$solo && $dragging && $selection.includes(card)}
    class:selected={$solo && $selection.includes(card)}
