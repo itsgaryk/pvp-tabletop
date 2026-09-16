@@ -52,7 +52,8 @@
 </script>
 
 {#if isOpen}
-   <div class="absolute top-0 left-0 right-0 m-8 z-20 bg-[var(--popup-color)] rounded-md border border-black"
+   <!-- as wide as what is in it, not as wide as the window -->
+   <div class="absolute top-0 left-0 m-8 z-20 bg-[var(--popup-color)] rounded-md border border-black w-max max-w-[calc(100vw-4rem)]"
       use:clickOutside on:outclick={closed}
       use:escape on:esc={closed}>
 

@@ -72,6 +72,51 @@ function logForOpponent (message) {
    publishToChat(message, 'log', OPPONENT)
 }
 
+/*
+   Moving one particular card on the other half, which is what a right click on a
+   card there offers. The card knows which pile it is in; the target is one of the
+   other half's own piles.
+*/
+export function soloMoveCard (pile, card, target, label = null) {
+   if (!pile || !card || !target) return
+
+   pile.remove(card)
+   target.push(card)
+
+   logForOpponent(`${label || 'Moved'} ${card.name || 'a card'}`)
+}
+
+/* the same, but the card goes into play as one of their Pokemon */
+export function soloCardToPlay (pile, card, where = 'bench') {
+   if (!pile || !card) return
+
+   pile.remove(card)
+   const s = slot(card)
+
+   if (where === 'active') {
+      const current = defaultOpponent.active.get()
+      if (current) defaultOpponent.bench.add(current)
+      defaultOpponent.active.set(s)
+      logForOpponent(`Moved ${card.name} to the Active spot`)
+   } else {
+      defaultOpponent.bench.add(s)
+      logForOpponent(`Put ${card.name} on the Bench`)
+   }
+}
+
+/* and the same for attaching it under their Active */
+export function soloCardAttach (pile, card) {
+   const active = defaultOpponent.active.get()
+   if (!pile || !card || !active) return
+
+   pile.remove(card)
+   const energy = String(card.supertype || '').toLowerCase() === 'energy'
+   if (energy) active.energy.push(card)
+   else active.trainer.push(card)
+
+   logForOpponent(`Attached ${card.name} to ${active.name || 'their Active'}`)
+}
+
 export function soloDraw (count = 1) {
    let drawn = 0
    for (let i = 0; i < count; i++) {
