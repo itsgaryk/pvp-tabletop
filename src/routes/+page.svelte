@@ -1,6 +1,7 @@
 <script>
    import { onMount } from 'svelte'
    import { spectating } from '$lib/stores/connection.js'
+   import { solo } from '$lib/stores/solo.js'
    import Board from '$lib/play/Board.svelte'
    import Controls from '$lib/play/Controls.svelte'
    import Connection from './Connection.svelte'
@@ -25,6 +26,11 @@
 <!-- a spectator has no deck of their own to edit -->
 {#if !$spectating}
    <DeckInput />
+
+   <!-- in solo the opponent's half is yours as well, so it gets its own deck -->
+   {#if $solo}
+      <DeckInput target="opponent" />
+   {/if}
 {/if}
 
 <div class="flex gap-2">

@@ -12,6 +12,7 @@
       createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary, roomError,
       idle, resume
    } from '$lib/stores/connection.js'
+   import { solo, startSolo, exitSolo } from '$lib/stores/solo.js'
 
    let roomId = ''
 
@@ -99,13 +100,17 @@
    }
 
    function leave () {
+      if ($solo) {
+         exitSolo()
+         return
+      }
       if (!window.confirm('Sure?')) return
       leaveRoom()
    }
 </script>
 
 <div class="p-4 min-w-[350px] w-[min(20%,500px)] flex flex-col h-screen">
-   {#if !$room}
+   {#if !$room && !$solo}
       {#if relay.state === 'error'}
          <div class="bg-red-500 text-white text-sm rounded-md p-3 mb-4">
             <div class="font-bold mb-1">Game relay unavailable</div>
@@ -121,6 +126,13 @@
       {/if}
 
       <div class="flex flex-col justify-center gap-3">
+         <!--
+            Playing both sides yourself needs no room and no relay, so it comes
+            before the name: it is the shortest way onto a board.
+         -->
+         <button class="connect" on:click={startSolo}>Play Solo</button>
+         <hr>
+
          <!-- the name is asked for first: it shows in chat and on the board -->
          <input
             class="p-2 border border-[var(--bg-color-three)] rounded-lg"
@@ -157,7 +169,7 @@
 
    {:else}
       <div class="flex flex-col gap-1 mb-5">
-         {#if !$connected}
+         {#if !$connected && !$solo}
             <div class="flex gap-3 items-center justify-center bg-yellow-400 text-black p-1 rounded-md mb-2">
                lost connection
                <Spinner />
@@ -165,21 +177,25 @@
          {/if}
 
          <div class="text-center font-bold">
-            <div class="flex items-center justify-center gap-1 text-sm text-[var(--text-color-two)]">
-               <span>{$room}</span>
-               <button
-                  class="rounded p-0.5 hover:bg-[var(--bg-color-two)]"
-                  title={copied ? 'Copied' : 'Copy room code'}
-                  aria-label="Copy room code"
-                  on:click={copyRoomCode}
-               >
-                  <Icon path={copied ? check : copy} class="text-[8px]" />
-               </button>
-            </div>
+            {#if $solo}
+               <div class="text-sm text-[var(--text-color-two)]">Solo - both sides are yours</div>
+            {:else}
+               <div class="flex items-center justify-center gap-1 text-sm text-[var(--text-color-two)]">
+                  <span>{$room}</span>
+                  <button
+                     class="rounded p-0.5 hover:bg-[var(--bg-color-two)]"
+                     title={copied ? 'Copied' : 'Copy room code'}
+                     aria-label="Copy room code"
+                     on:click={copyRoomCode}
+                  >
+                     <Icon path={copied ? check : copy} class="text-[8px]" />
+                  </button>
+               </div>
+            {/if}
          </div>
 
          <!-- the same watcher line for a player and for a spectator -->
-         {#if $spectators > 0}
+         {#if $spectators > 0 && !$solo}
             <div class="text-center text-xs text-[var(--text-color-two)]">
                {$spectators} {$spectators === 1 ? 'spectator' : 'spectators'}
             </div>
@@ -191,19 +207,24 @@
          for lazily. Saying so, with a way to catch up at once, beats a board that
          silently lags behind.
       -->
-      {#if $idle}
+      {#if $idle && !$solo}
          <div class="flex items-center gap-2 p-2 mb-2 rounded-md text-sm bg-[var(--bg-color-two)]">
             <span class="flex-1">Idle for 10 minutes - updates may be delayed.</span>
             <button class="px-2 py-1 font-bold rounded-md text-white bg-[var(--primary-color)]" on:click={resume}>Reconnect</button>
          </div>
       {/if}
 
-      <Chat />
+      <!-- there is nobody to talk to or catch up with when both sides are yours -->
+      {#if !$solo}
+         <Chat />
+      {/if}
 
       <!-- the game actions sit under the chat, so the board gets the full width -->
       <GameActions />
 
-      <button class="mt-4 text-center" on:click={leave}>{$spectating ? 'Stop Spectating' : 'Leave Room'}</button>
+      <button class="mt-4 text-center" on:click={leave}>
+         {$solo ? 'Leave Solo' : ($spectating ? 'Stop Spectating' : 'Leave Room')}
+      </button>
 
    {/if}
 </div>

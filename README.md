@@ -155,6 +155,27 @@ fifteen does not — the glow is for passing the mark). At zero it stops, the wo
 *Time on the Round!* cross the screen once, and the host writes a single line to
 the game log.
 
+### Solo mode
+
+**Play Solo** on the front panel starts a game against yourself: no room, no code
+and no chat, and because there is no relay involved it costs **no store commands
+at all** — the browser's socket is never connected. Leaving goes back to the front
+panel.
+
+Both halves of the board are yours, so the second one is playable the same way
+the first is:
+
+- **Edit Deck 2**, beside **Edit Deck**, gives the opponent's half its own deck
+  (the same decklist panel, the same import).
+- **Setup** sets up both sides — shuffle, seven cards, six prizes each.
+- The opponent's hand is face up, and its piles have menus: draw from their deck
+  (Draw, Draw X, Draw 7, Shuffle), put the top card of their hand into their
+  Active or onto their Bench, attach it to their Active, discard it or shuffle it
+  back in.
+- Their Pokémon keep the usual menu (damage, status, target) plus, in solo, move
+  it to the Bench or the Active spot, or send it and everything under it to their
+  discard.
+
 Rooms expire 6 hours after their last event, and each room keeps its most recent
 400 events.
 

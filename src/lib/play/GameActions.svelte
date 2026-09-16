@@ -13,7 +13,8 @@
       turn,
       setTurn
    } from '$lib/stores/player.js'
-   import { spectatorOpponents, spectatorFlipped } from '$lib/stores/opponent.js'
+   import { spectatorOpponents, spectatorFlipped, defaultOpponent } from '$lib/stores/opponent.js'
+   import { solo } from '$lib/stores/solo.js'
    import GameTimer from './GameTimer.svelte'
 
    /*
@@ -48,6 +49,26 @@
       }
    }
 
+   /*
+      Solo only: the same setup for the half that is normally the opponent's.
+      There is no relay to do it through, so it is done to that board directly.
+   */
+   function draw7andPutPrizesOpponent () {
+      const opp = defaultOpponent
+      opp.reset()
+
+      opp.deck.shuffle()
+      for (let i = 0; i < 7; i++) {
+         const card = opp.deck.pop()
+         if (card) opp.hand.push(card)
+      }
+
+      for (let i = 0; i < 6; i++) {
+         const card = opp.deck.pop()
+         if (card) opp.prizes.push(card)
+      }
+   }
+
    function setupBoard () {
 
       if ($autoMulligan) {
@@ -75,6 +96,9 @@
       if (!deckValid && $autoMulligan) return
       const mulligans = setupBoard()
       if ($autoMulligan) showMessage(`${mulligans} Mulligans`)
+
+      /* both sides are yours in solo, so both get set up */
+      if ($solo) draw7andPutPrizesOpponent()
 
       setTurn(0)
 

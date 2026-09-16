@@ -1,17 +1,45 @@
 <script>
+   import ContextMenu from '$lib/components/ContextMenu.svelte'
+
    export let pile
    export let name = null
+   /*
+      A menu is only wired where a caller asks for one - in solo, where the other
+      half is yours too. Online, an opponent's pile stays unclickable.
+   */
+   export let showMenu = false
    export let menu = undefined
+
+   let heading
+
+   function openMenu () {
+      if (!showMenu || !menu) return
+      const rect = heading.getBoundingClientRect()
+      menu.open(rect.left, rect.bottom)
+   }
+
+   function onCtx (e) {
+      if (!showMenu || !menu) return
+      menu.open(e.clientX, e.clientY)
+   }
 </script>
 
-<div class="p-1 rounded flex flex-col focus:outline-none relative" tabindex="0">
+<div class="p-1 rounded flex flex-col focus:outline-none relative" tabindex="0" on:contextmenu={onCtx}>
 
    {#if name}
-      <div class="count">{$pile.length}</div>
+      <div class="count" on:click={openMenu} bind:this={heading}>
+         {$pile.length}
+      </div>
    {/if}
 
    <slot></slot>
 </div>
+
+{#if showMenu}
+   <ContextMenu bind:this={menu} heading={name}>
+      <slot name="menu"></slot>
+   </ContextMenu>
+{/if}
 
 <style>
    /*
