@@ -5,6 +5,7 @@ import { resetBoard, timer } from './player.js'
 import { defaultOpponent, spectatorFlipped } from './opponent.js'
 import { slot } from './custom/cards.js'
 import { fixOld } from './oldCards.js'
+import { publishToChat } from './connection.js'
 
 /* re-exported so the rest of the app can ask in one import */
 export { solo }
@@ -61,24 +62,38 @@ export function importOpponentDeck (txt, cb, rd = false) {
 /*
    Playing for the other half. Online these things happen by their owner, over
    the relay; in solo the same person does them, so they are done to that board
-   directly and there is nothing to share.
+   directly and there is nothing to share - but they are logged, as Player 2, so
+   the log reads like a game rather than a monologue.
 */
 
+const OPPONENT = 'Player 2'
+
+function logForOpponent (message) {
+   publishToChat(message, 'log', OPPONENT)
+}
+
 export function soloDraw (count = 1) {
+   let drawn = 0
    for (let i = 0; i < count; i++) {
       const card = defaultOpponent.deck.pop()
-      if (card) defaultOpponent.hand.push(card)
+      if (card) {
+         defaultOpponent.hand.push(card)
+         drawn++
+      }
    }
+   if (drawn) logForOpponent(`Drew ${drawn} ${drawn === 1 ? 'card' : 'cards'}`)
 }
 
 export function soloShuffleDeck () {
    defaultOpponent.deck.shuffle()
+   logForOpponent('Shuffled their deck')
 }
 
 export function soloShuffleHandIntoDeck () {
    defaultOpponent.deck.merge(defaultOpponent.hand.get())
    defaultOpponent.hand.clear()
    defaultOpponent.deck.shuffle()
+   logForOpponent('Shuffled their hand into their deck')
 }
 
 /* the top card of their hand goes into play, as their Active or onto the Bench */
@@ -91,8 +106,10 @@ export function soloHandIntoPlay (where = 'bench') {
       const current = defaultOpponent.active.get()
       if (current) defaultOpponent.bench.add(current)
       defaultOpponent.active.set(s)
+      logForOpponent(`Moved ${card.name} to the Active spot`)
    } else {
       defaultOpponent.bench.add(s)
+      logForOpponent(`Put ${card.name} on the Bench`)
    }
 }
 
@@ -109,10 +126,13 @@ export function soloHandAttachToActive () {
    const energy = String(card.supertype || '').toLowerCase() === 'energy'
    if (energy) active.energy.push(card)
    else active.trainer.push(card)
+
+   logForOpponent(`Attached ${card.name} to ${active.name || 'their Active'}`)
 }
 
 /* off the board, with everything under it, into their discard */
 export function soloSlotToDiscard (s) {
+   const name = s.name
    const cards = [ ...s.pokemon.get(), ...s.energy.get(), ...s.trainer.get() ]
    defaultOpponent.discard.merge(cards)
    s.pokemon.clear()
@@ -122,6 +142,8 @@ export function soloSlotToDiscard (s) {
 
    if (defaultOpponent.active.get() === s) defaultOpponent.active.set(null)
    else defaultOpponent.bench.remove(s)
+
+   logForOpponent(`Discarded ${name || 'a Pokemon'}`)
 }
 
 export function soloSlotToActive (s) {
@@ -131,6 +153,8 @@ export function soloSlotToActive (s) {
    defaultOpponent.bench.remove(s)
    if (current) defaultOpponent.bench.add(current)
    defaultOpponent.active.set(s)
+
+   logForOpponent(`Moved ${s.name || 'a Pokemon'} to the Active spot`)
 }
 
 export function soloSlotToBench (s) {
@@ -138,4 +162,6 @@ export function soloSlotToBench (s) {
 
    defaultOpponent.active.set(null)
    defaultOpponent.bench.add(s)
+
+   logForOpponent(`Moved ${s.name || 'a Pokemon'} to the Bench`)
 }

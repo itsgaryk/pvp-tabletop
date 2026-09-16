@@ -8,7 +8,7 @@
    import { PVP_SERVER } from '$lib/util/env.js'
    import { playerName } from '$lib/stores/settings.js'
    import {
-      connected, room, spectating, spectators,
+      connected, room, spectating, spectators, chat,
       createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary, roomError,
       idle, resume
    } from '$lib/stores/connection.js'
@@ -106,6 +106,14 @@
       }
       if (!window.confirm('Sure?')) return
       leaveRoom()
+   }
+
+   /* solo's own log: the game lines, with chat left out - there is no chat */
+   $: logLines = $chat.filter((entry) => entry.type !== 'chat')
+
+   function chatTime (time) {
+      const format = { hour: '2-digit', minute: '2-digit', second: '2-digit' }
+      return (new Date(time)).toLocaleTimeString([], format)
    }
 </script>
 
@@ -214,8 +222,22 @@
          </div>
       {/if}
 
-      <!-- there is nobody to talk to or catch up with when both sides are yours -->
-      {#if !$solo}
+      <!--
+         The log, and only the log: there is nobody to chat to and nothing to
+         catch up on when both sides are yours, but what happened on the board is
+         worth keeping. It is written here rather than through the chat window so
+         that it does not depend on that window's tabs.
+      -->
+      {#if $solo}
+         <div class="solo-log">
+            {#each logLines as entry}
+               <p>
+                  <span class="who">[{entry.name || 'Player 1'}] {chatTime(entry.time)}</span>
+                  {entry.message}
+               </p>
+            {/each}
+         </div>
+      {:else}
          <Chat />
       {/if}
 
@@ -236,5 +258,19 @@
 
    button.connect:disabled {
       @apply opacity-50;
+   }
+
+   /* solo's log window, styled like the chat window's list */
+   .solo-log {
+      @apply flex-1 p-2 mb-2 border border-dark-50 rounded-md overflow-y-scroll bg-[var(--input-color)];
+      max-height: 40vh;
+   }
+
+   .solo-log p {
+      @apply break-words;
+   }
+
+   .solo-log .who {
+      @apply text-sm text-[var(--text-color-two)];
    }
 </style>
