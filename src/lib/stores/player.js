@@ -577,9 +577,9 @@ react('turnChanged', ({ turn: value }) => {
    down from that itself, so a running clock costs no traffic at all - starting,
    pausing and adding time are the only events, and both players may send them.
 
-   `at` has to be the relay's clock rather than whoever set it, or two machines
-   with slightly different clocks would disagree about a timer that is already
-   half spent. The client stamps new values with the relay time it has learned.
+   `at` is part of the value and must survive the trip unchanged: the guard below
+   compares it, and a client that thinks the state differs from its own says so
+   again - which is how two clients ended up answering each other for ever.
 */
 export function setTimer ({ running, remaining }, at = Date.now()) {
    if (isSpectator()) return
@@ -595,16 +595,18 @@ export function setTimer ({ running, remaining }, at = Date.now()) {
    return state
 }
 
-/* theirs: keep it, and say it again as our own so anyone watching us follows */
+/* entering a room starts the clock at zero; the room's own events fill it in */
+react('joinedRoom', () => timer.set({ running: false, remaining: 0, at: 0 }))
+react('createdRoom', () => timer.set({ running: false, remaining: 0, at: 0 }))
+
+/*
+   Their clock: keep it. It is deliberately not passed on again - the relay logs
+   the event for everyone, so every client sees it first-hand, and a second-hand
+   echo of an older value is how two clients ended up pausing and restarting the
+   clock at each other.
+*/
 react('timerUpdated', ({ running, remaining, at }) => {
-   const state = { running: Boolean(running), remaining: Math.max(0, Number(remaining) || 0), at: Number(at) || 0 }
-   const now = timer.get()
-
-   /* our own change coming back: do not answer it */
-   if (now.running === state.running && now.remaining === state.remaining && now.at === state.at) return
-
-   timer.set(state)
-   share('timerUpdated', state)
+   timer.set({ running: Boolean(running), remaining: Math.max(0, Number(remaining) || 0), at: Number(at) || 0 })
 })
 
 /* the same for the ability stripe, which either player can mark */

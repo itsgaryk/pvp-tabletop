@@ -146,9 +146,25 @@ there is an hour or more. A spectator sees the clock and none of the buttons.
 It is shared as a **value**, not a tick: "this many milliseconds left as of this
 timestamp". Every client counts down from that itself, so a running clock costs
 **no store commands at all** — only starting, pausing and adding time are events.
-The timestamp is the relay's clock, learned from each poll, so a spectator who
-joins halfway through works out the right amount left from the event history
-rather than starting the count again.
+
+Three things about it are deliberate, and each was a bug first:
+
+- It is the **table's** clock, so every client reads the one copy, spectator
+  included — its own board tracks it from the relayed events. Reading it from a
+  mirror meant two opinions, which disagreed the moment one was behind.
+- `at` travels with the value and must arrive unchanged. Stamping each event with
+  the relay's arrival time made two clients each think the other had changed the
+  clock; they answered each other for ever, 96 events deep in a minute.
+- No client re-shares it. The relay logs the event for everyone, so every client
+  sees it first-hand, and a second-hand echo of an older value is how the two
+  clocks ended up pausing and restarting each other.
+
+A board reset — setup, importing a deck, adopting an opponent's board state — does
+not touch the clock. It is cleared when a room is entered instead.
+
+The timestamp is the relay's clock, learned from each poll (and the join
+response), so a spectator who arrives halfway through works out the right amount
+left from the event history rather than starting the count again.
 
 Crossing fifteen minutes makes the clock glow briefly (a clock *set* below
 fifteen does not — the glow is for passing the mark). At zero it stops, the words
@@ -171,7 +187,8 @@ Both halves of the board are yours, so the second one is playable the same way
 the first is:
 
 - **Edit Deck 2**, beside **Edit Deck**, gives the opponent's half its own deck
-  (the same decklist panel, the same import).
+  through the same panel, the same import. Both panels start closed; the button is
+  how you ask for one.
 - **Setup** sets up both sides — shuffle, seven cards, six prizes each.
 - The opponent's hand is face up, and its piles have menus: draw from their deck
   (Draw, Draw X, Draw 7, Shuffle), put the top card of their hand into their

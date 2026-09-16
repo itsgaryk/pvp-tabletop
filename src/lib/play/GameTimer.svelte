@@ -2,19 +2,18 @@
    import { onMount, onDestroy } from 'svelte'
    import { timer, setTimer } from '$lib/stores/player.js'
    import { spectating, seatedPlayers, myId, publishLog, socket } from '$lib/stores/connection.js'
-   import { spectatorOpponents, spectatorFlipped } from '$lib/stores/opponent.js'
 
    /*
       The game timer. Both players can start, pause and add time to it, and it is
       shared as a value - "this many milliseconds left as of this time" - so every
       client counts down from the same number without any traffic between them.
 
-      A spectator reads it from the mirror of a player rather than its own empty
-      board, the same way the turn number is read.
+      It is the table's clock, not a board's, so every client reads the one copy:
+      a spectator's own board tracks it from the relayed events just as a player's
+      does, which is why neither reads it from a mirror. Two mirrors meant two
+      opinions, and they disagreed the moment one of them was behind.
    */
-   $: timerStore = $spectating
-      ? ($spectatorFlipped ? spectatorOpponents.bottom : spectatorOpponents.top).timer
-      : timer
+   $: timerStore = timer
 
    const MINUTE = 60 * 1000
    const GLOW_AT_MS = 15 * MINUTE

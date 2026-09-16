@@ -140,7 +140,6 @@ export function createOpponent () {
       if (state.powerMarker) powerMarker.set(state.powerMarker)
       powerMarkerUsed.set(Boolean(state.powerMarkerUsed))
       turn.set(Math.max(0, Number(state.turn) || 0))
-      if (state.timer) timer.set(state.timer)
       if (state.pokemonHidden) pokemonHidden.set(true)
       if (state.prizesFlipped) prizesFlipped.set(true)
       if (state.handRevealed) handRevealed.set(true)
