@@ -73,6 +73,16 @@ function logForOpponent (message) {
 }
 
 /*
+   Which half a pile belongs to. Cards do not cross between the halves in solo -
+   each side plays its own board - with one exception, the Stadium, which is the
+   shared zone on the table.
+*/
+export function onOpponentHalf (pile) {
+   const o = defaultOpponent
+   return Boolean(pile) && [ o.hand, o.deck, o.discard, o.lz, o.prizes, o.table, o.pickup ].includes(pile)
+}
+
+/*
    Moving one particular card on the other half, which is what a right click on a
    card there offers. The card knows which pile it is in; the target is one of the
    other half's own piles.

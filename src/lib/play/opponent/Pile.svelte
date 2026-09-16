@@ -4,7 +4,7 @@
    import { source } from '$lib/dnd/store.js'
    import { cardSelection, moveSelection } from '$lib/stores/player.js'
    import { defaultOpponent } from '$lib/stores/opponent.js'
-   import { solo, soloMoveCard, soloCardToPlay } from '$lib/stores/solo.js'
+   import { solo, soloMoveCard, soloCardToPlay, onOpponentHalf } from '$lib/stores/solo.js'
 
    export let pile
    export let name = null
@@ -33,7 +33,8 @@
       dragged from it lands here; a card dragged from your own board is handed
       over the same way the other piles accept it.
    */
-   const allowDrop = () => $solo && $source && $source !== pile
+   /* only the far half's own cards land here: nothing crosses between halves */
+   const allowDrop = () => $solo && $source && $source !== pile && onOpponentHalf($source)
 
    function onDrop () {
       if (!$solo || !$source) return
