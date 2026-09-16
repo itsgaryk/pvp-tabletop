@@ -35,9 +35,8 @@
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { dragging } from '$lib/dnd/pointer.js'
-   import { onOpponentHalf } from '$lib/stores/solo.js'
 
-   const allowDrop = () => $source && $source !== 'slot' && $source !== 'stadium' && !onOpponentHalf($source)
+   const allowDrop = () => $source && $source !== 'slot' && $source !== 'stadium'
 
    /* the action hands the pointerdown over as { e } */
    function onDragStart ({ e }) {
