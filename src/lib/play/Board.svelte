@@ -318,35 +318,35 @@
             menu inside this div and turning it upside down turns the menu with
             it. A flipped solo board puts the player's own board up here.
          -->
-         <div class="hand2" class:flip={!$spectating && !$solo} class:upright={$spectating}>
+         <div class="hand2" class:flip={!$spectating && !$solo} class:upright={$spectating || ($solo && !soloSwapped)}>
             {#if soloSwapped}<Hand />{:else}<OppHand store={topStore} />{/if}
          </div>
 
-         <div class="prizes2" class:flip={!$spectating} class:upright={$spectating}>
+         <div class="prizes2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
             {#if soloSwapped}<Prizes />{:else}<OppPrizes store={topStore} />{/if}
          </div>
 
-         <div class="deck2" class:flip={!$spectating} class:upright={$spectating}>
+         <div class="deck2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
             {#if soloSwapped}<Deck />{:else}<OppDeck store={topStore} />{/if}
          </div>
 
-         <div class="discard2" class:flip={!$spectating} class:upright={$spectating}>
+         <div class="discard2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
             {#if soloSwapped}<Discard />{:else}<OppDiscard store={topStore} />{/if}
          </div>
 
-         <div class="lz2" class:flip={!$spectating} class:upright={$spectating}>
+         <div class="lz2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
             {#if soloSwapped}<LostZone />{:else}<OppLostZone store={topStore} />{/if}
          </div>
 
-         <div class="bench2" class:flip={!$spectating} class:upright={$spectating}>
+         <div class="bench2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
             {#if soloSwapped}<Bench />{:else}<OppBench store={topStore} />{/if}
          </div>
 
-         <div class="play2" class:flip={!$spectating} class:upright={$spectating}>
+         <div class="play2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
             {#if soloSwapped}<Table />{:else}<OppTable store={topStore} />{/if}
          </div>
 
-         <div class="play">
+         <div class="play" class:upright-cards={soloSwapped}>
             {#if $spectating}
             <OppTable store={bottomStore} />
          {:else if soloSwapped}
@@ -356,11 +356,11 @@
          {/if}
          </div>
 
-         <div class="stadium2" class:flip={!$spectating} class:upright={$spectating}>
+         <div class="stadium2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
             {#if soloSwapped}<Stadium />{:else}<OppStadium store={topStore} />{/if}
          </div>
 
-         <div class="stadium">
+         <div class="stadium" class:upright-cards={soloSwapped}>
             {#if $spectating}
             <OppStadium store={bottomStore} />
          {:else if soloSwapped}
@@ -371,10 +371,10 @@
          </div>
 
          <div class="active">
-            <div class="active2" class:flip={!$spectating} class:upright={$spectating}>
+            <div class="active2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
                {#if soloSwapped}<Active />{:else}<OppActive store={topStore} />{/if}
             </div>
-            <div class="active1">
+            <div class="active1" class:upright-cards={soloSwapped}>
                {#if $spectating}
             <OppActive store={bottomStore} />
          {:else if soloSwapped}
@@ -385,7 +385,7 @@
             </div>
          </div>
 
-         <div class="bench">
+         <div class="bench" class:upright-cards={soloSwapped}>
             {#if $spectating}
             <OppBench store={bottomStore} />
          {:else if soloSwapped}
@@ -397,7 +397,7 @@
 
          <div class="veil" class:applied={$pokemonHidden}></div>
 
-         <div class="lz">
+         <div class="lz" class:upright-cards={soloSwapped}>
             {#if $spectating}
             <OppLostZone store={bottomStore} />
          {:else if soloSwapped}
@@ -407,7 +407,7 @@
          {/if}
          </div>
 
-         <div class="discard">
+         <div class="discard" class:upright-cards={soloSwapped}>
             {#if $spectating}
             <OppDiscard store={bottomStore} />
          {:else if soloSwapped}
@@ -417,7 +417,7 @@
          {/if}
          </div>
 
-         <div class="deck">
+         <div class="deck" class:upright-cards={soloSwapped}>
             {#if $spectating}
             <OppDeck store={bottomStore} />
          {:else if soloSwapped}
@@ -427,7 +427,7 @@
          {/if}
          </div>
 
-         <div class="prizes">
+         <div class="prizes" class:upright-cards={soloSwapped}>
             {#if $spectating}
             <OppPrizes store={bottomStore} />
          {:else if soloSwapped}
@@ -443,7 +443,7 @@
             a spectator's mirror of the player on the bottom half. Rotating it
             turned the cards and the menu upside down.
          -->
-         <div class="hand" class:revealed={$handRevealed && !$spectating}>
+         <div class="hand" class:revealed={$handRevealed && !$spectating} class:upright-cards={soloSwapped}>
             {#if $spectating}
             <OppHand store={bottomStore} />
          {:else if soloSwapped}
@@ -727,6 +727,19 @@
    }
 
    .upright :global(img.card) {
+      transform: scale(-1, -1);
+   }
+
+   /*
+      A flipped solo board puts the mirrored half in the bottom position, where
+      the layout is already the right way round - so its pictures and counters
+      need turning back up, but the half itself must not be rotated.
+   */
+   .upright-cards :global(img.card),
+   .upright-cards :global(.count),
+   .upright-cards :global(.counter),
+   .upright-cards :global(.marker),
+   .upright-cards :global(.ability-stripe) {
       transform: scale(-1, -1);
    }
 
