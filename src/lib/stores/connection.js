@@ -183,15 +183,19 @@ socket.on('spectatorChanged', ({ spectators: count }) => {
 
 /* Chat / Log */
 
-function updateChat (message, type, self) {
+function updateChat (message, type, self, name = null) {
    chat.update(history => {
       history.push({
          message,
          time: Date.now(),
          type,
          self,
-         /* our own lines carry our name; the relay names everyone else's */
-         name: self ? (playerName.get() || null) : null
+         /*
+            Our own lines carry our name; the relay names everyone else's. In solo
+            there is no name worth showing - both halves are the same person - so
+            the two sides are Player 1 and Player 2.
+         */
+         name: name || (self ? (solo.get() ? 'Player 1' : (playerName.get() || null)) : null)
       })
       return history
    })
@@ -202,18 +206,18 @@ function updateChat (message, type, self) {
    through share() (which refuses to act while spectating). The relay itself
    decides what a member may post.
 */
-export function publishToChat (message, type) {
+export function publishToChat (message, type, name = null) {
    /*
       In solo there is no room and no relay, but the game log still has something
       to say - setup, draws, moves - so it is written locally and nothing is sent.
    */
    if (solo.get()) {
-      updateChat(message, type, 1)
+      updateChat(message, type, 1, name)
       return
    }
 
    if (!room.get()) return
-   updateChat(message, type, 1)
+   updateChat(message, type, 1, name)
    socket.emit('chatMessage', { message, type })
 }
 
