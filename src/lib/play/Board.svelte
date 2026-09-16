@@ -226,9 +226,16 @@
       /*
          Space shows the selected card's details - the keyboard's version of
          clicking its name at the top of its menu. A selected Pokemon in play
-         counts as a card here, since that is what its name refers to.
+         counts as a card here, since that is what its name refers to. With the
+         details already up, space puts them away again.
       */
       else if (e.code === 'Space' || key === ' ') {
+         if (detailsModal.opened()) {
+            e.preventDefault()
+            detailsModal.close()
+            return
+         }
+
          const card = $cardSelection.length === 1
             ? $cardSelection[0]
             : ($slotSelection.length === 1 ? $slotSelection[0].pokemon.get().at(-1) : null)

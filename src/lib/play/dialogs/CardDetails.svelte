@@ -9,6 +9,15 @@
       card = _card
       modal.open()
    }
+
+   export function close () {
+      modal.close()
+   }
+
+   /* whether the card is on screen, so a shortcut can put it away again */
+   export function opened () {
+      return modal.opened()
+   }
 </script>
 
 <Modal bind:this={modal}>

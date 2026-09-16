@@ -36,6 +36,9 @@
       closeAll() // idk, should probably be done with some listener in ContextMenu instead
    }
    export const close = () => isOpen = false
+
+   /* whether this modal is showing, for shortcuts that toggle it */
+   export const opened = () => isOpen
 </script>
 
 {#if isOpen}

@@ -140,7 +140,12 @@ export function createOpponent () {
       if (state.powerMarker) powerMarker.set(state.powerMarker)
       powerMarkerUsed.set(Boolean(state.powerMarkerUsed))
       turn.set(Math.max(0, Number(state.turn) || 0))
-      if (state.pokemonHidden) pokemonHidden.set(true)
+      /*
+         Hiding follows the state, both ways. It used to be one-way - only ever set
+         hidden - so a board state that said "shown" left whatever was there, and a
+         half could stay hidden long after its owner had shown it.
+      */
+      pokemonHidden.set(Boolean(state.pokemonHidden))
       if (state.prizesFlipped) prizesFlipped.set(true)
       if (state.handRevealed) handRevealed.set(true)
    }

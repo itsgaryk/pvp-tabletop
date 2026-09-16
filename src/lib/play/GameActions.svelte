@@ -102,20 +102,24 @@
 
       setTurn(0)
 
-      publishLog('Setup' + ($autoMulligan ? ` - ${mulligans} Mulligans` : ''))
-      shareBoardstate()
-
       /*
          Setting up hides your Pokemon: a fresh board is not meant to be read over
          your shoulder. It does exactly what clicking Hide Pokemon does - the same
-         action, not a copy of it - and the button says so by glowing for a
-         moment, since that is the one thing the log line does not mention. Solo
-         is playing both sides yourself, so there is nobody to hide them from.
+         action, not a copy of it - and the button says so by glowing for a moment,
+         since that is the one thing the log line does not mention. Solo is playing
+         both sides yourself, so there is nobody to hide them from.
+
+         Hidden before the board is shared, not after: whoever is watching us takes
+         the state from either the event or the board state, and the board state has
+         to agree with it.
       */
       if (!$solo) {
          switchVisibility()
          glowHideButton()
       }
+
+      publishLog('Setup' + ($autoMulligan ? ` - ${mulligans} Mulligans` : ''))
+      shareBoardstate()
    }
 
    function reset () {
