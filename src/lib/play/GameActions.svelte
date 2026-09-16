@@ -107,12 +107,13 @@
 
       /*
          Setting up hides your Pokemon: a fresh board is not meant to be read over
-         your shoulder, and the button says so by glowing for a moment - it is the
-         one thing that changed that the log line does not mention. Solo is
-         playing both sides yourself, so there is nobody to hide them from.
+         your shoulder. It does exactly what clicking Hide Pokemon does - the same
+         action, not a copy of it - and the button says so by glowing for a
+         moment, since that is the one thing the log line does not mention. Solo
+         is playing both sides yourself, so there is nobody to hide them from.
       */
       if (!$solo) {
-         setVisibility(true)
+         switchVisibility()
          glowHideButton()
       }
    }

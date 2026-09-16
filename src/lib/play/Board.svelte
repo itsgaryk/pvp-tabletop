@@ -216,6 +216,22 @@
       else if (key === 't') moveSelection(deck)
       else if (key === 'm') moveSelection(deck, { bottom: true })
 
+      /*
+         Space shows the selected card's details - the keyboard's version of
+         clicking its name at the top of its menu. A selected Pokemon in play
+         counts as a card here, since that is what its name refers to.
+      */
+      else if (e.code === 'Space' || key === ' ') {
+         const card = $cardSelection.length === 1
+            ? $cardSelection[0]
+            : ($slotSelection.length === 1 ? $slotSelection[0].pokemon.get().at(-1) : null)
+
+         if (card) {
+            e.preventDefault()
+            openDetails(card)
+         }
+      }
+
       else if (key === 'q') startAE(false)
       else if (key === 'e') startAE(true)
 
