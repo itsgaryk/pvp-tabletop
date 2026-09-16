@@ -67,6 +67,23 @@
 		})
 	}
 
+   /*
+      The menu lives on the body, not where it was written. Its coordinates are
+      screen coordinates and it is positioned `fixed`, but a context menu is
+      opened from inside the board - and half the board is drawn rotated, or
+      mirrored with its cards turned back up. Inside such a half a fixed element
+      is neither fixed nor the right way up: the menu came out upside down. Moving
+      the node out of the transformed subtree lets `fixed` mean fixed.
+   */
+   function portal (node) {
+      document.body.appendChild(node)
+      return {
+         destroy () {
+            if (node.parentNode) node.parentNode.removeChild(node)
+         }
+      }
+   }
+
    $: if (isOpen) closeOthers()
 
    /* @useClickOutside
@@ -77,7 +94,7 @@
 </script>
 
 {#if isOpen}
-   <div bind:this={element} style="top: {y}px; left: {x}px;" class="z-25 relative"
+   <div bind:this={element} use:portal style="top: {y}px; left: {x}px;" class="z-25 relative"
       on:click|stopPropagation
       use:mousedownOutside={true} on:outclick={close}
       use:escape on:esc={close}>

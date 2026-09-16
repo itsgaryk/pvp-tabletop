@@ -42,6 +42,7 @@
    import OppInspection from './dialogs/OppInspection.svelte'
    import OppSlotDetails from './dialogs/OppSlotDetails.svelte'
    import OppSlotMenu from './dialogs/OppSlotMenu.svelte'
+   import OppCardMenu from './dialogs/OppCardMenu.svelte'
 
    import {
       hand, deck, discard, prizes, lz, table, stadium,
@@ -123,6 +124,7 @@
    let oppInspectionModal
    let oppSlotModal
    let oppSlotMenu
+   let oppCardMenu
 
    function openPile (pile) {
       inspectionModal.open(pile)
@@ -173,6 +175,11 @@
       oppSlotMenu.open(x, y, slot, active)
    }
 
+   /* a single card on the far half, which is only reachable in solo */
+   function openOppCardMenu (x, y, pile, card) {
+      oppCardMenu.open(x, y, pile, card)
+   }
+
    function startAE (evo = false) { // attach / evolve
       // close any open Deck or Discard pile, so that you can select the pokemon on board
       inspectionModal.close()
@@ -185,7 +192,7 @@
       openSelection,
       openSlotDetails, openOppSlotDetails,
       openDetails, showMessage,
-      openCardMenu, openSlotMenu, openOppSlotMenu,
+      openCardMenu, openSlotMenu, openOppSlotMenu, openOppCardMenu,
       startAE
    })
 
@@ -283,6 +290,7 @@
       <OppInspection bind:this={oppInspectionModal} />
       <OppSlotDetails bind:this={oppSlotModal} />
       <OppSlotMenu bind:this={oppSlotMenu} />
+      <OppCardMenu bind:this={oppCardMenu} />
 
       <!--
          Whose board is on each half. The top player's label sits on the right,
