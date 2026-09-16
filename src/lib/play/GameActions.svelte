@@ -122,13 +122,7 @@
       shareBoardstate()
    }
 
-   function reset () {
-      resetBoard()
-      setTurn(0)
 
-      share('boardReset')
-      publishLog('Reset')
-   }
 
    /* the turn counter only counts: drawing for the turn is the player's job */
    function startTurn () {
@@ -229,13 +223,12 @@
    -->
    <div class="game-actions">
       <button disabled={!deckValid && $autoMulligan} on:click={setup} title="Shortcut: N">Setup</button>
-      <button on:click={reset}>Reset</button>
-      <button on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
-      <button on:click={endTurn} title="End your turn (Shortcut: Enter): logs it, moves the turn on, and clears your Ability Used stripes">End Turn</button>
       <!-- hiding Pokemon is about what the other player can see; solo has no other player -->
       {#if !$solo}
          <button class="glowable" class:glow={hideGlow} on:click={switchVisibility} title="Shortcut: Z">{$pokemonHidden ? 'Show' : 'Hide'} Pokémon</button>
       {/if}
+      <button on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
+      <button on:click={endTurn} title="End your turn (Shortcut: Enter): logs it, moves the turn on, and clears your Ability Used stripes">End Turn</button>
    </div>
 {/if}
 
