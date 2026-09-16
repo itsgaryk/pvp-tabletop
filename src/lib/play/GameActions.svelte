@@ -185,7 +185,10 @@
       <button on:click={reset}>Reset</button>
       <button on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
       <button on:click={endTurn} title="End your turn: logs it, moves the turn on, and clears your Ability Used stripes">End Turn</button>
-      <button on:click={switchVisibility} title="Shortcut: Z">{$pokemonHidden ? 'Show' : 'Hide'} Pokémon</button>
+      <!-- hiding Pokemon is about what the other player can see; solo has no other player -->
+      {#if !$solo}
+         <button on:click={switchVisibility} title="Shortcut: Z">{$pokemonHidden ? 'Show' : 'Hide'} Pokémon</button>
+      {/if}
    </div>
 {/if}
 
@@ -203,8 +206,13 @@
    {/if}
 </div>
 
-<!-- the table's clock, under the turn, and only in a room -->
-<GameTimer />
+<!--
+   The table's clock, under the turn, and only in a room. Not in solo: a clock
+   against yourself is not a clock.
+-->
+{#if !$solo}
+   <GameTimer />
+{/if}
 
 <style>
    .game-actions {

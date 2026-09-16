@@ -27,11 +27,18 @@
 export const ROOM_TTL_S = 60 * 60 * 6 // rooms are dropped 6h after the last write
 export const MAX_EVENTS = 400 // events kept per room
 
+/*
+   Presence lives in the members hash beside the members themselves, under a
+   prefixed field name, so a poll's "still here" is one HSET and nothing else.
+*/
+const SEEN_PREFIX = 'seen:'
+const seenField = (memberId) => SEEN_PREFIX + memberId
+
 /* ------------------------------------------------------------------ memory -- */
 
 function memoryStore () {
    const globalKey = Symbol.for('pvp-tabletop.relay.rooms2')
-   const db = (globalThis[globalKey] ||= { meta: new Map(), seq: new Map(), events: new Map(), members: new Map() })
+   const db = (globalThis[globalKey] ||= { meta: new Map(), seq: new Map(), events: new Map(), members: new Map(), seen: new Map() })
 
    const mkey = (id, mid) => `${id}|${mid}`
 
@@ -84,11 +91,18 @@ function memoryStore () {
       },
       async delMember (id, mid) {
          db.members.delete(mkey(id, mid))
+         db.seen.delete(mkey(id, mid))
+      },
+      /* presence is its own mark, so refreshing it never rewrites the member */
+      async touchMember (id, mid, at) {
+         db.seen.set(mkey(id, mid), at)
       },
       async listMembers (id) {
          const out = []
          for (const [key, member] of db.members) {
-            if (key.startsWith(id + '|')) out.push({ id: key.slice(id.length + 1), ...member })
+            if (key.startsWith(id + '|')) {
+               out.push({ id: key.slice(id.length + 1), ...member, lastSeen: Math.max(member.lastSeen || 0, db.seen.get(key) || 0) })
+            }
          }
          return out
       }
@@ -201,17 +215,36 @@ function redisRestStore (url, token) {
          return raw ? JSON.parse(raw) : null
       },
       async delMember (id, mid) {
-         await command('HDEL', k.members(id), mid)
+         await command('HDEL', k.members(id), mid, seenField(mid))
+      },
+      /*
+         One command, not three. Presence changes on every poll of every client,
+         so it is kept as its own field rather than read-modify-writing the whole
+         member record: touching it is a single HSET, and two clients touching at
+         once cannot lose each other's role or name.
+      */
+      async touchMember (id, mid, at) {
+         await command('HSET', k.members(id), seenField(mid), String(at))
       },
       async listMembers (id) {
          const flat = await command('HGETALL', k.members(id))
          if (!flat || !flat.length) return []
 
-         const out = []
+         const members = []
+         const seen = new Map()
          for (let i = 0; i < flat.length; i += 2) {
-            out.push({ id: flat[i], ...(flat[i + 1] ? JSON.parse(flat[i + 1]) : {}) })
+            const field = flat[i]
+            if (field.startsWith(SEEN_PREFIX)) {
+               seen.set(field.slice(SEEN_PREFIX.length), Number(flat[i + 1]) || 0)
+               continue
+            }
+            members.push({ id: field, ...(flat[i + 1] ? JSON.parse(flat[i + 1]) : {}) })
          }
-         return out
+
+         for (const member of members) {
+            member.lastSeen = Math.max(member.lastSeen || 0, seen.get(member.id) || 0)
+         }
+         return members
       }
    }
 }
@@ -486,9 +519,7 @@ export async function touchMember (roomId, memberId) {
    const store = getStore()
    const id = normalizeRoomId(roomId)
 
-   const member = await store.getMember(id, memberId)
-   if (!member) return
-   await store.setMember(id, memberId, { ...member, lastSeen: Date.now() })
+   await store.touchMember(id, memberId, Date.now())
 }
 
 export async function removeMember (roomId, memberId) {

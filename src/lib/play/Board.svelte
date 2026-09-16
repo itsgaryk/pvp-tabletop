@@ -5,6 +5,7 @@
    import { pick, shuffle, pokemonHidden, handRevealed } from '$lib/stores/player.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import { defaultOpponent, spectatorOpponents, spectatorFlipped } from '$lib/stores/opponent.js'
+   import { solo } from '$lib/stores/solo.js'
    import { playerName, zoneBorders } from '$lib/stores/settings.js'
    import { message } from '$lib/stores/message.js'
 
@@ -62,6 +63,13 @@
       their assignment live in the opponent store, and a spectator can swap the
       two halves for itself without telling anyone.
    */
+   /*
+      In solo both halves are the same person, so the flip swaps them: your own
+      board moves to the top half and the mirror of the other side comes down.
+      Same control, same store as a spectator's flip.
+   */
+   $: soloSwapped = $solo && $spectatorFlipped
+
    $: topStore = $spectating
       ? ($spectatorFlipped ? spectatorOpponents.bottom : spectatorOpponents.top)
       : defaultOpponent
@@ -90,10 +98,18 @@
       other. Either way the marker is the one belonging to the player on that
       half, so flipping a spectator's board carries it along.
    */
-   $: topMarker = $spectating ? topStore.powerMarker : defaultOpponent.powerMarker
-   $: bottomMarker = $spectating ? bottomStore.powerMarker : myPowerMarker
-   $: topUsed = $spectating ? topStore.powerMarkerUsed : defaultOpponent.powerMarkerUsed
-   $: bottomUsed = $spectating ? bottomStore.powerMarkerUsed : myPowerMarkerUsed
+   $: topMarker = $spectating
+      ? topStore.powerMarker
+      : (soloSwapped ? myPowerMarker : defaultOpponent.powerMarker)
+   $: bottomMarker = $spectating
+      ? bottomStore.powerMarker
+      : (soloSwapped ? defaultOpponent.powerMarker : myPowerMarker)
+   $: topUsed = $spectating
+      ? topStore.powerMarkerUsed
+      : (soloSwapped ? myPowerMarkerUsed : defaultOpponent.powerMarkerUsed)
+   $: bottomUsed = $spectating
+      ? bottomStore.powerMarkerUsed
+      : (soloSwapped ? defaultOpponent.powerMarkerUsed : myPowerMarkerUsed)
    $: markerImage = (marker) => marker === 'vstar' ? '/vstar.png' : '/gx.png'
 
    let inspectionModal
@@ -297,50 +313,58 @@
             hand, its counts above the bar, and the right spacing around both. A
             spectator sees both halves, so its copy of this half is laid out the
             same way and the cards are turned back up again ("upright").
+
+            In solo the hands are never rotated, because a hand carries its pile
+            menu inside this div and turning it upside down turns the menu with
+            it. A flipped solo board puts the player's own board up here.
          -->
-         <div class="hand2" class:flip={!$spectating} class:upright={$spectating}>
-            <OppHand store={topStore} />
+         <div class="hand2" class:flip={!$spectating && !$solo} class:upright={$spectating}>
+            {#if soloSwapped}<Hand />{:else}<OppHand store={topStore} />{/if}
          </div>
 
          <div class="prizes2" class:flip={!$spectating} class:upright={$spectating}>
-            <OppPrizes store={topStore} />
+            {#if soloSwapped}<Prizes />{:else}<OppPrizes store={topStore} />{/if}
          </div>
 
          <div class="deck2" class:flip={!$spectating} class:upright={$spectating}>
-            <OppDeck store={topStore} />
+            {#if soloSwapped}<Deck />{:else}<OppDeck store={topStore} />{/if}
          </div>
 
          <div class="discard2" class:flip={!$spectating} class:upright={$spectating}>
-            <OppDiscard store={topStore} />
+            {#if soloSwapped}<Discard />{:else}<OppDiscard store={topStore} />{/if}
          </div>
 
          <div class="lz2" class:flip={!$spectating} class:upright={$spectating}>
-            <OppLostZone store={topStore} />
+            {#if soloSwapped}<LostZone />{:else}<OppLostZone store={topStore} />{/if}
          </div>
 
          <div class="bench2" class:flip={!$spectating} class:upright={$spectating}>
-            <OppBench store={topStore} />
+            {#if soloSwapped}<Bench />{:else}<OppBench store={topStore} />{/if}
          </div>
 
          <div class="play2" class:flip={!$spectating} class:upright={$spectating}>
-            <OppTable store={topStore} />
+            {#if soloSwapped}<Table />{:else}<OppTable store={topStore} />{/if}
          </div>
 
          <div class="play">
             {#if $spectating}
             <OppTable store={bottomStore} />
+         {:else if soloSwapped}
+            <OppTable store={topStore} />
          {:else}
             <Table />
          {/if}
          </div>
 
          <div class="stadium2" class:flip={!$spectating} class:upright={$spectating}>
-            <OppStadium store={topStore} />
+            {#if soloSwapped}<Stadium />{:else}<OppStadium store={topStore} />{/if}
          </div>
 
          <div class="stadium">
             {#if $spectating}
             <OppStadium store={bottomStore} />
+         {:else if soloSwapped}
+            <OppStadium store={topStore} />
          {:else}
             <Stadium />
          {/if}
@@ -348,11 +372,13 @@
 
          <div class="active">
             <div class="active2" class:flip={!$spectating} class:upright={$spectating}>
-               <OppActive store={topStore} />
+               {#if soloSwapped}<Active />{:else}<OppActive store={topStore} />{/if}
             </div>
             <div class="active1">
                {#if $spectating}
             <OppActive store={bottomStore} />
+         {:else if soloSwapped}
+            <OppActive store={topStore} />
          {:else}
             <Active />
          {/if}
@@ -362,6 +388,8 @@
          <div class="bench">
             {#if $spectating}
             <OppBench store={bottomStore} />
+         {:else if soloSwapped}
+            <OppBench store={topStore} />
          {:else}
             <Bench />
          {/if}
@@ -372,6 +400,8 @@
          <div class="lz">
             {#if $spectating}
             <OppLostZone store={bottomStore} />
+         {:else if soloSwapped}
+            <OppLostZone store={topStore} />
          {:else}
             <LostZone />
          {/if}
@@ -380,6 +410,8 @@
          <div class="discard">
             {#if $spectating}
             <OppDiscard store={bottomStore} />
+         {:else if soloSwapped}
+            <OppDiscard store={topStore} />
          {:else}
             <Discard />
          {/if}
@@ -388,6 +420,8 @@
          <div class="deck">
             {#if $spectating}
             <OppDeck store={bottomStore} />
+         {:else if soloSwapped}
+            <OppDeck store={topStore} />
          {:else}
             <Deck />
          {/if}
@@ -396,6 +430,8 @@
          <div class="prizes">
             {#if $spectating}
             <OppPrizes store={bottomStore} />
+         {:else if soloSwapped}
+            <OppPrizes store={topStore} />
          {:else}
             <Prizes />
          {/if}
@@ -410,6 +446,8 @@
          <div class="hand" class:revealed={$handRevealed && !$spectating}>
             {#if $spectating}
             <OppHand store={bottomStore} />
+         {:else if soloSwapped}
+            <OppHand store={topStore} />
          {:else}
             <Hand />
          {/if}
