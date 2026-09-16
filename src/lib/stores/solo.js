@@ -74,12 +74,19 @@ function logForOpponent (message) {
 
 /*
    Which half a pile belongs to. Cards do not cross between the halves in solo -
-   each side plays its own board - with one exception, the Stadium, which is the
-   shared zone on the table.
+   each side plays its own board - with two exceptions, the Stadium and the table,
+   which are the shared zones on the table. This is asked on every drag while the
+   pointer is moving, so it answers false rather than throwing at anything it does
+   not recognise: a drag that cannot be judged is a drag that is not allowed.
 */
 export function onOpponentHalf (pile) {
+   if (!pile || typeof pile !== 'object') return false
+
    const o = defaultOpponent
-   return Boolean(pile) && [ o.hand, o.deck, o.discard, o.lz, o.prizes, o.table, o.pickup ].includes(pile)
+   if (!o) return false
+
+   return [ o.hand, o.deck, o.discard, o.lz, o.prizes, o.table, o.pickup ]
+      .some((own) => own && own === pile)
 }
 
 /*
