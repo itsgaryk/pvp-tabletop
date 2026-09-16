@@ -8,10 +8,10 @@
       shared as a value - "this many milliseconds left as of this time" - so every
       client counts down from the same number without any traffic between them.
 
-      It is the table's clock, not a board's, so every client reads the one copy:
-      a spectator's own board tracks it from the relayed events just as a player's
-      does, which is why neither reads it from a mirror. Two mirrors meant two
-      opinions, and they disagreed the moment one of them was behind.
+      The store holds that value in this browser's own clock (the store converts
+      it as it arrives), so the countdown below is plain local time and cannot
+      stutter as the relay's clock is re-estimated. It is the table's clock rather
+      than a board's, so a spectator reads the same copy a player does.
    */
    $: timerStore = timer
 
@@ -20,7 +20,7 @@
    const TICK_MS = 250
 
    /* the relay's clock, which is what `at` is measured in */
-   let now = socket.serverNow()
+   let now = Date.now()
    let ticker
 
    let glowing = false
@@ -61,7 +61,7 @@
    }
 
    function tick () {
-      now = socket.serverNow()
+      now = Date.now()
       const left = remainingAt($timerStore, now)
 
       /*
@@ -109,14 +109,14 @@
    $: if ($timerStore.running) expired = false
 
    function toggle () {
-      const left = remainingAt($timerStore, socket.serverNow())
+      const left = remainingAt($timerStore, Date.now())
       if (left <= 0) return
 
       setTimer({ running: !$timerStore.running, remaining: left }, socket.serverNow())
    }
 
    function add (minutes) {
-      const left = remainingAt($timerStore, socket.serverNow())
+      const left = remainingAt($timerStore, Date.now())
       setTimer({ running: $timerStore.running, remaining: left + minutes * MINUTE }, socket.serverNow())
    }
 

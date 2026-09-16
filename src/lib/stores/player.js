@@ -2,7 +2,7 @@ import { get, post } from '$lib/util/fetch-web.js'
 import { board } from './custom/board.js'
 import { pile, slot } from './custom/cards.js'
 import { writable } from './custom/writable.js'
-import { share, react, publishLog, spectating } from './connection.js'
+import { share, react, publishLog, spectating, socket } from './connection.js'
 import { fixOld } from './oldCards.js'
 import { s } from '$lib/util/strings.js'
 import { statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
@@ -577,22 +577,33 @@ react('turnChanged', ({ turn: value }) => {
    down from that itself, so a running clock costs no traffic at all - starting,
    pausing and adding time are the only events, and both players may send them.
 
-   `at` is part of the value and must survive the trip unchanged: the guard below
-   compares it, and a client that thinks the state differs from its own says so
-   again - which is how two clients ended up answering each other for ever.
+   On the wire `at` is the relay's clock, because the two players' own clocks may
+   not agree. Locally it is this browser's clock, because a countdown has to be
+   smooth: the relay's clock here is an estimate, re-measured on every poll, so a
+   second that shrinks or stretches by a round trip makes the display stutter. A
+   value is therefore converted once, on arrival, and everything after that is
+   plain local time.
 */
-export function setTimer ({ running, remaining }, at = Date.now()) {
+function localTimer ({ running, remaining, at }) {
+   const left = Math.max(0, Number(remaining) || 0)
+   const setAt = Number(at) || socket.serverNow()
+   const spent = running ? Math.max(0, socket.serverNow() - setAt) : 0
+
+   return { running: Boolean(running), remaining: Math.max(0, left - spent), at: Date.now() }
+}
+
+export function setTimer ({ running, remaining }, at = null) {
    if (isSpectator()) return
 
-   const state = {
-      running: Boolean(running),
-      remaining: Math.max(0, Number(remaining) || 0),
-      at: Number(at) || Date.now()
-   }
+   const left = Math.max(0, Number(remaining) || 0)
 
-   timer.set(state)
-   share('timerUpdated', state)
-   return state
+   /* ours to keep locally, in this browser's clock */
+   timer.set({ running: Boolean(running), remaining: left, at: Date.now() })
+
+   /* theirs to read, in the clock everyone shares */
+   share('timerUpdated', { running: Boolean(running), remaining: left, at: at ?? socket.serverNow() })
+
+   return { running: Boolean(running), remaining: left }
 }
 
 /* entering a room starts the clock at zero; the room's own events fill it in */
@@ -605,9 +616,7 @@ react('createdRoom', () => timer.set({ running: false, remaining: 0, at: 0 }))
    echo of an older value is how two clients ended up pausing and restarting the
    clock at each other.
 */
-react('timerUpdated', ({ running, remaining, at }) => {
-   timer.set({ running: Boolean(running), remaining: Math.max(0, Number(remaining) || 0), at: Number(at) || 0 })
-})
+react('timerUpdated', (state) => timer.set(localTimer(state)))
 
 /* the same for the ability stripe, which either player can mark */
 react('abilityUpdated', ({ slotId, used }) => {

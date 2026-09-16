@@ -162,9 +162,16 @@ Three things about it are deliberate, and each was a bug first:
 A board reset — setup, importing a deck, adopting an opponent's board state — does
 not touch the clock. It is cleared when a room is entered instead.
 
-The timestamp is the relay's clock, learned from each poll (and the join
-response), so a spectator who arrives halfway through works out the right amount
-left from the event history rather than starting the count again.
+The timestamp travels as the relay's clock — learned from each poll and the join
+response — because two players' own clocks may not agree, which is what lets a
+spectator arriving halfway through work out the right amount left from the event
+history. Locally it is **converted once, on arrival, into this browser's clock**,
+and the countdown runs from that: the relay's clock here is an estimate
+re-estimated on every poll, and a second that stretches by a round trip makes the
+display stutter.
+
+In solo, the opponent's half is laid out with the same `upright` class a
+spectator's top half uses — same bar and count placement, cards turned back up.
 
 Crossing fifteen minutes makes the clock glow briefly (a clock *set* below
 fifteen does not — the glow is for passing the mark). At zero it stops, the words
