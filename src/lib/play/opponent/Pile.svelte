@@ -34,13 +34,22 @@
       over the same way the other piles accept it.
    */
    /* only the far half's own cards land here: nothing crosses between halves */
-   const allowDrop = () => $solo && $source && $source !== pile && onOpponentHalf($source)
+   /* the far half's own cards land here - and, on the table, yours too: it is a shared zone */
+   const shared = () => pile === defaultOpponent.table
+   const allowDrop = () => $solo && $source && $source !== pile && (onOpponentHalf($source) || shared())
 
    function onDrop () {
       if (!$solo || !$source) return
 
       const cards = [ ...$cardSelection ]
       if (!cards.length) return
+
+      /* a card of yours dropped on their table: it goes there, since the table is shared */
+      if (!onOpponentHalf($source)) {
+         moveSelection(pile)
+         cardSelection.clear()
+         return
+      }
 
       for (const card of cards) {
          if (pile === defaultOpponent.bench) soloCardToPlay($source, card, 'bench')

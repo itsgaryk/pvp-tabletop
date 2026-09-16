@@ -4,7 +4,7 @@
    import { down } from '$lib/icons/paths.js'
    import Icon from '$lib/components/Icon.svelte'
 
-   import { selectPile, moveSelection, resetSelection } from '$lib/stores/player.js'
+   import { selectPile, moveSelection, resetSelection, table } from '$lib/stores/player.js'
 
    export let pile
    export let name = null
@@ -17,8 +17,12 @@
    import { source } from '$lib/dnd/store.js'
    import { onOpponentHalf } from '$lib/stores/solo.js'
 
-   /* in solo, a card from the far half is not yours to move onto your own piles */
-   const allowDrop = () => $source && $source !== pile && !onOpponentHalf($source)
+   /*
+      In solo a card from the far half is not yours to move onto your own piles -
+      except on the table, which is one of the two zones the halves share.
+   */
+   const shared = () => pile === table
+   const allowDrop = () => $source && $source !== pile && (shared() || !onOpponentHalf($source))
 
    function onDragDrop () {
       moveSelection(pile)
