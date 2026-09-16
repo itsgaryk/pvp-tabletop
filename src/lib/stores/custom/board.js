@@ -64,7 +64,12 @@ export function board () {
       powerMarker.set('none')
       powerMarkerUsed.set(false)
       turn.set(0)
-      timer.set({ running: false, remaining: 0, at: 0 })
+      /*
+         The timer is deliberately not touched here. It is the table's clock
+         rather than this board's state, and resetting a board - setting up,
+         importing a deck, adopting an opponent's board state - must not stop the
+         clock or wipe the time left on it. It is cleared when a room is entered.
+      */
       prizesFlipped.set(false)
 
       hand.clear()
@@ -104,7 +109,6 @@ export function board () {
          powerMarker: powerMarker.get(),
          powerMarkerUsed: powerMarkerUsed.get(),
          turn: turn.get(),
-         timer: timer.get(),
          prizesFlipped: prizesFlipped.get(),
          handRevealed: handRevealed.get(),
          pokemonHidden: pokemonHidden.get()

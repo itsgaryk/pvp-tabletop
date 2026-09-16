@@ -1,7 +1,7 @@
 import { get, post } from '$lib/util/fetch-web.js'
 import { writable } from './custom/writable.js'
 import { solo } from './soloState.js'
-import { resetBoard } from './player.js'
+import { resetBoard, timer } from './player.js'
 import { defaultOpponent, spectatorFlipped } from './opponent.js'
 import { slot } from './custom/cards.js'
 import { fixOld } from './oldCards.js'
@@ -28,6 +28,7 @@ export function startSolo () {
    resetBoard()
    defaultOpponent.reset()
    spectatorFlipped.set(false)
+   timer.set({ running: false, remaining: 0, at: 0 })
    solo.set(true)
 }
 
@@ -35,6 +36,7 @@ export function exitSolo () {
    resetBoard()
    defaultOpponent.reset()
    spectatorFlipped.set(false)
+   timer.set({ running: false, remaining: 0, at: 0 })
    solo.set(false)
 }
 

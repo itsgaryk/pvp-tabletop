@@ -14,10 +14,10 @@
    $: importInto = opponent ? importOpponentDeck : importDeck
 
    /*
-      The player's own panel opens on arrival; the second one waits to be asked
-      for, so it does not cover the first.
+      Closed to begin with, both panels: the deck button is how you ask for it,
+      and the second one would otherwise land on top of the first.
    */
-   let isOpen = !opponent
+   let isOpen = false
 
    let txt = ''
    let response = ''

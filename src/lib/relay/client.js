@@ -147,11 +147,10 @@ export class HttpSocket {
    }
 
    /*
-      The relay's clock, as this browser understands it. Polls carry the server's
-      own `now`, so a client can tell how long ago a replayed event happened -
-      which is what lets a game timer arriving with a late joiner's history still
-      count down correctly. Only the difference matters, and it is re-estimated on
-      every poll.
+      The relay's clock, as this browser understands it: polls carry the server's
+      own `now`, so a client can age a timer that was set elsewhere and count it
+      down in step with everyone else, whatever the two machines' clocks say. Only
+      the difference matters, and it is re-estimated on every poll.
    */
    serverNow () {
       return Date.now() + this.skew
@@ -375,25 +374,15 @@ export class HttpSocket {
       handler can choose to ignore its own action instead of applying it twice
       - which is what made a message appear twice in the log.
    */
-   /*
-      The relay's timestamp for an event, in this browser's clock - so a client
-      can tell how long ago it happened. An event with no timestamp (or one from
-      before the relay stamped them) is simply "now".
-   */
-   relayTime (event) {
-      return typeof event.ts === 'number' ? event.ts + this.skew : Date.now()
-   }
-
    apply (event) {
       const self = Boolean(event.from) && event.from === this.id
       /*
-         Every applied event carries `at`: the relay's clock time for it, as this
-         browser understands it. A client that cares how long ago something
-         happened - the game timer counting down from a replayed event - needs
-         that rather than its own clock.
+         The event's own data goes through untouched. It has to: a game timer
+         arrives carrying `at`, the moment it was set, and overwriting that with
+         the event's timestamp made two clients each think the other had changed
+         the clock - so they answered each other, for ever.
       */
-      const data = event.ts ? { ...event.data, at: this.relayTime(event) } : event.data
-      this.deliver(event.name, data, { meta: event, self })
+      this.deliver(event.name, event.data, { meta: event, self })
    }
 
    /* ------------------------------------------------------------------- wire -- */
