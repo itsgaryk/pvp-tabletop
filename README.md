@@ -264,7 +264,7 @@ least once.
 | Question | Where the answer is |
 | --- | --- |
 | "What actually happened in that room?" | `node tools/room-log.mjs <ROOM>` |
-| "Is it the state or the client?" | the app's `/diagnostics` screen |
+| "Is it the state or the client?" | Settings -> Diagnostics (also at `/diagnostics`) |
 | "Has my change actually shipped?" | `node tools/deployed.mjs --url <app> <marker>` |
 
 ### A room's story: `tools/room-log.mjs`
@@ -305,12 +305,21 @@ relay records no presence for it and spends no writes. Reading a small room cost
 four commands (two `GET`, one `LRANGE`, one `HGETALL`) and a room larger than one
 poll page costs one extra round.
 
-### The `/diagnostics` screen
+### The diagnostics panel
 
-`/diagnostics` is a live snapshot of *this browser*: relay health and the poll
-settings the deployment is running, the room and its role, the seats in join
-order, the spectator count, the clock skew against the relay, the boards' zone
-counts, and the last events the transport delivered.
+Open it from **Settings -> Diagnostics**. It appears as a dialog over the board,
+which is deliberate: diagnostics are wanted while a game looks wrong, and going to
+another page reloads the app and rebuilds the board - so the thing being diagnosed
+would be gone. Pressing the cog, Escape or a click outside closes it.
+
+The same panel is also served at `/diagnostics` as a standalone page, which is
+handy for a bug report or for looking at things with no game open. Both render one
+component, so they cannot drift apart.
+
+It is a live snapshot of *this browser*: relay health and the poll settings the
+deployment is running, the room and its role, the seats in join order, the
+spectator count, the clock skew against the relay, the boards' zone counts, and
+the last events the transport delivered.
 
 The section that earns its place is the event list:
 
