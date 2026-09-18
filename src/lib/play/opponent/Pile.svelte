@@ -2,10 +2,14 @@
    import ContextMenu from '$lib/components/ContextMenu.svelte'
    import { ctrlA } from '$lib/actions/customEvents.js'
    import { dnd } from '$lib/dnd/actions.js'
-   import { source } from '$lib/dnd/store.js'
+   import { source, draggedCard } from '$lib/dnd/store.js'
    import { cardSelection, moveSelection, resetSelection, selectPile } from '$lib/stores/player.js'
    import { defaultOpponent } from '$lib/stores/opponent.js'
-   import { solo, soloMoveCard, soloCardToPlay, onOpponentHalf } from '$lib/stores/solo.js'
+   import {
+      solo, soloMoveCard, soloCardToPlay,
+      soloSlotToDiscard, soloSlotToPile,
+      onOpponentHalf, onOpponentSlot
+   } from '$lib/stores/solo.js'
 
    export let pile
    export let name = null
@@ -43,10 +47,25 @@
    /* only the far half's own cards land here: nothing crosses between halves */
    /* the far half's own cards land here - and, on the table, yours too: it is a shared zone */
    const shared = () => pile === defaultOpponent.table
-   const allowDrop = () => $solo && $source && $source !== pile && (onOpponentHalf($source) || shared())
+   const allowDrop = () => $solo && $source && $source !== pile && (
+      onOpponentHalf($source) ||
+      shared() ||
+      ($source === 'slot' && onOpponentSlot($draggedCard))
+   )
 
    function onDrop () {
       if (!$solo || !$source) return
+
+      /* a Pokemon in play dropped on a pile goes there with everything under it */
+      if ($source === 'slot') {
+         const s = $draggedCard
+         if (onOpponentSlot(s)) {
+            if (pile === defaultOpponent.discard) soloSlotToDiscard(s)
+            else soloSlotToPile(s, pile, name || 'pile')
+         }
+         resetSelection()
+         return
+      }
 
       const cards = [ ...$cardSelection ]
       if (!cards.length) return

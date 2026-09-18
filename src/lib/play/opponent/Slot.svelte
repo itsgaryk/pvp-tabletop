@@ -18,7 +18,7 @@
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { dragging } from '$lib/dnd/pointer.js'
 
-   const { openOppSlotDetails, openOppSlotMenu, openDetails, openOppCardMenu } = getContext('boardActions')
+   const { openOppSlotDetails, openOppSlotMenu, openSlotDetails, openDetails, openOppCardMenu } = getContext('boardActions')
 
    /* which player's board this component shows */
    export let store = defaultOpponent
@@ -91,7 +91,7 @@
       if ($solo) {
          if ($attaching || $evolving) soloSlotAttach(slot, $evolving)
          else if (e.altKey) openDetails(top)
-         else if (e.shiftKey) openOppSlotDetails(slot)
+         else if (e.shiftKey) openSlotDetails(slot)
          else selectSlot(slot, holdingCtrlOrCmd(e))
          return
       }
@@ -103,12 +103,13 @@
    /*
       Double clicking a Pokemon in play shows the card itself, whoever is looking:
       it is on the table, not in a hand. In solo the whole slot is yours, so it
-      opens the slot's contents the way it does on your own half.
+      opens what double clicking your own half's Pokemon opens - the Pokemon's
+      moves and abilities, its damage, and the cards under it.
    */
    function onDblClick () {
       if ($pokemonHidden || !top) return
 
-      if ($solo) openOppSlotDetails(slot)
+      if ($solo) openSlotDetails(slot)
       else openDetails(top)
    }
 

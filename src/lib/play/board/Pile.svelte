@@ -14,9 +14,17 @@
    /* DnD */
 
    import { dnd } from '$lib/dnd/actions.js'
-   import { source } from '$lib/dnd/store.js'
+   import { source, draggedCard } from '$lib/dnd/store.js'
+   import { solo, onOpponentSlot } from '$lib/stores/solo.js'
 
-   const allowDrop = () => $source && $source !== pile
+   /*
+      A card of the player's own, or - on the table, which both halves share - one
+      of the far half's. A Pokemon in play on the far half is not: moving one of
+      those is that half's own business (its piles accept the drop), and dropping
+      it here would leave the far half still holding what it carries.
+   */
+   const allowDrop = () => $source && $source !== pile &&
+      !($solo && $source === 'slot' && onOpponentSlot($draggedCard))
 
    function onDragDrop () {
       moveSelection(pile)

@@ -5,6 +5,10 @@
    import { share } from '$lib/stores/connection.js'
    import { logMove } from '$lib/stores/logger.js'
    import { STATUSES, statusesOn } from '$lib/util/status.js'
+   import { active as opponentActive } from '$lib/stores/opponent.js'
+   import {
+      solo, onOpponentSlot, soloSelectedTo, soloSlotReturn, soloSlotDiscardEnergy
+   } from '$lib/stores/solo.js'
 
    import {
       hand, discard, active,
@@ -15,6 +19,16 @@
    const { openSlotDetails, openDetails } = getContext('boardActions')
 
    export let selection
+
+   /*
+      In solo, both halves are the player's own, so the selection this menu acts on
+      may have been made on the far half. The menu is the same one either way - the
+      entries and their wording do not change - but a movement has to land on the
+      half the Pokemon is on rather than being carried across the table, and "the
+      Active spot" means that half's Active.
+   */
+   $: far = $solo && $selection.some(onOpponentSlot)
+   $: selectedActive = far ? $opponentActive : $active
 
    $: top = $selection.length === 1 ? $selection[0].pokemon.get().at(-1) : null
    $: heading = top ? top.name : `${$selection.length} Pokémon`
@@ -52,15 +66,29 @@
       menu.close()
    }
 
-   /* move actions analog zu CardMenu.svelte */
+   /* move actions analog zu CardMenu.svelte, on the half the selection is on */
 
-   function moveTo (targetPile, options = {}) {
-      moveSelection(targetPile, options)
+   function discardAll () {
+      if (far) soloSelectedTo('discard')
+      else moveSelection(discard)
       menu.close()
    }
 
-   function callThenClose (action) {
-      action()
+   function returnToHand () {
+      if (far) soloSelectedTo('hand')
+      else moveSelection(hand)
+      menu.close()
+   }
+
+   function moveToActive () {
+      if (far) soloSelectedTo('active')
+      else toActive()
+      menu.close()
+   }
+
+   function moveToBench () {
+      if (far) soloSelectedTo('bench')
+      else toBench()
       menu.close()
    }
 
@@ -99,6 +127,14 @@
    }
 
    function returnPokemon () {
+      if (far) {
+         for (const slot of $selection.filter(onOpponentSlot)) {
+            soloSlotReturn(slot)
+         }
+         menu.close()
+         return
+      }
+
       for (const slot of $selection) {
          const pokemon = slot.pokemon.get()
          const trainer = slot.trainer.get()
@@ -125,6 +161,14 @@
    }
 
    function discardEnergy () {
+      if (far) {
+         for (const slot of $selection.filter(onOpponentSlot)) {
+            soloSlotDiscardEnergy(slot)
+         }
+         menu.close()
+         return
+      }
+
       for (const slot of $selection) {
          const cards = slot.energy.get().slice()
 
@@ -159,7 +203,7 @@
       card, poison and burn share the right (both at once); choosing a status the
       corner already has takes that one off.
    -->
-   {#if $selection.length === 1 && $selection[0] === $active}
+   {#if $selection.length === 1 && $selection[0] === selectedActive}
       <ContextMenuOption
          click={() => statusOpen = !statusOpen}
          text="Set Status Effect"
@@ -171,12 +215,12 @@
                <span class="flex items-center gap-2 pl-3">
                   <span class="w-4 text-center">{status.emoji}</span>
                   {status.label}
-                  {#if statusesOn($active.status.get(), status.side).includes(status.id)}<span class="ml-auto">✓</span>{/if}
+                  {#if statusesOn(selectedActive.status.get(), status.side).includes(status.id)}<span class="ml-auto">✓</span>{/if}
                </span>
             </ContextMenuOption>
          {/each}
 
-         {#if statusesOn($active.status.get(), 'left').length || statusesOn($active.status.get(), 'right').length}
+         {#if statusesOn(selectedActive.status.get(), 'left').length || statusesOn(selectedActive.status.get(), 'right').length}
             <ContextMenuOption click={applyClear}>
                <span class="pl-3">Clear Status Effects</span>
             </ContextMenuOption>
@@ -185,15 +229,15 @@
    {/if}
 
    <hr>
-   {#if $selection.length === 1 && $selection[0] !== $active}
-      <ContextMenuOption click={() => callThenClose(toActive)} text="Move to Active" shortcut="a" />
+   {#if $selection.length === 1 && $selection[0] !== selectedActive}
+      <ContextMenuOption click={moveToActive} text="Move to Active" shortcut="a" />
    {/if}
-   {#if $selection.includes($active)}
-      <ContextMenuOption click={() => callThenClose(toBench)} text="Move to Bench" shortcut="b" />
+   {#if $selection.includes(selectedActive)}
+      <ContextMenuOption click={moveToBench} text="Move to Bench" shortcut="b" />
    {/if}
 
-   <ContextMenuOption click={() => moveTo(discard)} text="Discard All" shortcut="d" />
-   <ContextMenuOption click={() => moveTo(hand)} text="Return to Hand" shortcut="h" />
+   <ContextMenuOption click={discardAll} text="Discard All" shortcut="d" />
+   <ContextMenuOption click={returnToHand} text="Return to Hand" shortcut="h" />
    <ContextMenuOption click={() => returnPokemon()} text="Return Pokémon, Discard Rest" />
    <ContextMenuOption click={() => discardEnergy()} text="Discard All Energy" />
 
