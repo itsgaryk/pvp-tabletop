@@ -270,9 +270,9 @@
    {/if}
 
    <!--
-      The last relay fault, if there was one, and the way to the full picture.
-      A silent failure is the expensive kind, so the reason is on screen rather
-      than only in the console.
+      The last relay fault, if there was one. A silent failure is the expensive
+      kind, so the reason is on screen rather than only in the console. The full
+      picture is behind Settings > Diagnostics, rather than sitting on the board.
    -->
    <div class="mt-2 flex flex-col gap-1 text-xs text-[var(--text-color-two)]">
       {#if relayFault}
@@ -280,8 +280,6 @@
             relay: {relayFault.kind} - {relayFault.message}
          </div>
       {/if}
-
-      <a href="/diagnostics" class="text-center underline">Diagnostics</a>
    </div>
 </div>
 
