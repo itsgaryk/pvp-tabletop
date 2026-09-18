@@ -31,6 +31,20 @@ export const MAX_EVENTS = 400 // events kept per room
    Presence lives in the members hash beside the members themselves, under a
    prefixed field name, so a poll's "still here" is one HSET and nothing else.
 */
+/*
+   Seats are decided by the order members come back in, so that order has to be
+   the same every time. A Redis hash does not promise one - HGETALL is arbitrary -
+   and two clients asking at different moments were told different things, which
+   swapped the two halves of a spectator's board and cleared the mirrors as it
+   did so. Host first, then guest, then spectators, and by id within a role.
+*/
+const ROLE_ORDER = { host: 0, guest: 1, spectator: 2 }
+
+function bySeat (a, b) {
+   const role = (ROLE_ORDER[a.role] ?? 9) - (ROLE_ORDER[b.role] ?? 9)
+   return role || String(a.id).localeCompare(String(b.id))
+}
+
 const SEEN_PREFIX = 'seen:'
 const seenField = (memberId) => SEEN_PREFIX + memberId
 
@@ -104,7 +118,8 @@ function memoryStore () {
                out.push({ id: key.slice(id.length + 1), ...member, lastSeen: Math.max(member.lastSeen || 0, db.seen.get(key) || 0) })
             }
          }
-         return out
+
+         return out.sort(bySeat)
       }
    }
 }
@@ -244,7 +259,8 @@ function redisRestStore (url, token) {
          for (const member of members) {
             member.lastSeen = Math.max(member.lastSeen || 0, seen.get(member.id) || 0)
          }
-         return members
+
+         return members.sort(bySeat)
       }
    }
 }
