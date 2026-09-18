@@ -83,7 +83,11 @@ usage: node tools/deployed.mjs [--url URL] [--dir PATH] [--local] [--json] [mark
 
 With no markers it prints the two fingerprints, which is enough on its own:
 different fingerprints mean a different build. Each marker is then searched in
-both, and "local yes, deployment no" means the change has not shipped.`)
+both, and "local yes, deployment no" means the change has not shipped.
+
+If the deployment cannot be read at all - a wrong URL, a 404, a login wall - the
+tool says so and concludes nothing, rather than reporting an empty deployment.
+says so and concludes nothing, rather than reporting an empty deployment.`)
 }
 
 function fail (message) {
@@ -150,13 +154,44 @@ function readLocal () {
 
 /* ------------------------------------------------------------ deployed side -- */
 
-async function fetchAsset (url, { text = false } = {}) {
+async function fetchAsset (url) {
    const res = await fetch(url)
    if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`)
    return {
       buffer: Buffer.from(await res.arrayBuffer()),
       headers: Object.fromEntries(res.headers)
    }
+}
+
+/*
+   What came back instead of the app, if it was not the app.
+
+   A redirect or an error page is not something to report as an empty deployment.
+   An earlier version of this tool read whatever came back, found no assets and no
+   version.json, and announced "NOT DEPLOYED" - a confident wrong answer of the
+   exact kind this tool exists to prevent. Reporting ignorance is the correct
+   output, and it is what happens now.
+*/
+async function probeDeployment (base) {
+   const res = await fetch(`${base}/`, { redirect: 'manual' })
+
+   if (res.status >= 300 && res.status < 400) {
+      const to = res.headers.get('location') || '(no location header)'
+      return { blocked: `it redirected (HTTP ${res.status}) to ${to.split('?')[0]}` }
+   }
+
+   if (!res.ok) return { blocked: `it answered HTTP ${res.status}${res.statusText ? ' ' + res.statusText : ''}` }
+
+   const html = await res.text()
+   const refs = htmlRefs(html)
+
+   if (!refs.length) {
+      return {
+         blocked: `the page served no /_app/ assets, so it is not this app (${html.replace(/\s+/g, ' ').trim().slice(0, 80)}…)`
+      }
+   }
+
+   return { html, refs, headers: Object.fromEntries(res.headers) }
 }
 
 /*
@@ -228,13 +263,21 @@ function htmlRefs (html) {
 }
 
 async function readDeployed (base) {
-   const res = await fetch(`${base}/`)
-   if (!res.ok) throw new Error(`${base}/ -> HTTP ${res.status}`)
-   const html = await res.text()
+   const probe = await probeDeployment(base)
 
+   /*
+      Could not read the app at all. Everything downstream has to know that,
+      because "no assets found" and "no assets could be read" look identical in a
+      file map and mean opposite things.
+   */
+   if (probe.blocked) {
+      return { base, unreadable: probe.blocked, version: null, files: new Map(), missing: [], headers: {}, html: '' }
+   }
+
+   const { html, refs, headers } = probe
    const files = new Map()
    const missing = []
-   const queue = [...new Set([...htmlRefs(html), `${APP_PREFIX}version.json`])]
+   const queue = [...new Set([...refs, `${APP_PREFIX}version.json`])]
    const queued = new Set(queue)
 
    while (queue.length && files.size < MAX_ASSETS) {
@@ -268,12 +311,23 @@ async function readDeployed (base) {
       try { version = JSON.parse(raw.toString()).version } catch { version = null }
    }
 
+   /*
+      Assets were readable but version.json was not - the deployment is old enough
+      to predate it, or something is rewriting that one path. Worth saying, but it
+      is not the same as being unable to read the deployment.
+   */
+   const versionUnreadable = !version
+
    return {
       base,
+      unreadable: versionUnreadable
+         ? 'the assets were readable but /_app/version.json was not (missing, or not JSON) - the fingerprint below is incomplete'
+         : null,
+      fingerprintPartial: versionUnreadable,
       version,
       files,
       missing,
-      headers: Object.fromEntries(res.headers),
+      headers,
       html
    }
 }
@@ -330,13 +384,17 @@ function printHuman (model) {
    console.log(`deployment: ${deployed ? deployed.base : '(not checked - --local)'}`)
 
    if (deployed) {
-      const cache = deployed.headers['x-vercel-cache'] || deployed.headers['cache-control'] || 'n/a'
-      const age = deployed.headers['age']
-      const date = deployed.headers['date']
-      console.log(`  served at: ${date || 'unknown'}   cache: ${cache}${age ? `   age: ${age}s` : ''}`)
-      if (deployed.missing.length) {
-         console.log(`  ${deployed.missing.length} referenced asset(s) did not answer:`)
-         for (const item of deployed.missing.slice(0, 5)) console.log(`    ${item.path} - ${item.error}`)
+      if (deployed.unreadable) {
+         console.log(`  UNREADABLE: ${deployed.unreadable}`)
+      } else {
+         const cache = deployed.headers['x-vercel-cache'] || deployed.headers['cache-control'] || 'n/a'
+         const age = deployed.headers['age']
+         const date = deployed.headers['date']
+         console.log(`  served at: ${date || 'unknown'}   cache: ${cache}${age ? `   age: ${age}s` : ''}`)
+         if (deployed.missing.length) {
+            console.log(`  ${deployed.missing.length} referenced asset(s) did not answer:`)
+            for (const item of deployed.missing.slice(0, 5)) console.log(`    ${item.path} - ${item.error}`)
+         }
       }
    }
 
@@ -344,10 +402,12 @@ function printHuman (model) {
    const countOf = (files) => [...files.keys()].filter((key) => COMPARABLE.test(key)).length
    console.log(`  local build   version ${pad(local.version, 18)} ${countOf(local.files)} module-graph files   (${local.source})`)
    if (deployed) {
-      console.log(`  deployment    version ${pad(deployed.version, 18)} ${countOf(deployed.files)} module-graph files`)
+      console.log(deployed.unreadable
+         ? '  deployment    (not readable - see above)'
+         : `  deployment    version ${pad(deployed.version, 18)} ${countOf(deployed.files)} module-graph files`)
    }
 
-   if (deployed) {
+   if (deployed && !deployed.unreadable) {
       const diff = compareFiles(local, deployed)
       console.log(`\nmodule graph: ${diff.same} identical filename(s), ${diff.onlyLocal.length} local-only, ${diff.onlyDeployed.length} deployment-only`)
       for (const key of diff.onlyLocal.slice(0, 10)) console.log(`  local only      ${key}`)
@@ -362,7 +422,11 @@ function printHuman (model) {
          console.log(`  "${entry.marker}"`)
          for (const [side, hits] of Object.entries(entry.hits)) {
             if (hits === null) {
-               console.log(`    ${pad(side, 11)} (not checked)`)
+               /* null means "not searched", which is not the same as "not there" */
+               const why = side === 'deployment' && deployed?.unreadable
+                  ? '(NOT READ - the deployment could not be fetched, so this proves nothing)'
+                  : '(not checked)'
+               console.log(`    ${pad(side, 11)} ${why}`)
             } else if (!hits.length) {
                console.log(`    ${pad(side, 11)} NOT FOUND`)
             } else {
@@ -381,6 +445,8 @@ function printJson (model) {
       deployment: model.deployed
          ? {
             base: model.deployed.base,
+            readable: !model.deployed.unreadable,
+            unreadable: model.deployed.unreadable || null,
             version: model.deployed.version,
             headers: model.deployed.headers,
             missing: model.deployed.missing,
@@ -414,7 +480,8 @@ if (!opts.localOnly) {
 
 const sets = {
    local: local.files,
-   deployment: deployed ? deployed.files : null
+   /* null means "not searched", so an unreadable deployment cannot read as empty */
+   deployment: deployed && !deployed.unreadable ? deployed.files : null
 }
 
 const markers = opts.markers.map((marker) => ({
@@ -432,19 +499,27 @@ const markers = opts.markers.map((marker) => ({
    when the marker is in the local build at all - a marker that is nowhere
    proves nothing, and saying "not deployed" on that basis would be the same
    mistake the deploy-lag rounds were made of.
+
+   An unreadable deployment short-circuits everything: with nothing fetched there
+   is nothing to compare, and the honest answer is that we do not know.
 */
+const readable = Boolean(deployed) && !deployed.unreadable
 const localHas = (entry) => Boolean(entry.hits.local?.length)
 const deployedHas = (entry) => Boolean(entry.hits.deployment?.length)
 
-const diff = deployed ? compareFiles(local, deployed) : null
+const diff = readable ? compareFiles(local, deployed) : null
 const notShipped = markers.filter((entry) => localHas(entry) && !deployedHas(entry))
 const nowhere = markers.filter((entry) => !localHas(entry) && !deployedHas(entry))
-const sameVersion = Boolean(deployed) && deployed.version != null && deployed.version === local.version
-const setsMatch = deployed && diff.onlyLocal.length === 0 && diff.onlyDeployed.length === 0
+const sameVersion = readable && deployed.version != null && deployed.version === local.version
+const setsMatch = readable && diff.onlyLocal.length === 0 && diff.onlyDeployed.length === 0
 
 let verdict
 if (!deployed) {
    verdict = `local build only - version ${local.version}, ${local.files.size} files`
+} else if (deployed.unreadable) {
+   verdict = `cannot tell - the deployment could not be read: ${deployed.unreadable}. `
+      + `Nothing can be concluded about what is live, and no marker was searched. `
+      + `Check the URL, and that the deployment is not behind a login.`
 } else if (notShipped.length) {
    verdict = `NOT DEPLOYED - ${notShipped.map((entry) => `"${entry.marker}"`).join(', ')} `
       + `${notShipped.length === 1 ? 'is' : 'are'} in the local build but not in the served bundle, `
