@@ -251,29 +251,15 @@ function assetRefs (text, fromPath) {
    return out
 }
 
-/*
-   The initial set: what the served document references.
-
-   Two things about a real SvelteKit page make the naive version of this wrong,
-   and both produced a false "NOT DEPLOYED" against production:
-
-     * the paths are RELATIVE (`./_app/immutable/entry/start.js`), so they have to
-       be resolved against the document rather than prefixed with a slash
-     * the entry scripts are not in `src=`/`href=` attributes at all - they are
-       `import(...)` calls inside an inline script
-
-   Scanning the whole document for quoted asset paths, exactly as a chunk is
-   scanned, handles both: the relative paths resolve against `/`, and the inline
-   script's imports are just strings in the same text. Attributes are quoted too,
-   so the stylesheet links come along for free.
-*/
-/*
-   An array, not a Set: callers ask for `.length`, and a Set would answer
-   `undefined` - which reads as "no assets found" and turns a perfectly readable
-   deployment into "this is not the app".
-*/
+/* the initial set: what the served HTML itself references */
 function htmlRefs (html) {
-   return [...assetRefs(html, '/')]
+   return [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
+      .map((match) => match[1])
+      .filter((ref) => ref.includes(APP_PREFIX))
+      .map((ref) => {
+         const path = ref.startsWith('http') ? new URL(ref).pathname : ref
+         return (path.startsWith('/') ? path : `/${path}`).replace(/\/{2,}/g, '/')
+      })
 }
 
 async function readDeployed (base) {
@@ -304,7 +290,7 @@ async function readDeployed (base) {
             two sets can be compared name for name. The served path keeps its
             leading `/_app/`, the local one does not.
          */
-         files.set(path.startsWith(APP_PREFIX) ? path.slice(APP_PREFIX.length) : path, buffer)
+         files.set(path.replace(APP_PREFIX, ''), buffer)
 
          if (/\.(js|mjs|css)$/i.test(path)) {
             for (const ref of assetRefs(buffer.toString('utf8'), path)) {
@@ -323,23 +309,6 @@ async function readDeployed (base) {
    const raw = files.get('version.json')
    if (raw) {
       try { version = JSON.parse(raw.toString()).version } catch { version = null }
-   }
-
-   /*
-      Nothing downloaded at all. That is not a deployment with nothing in it - it
-      is a deployment that could not be read, and the difference decides whether
-      "no marker found" means anything.
-   */
-   if (!files.size) {
-      return {
-         base,
-         unreadable: `it referenced ${missing.length} asset(s) and none of them downloaded (first: ${missing[0]?.error || 'unknown'})`,
-         version: null,
-         files,
-         missing,
-         headers,
-         html
-      }
    }
 
    /*
@@ -543,8 +512,6 @@ const notShipped = markers.filter((entry) => localHas(entry) && !deployedHas(ent
 const nowhere = markers.filter((entry) => !localHas(entry) && !deployedHas(entry))
 const sameVersion = readable && deployed.version != null && deployed.version === local.version
 const setsMatch = readable && diff.onlyLocal.length === 0 && diff.onlyDeployed.length === 0
-/* every marker that exists locally is also in the served bundle */
-const allShipped = markers.length > 0 && markers.every((entry) => !localHas(entry) || deployedHas(entry))
 
 let verdict
 if (!deployed) {
@@ -562,16 +529,6 @@ if (!deployed) {
       + `Pick a string that is in your change and survives minification (a literal, a route path, an event name).`
 } else if (sameVersion) {
    verdict = `deployed - the served bundle is this build (version ${local.version})`
-} else if (allShipped) {
-   /*
-      The decisive case for a deployment built somewhere else - Vercel, or CI. It
-      compiles the same source into different content hashes, so the fingerprint
-      can never match a local build and the asset diff is noise; the markers are
-      what answer the question that was asked.
-   */
-   verdict = `deployed - every marker is in the served bundle, so this change is live. `
-      + `The fingerprint differs (local ${local.version}, live ${deployed.version}) because the `
-      + `deployment was built separately, which is normal and not a sign of drift.`
 } else if (setsMatch) {
    verdict = `deployed, but version.json differs (local ${local.version}, live ${deployed.version}) - `
       + `every asset name matches, so this is a rebuild of the same source`

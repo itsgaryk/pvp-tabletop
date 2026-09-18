@@ -264,7 +264,7 @@ least once.
 | Question | Where the answer is |
 | --- | --- |
 | "What actually happened in that room?" | `node tools/room-log.mjs <ROOM>` |
-| "Is it the state or the client?" | Settings -> Diagnostics (also at `/diagnostics`) |
+| "Is it the state or the client?" | the app's `/diagnostics` screen |
 | "Has my change actually shipped?" | `node tools/deployed.mjs --url <app> <marker>` |
 
 ### A room's story: `tools/room-log.mjs`
@@ -305,21 +305,12 @@ relay records no presence for it and spends no writes. Reading a small room cost
 four commands (two `GET`, one `LRANGE`, one `HGETALL`) and a room larger than one
 poll page costs one extra round.
 
-### The diagnostics panel
+### The `/diagnostics` screen
 
-Open it from **Settings -> Diagnostics**. It appears as a dialog over the board,
-which is deliberate: diagnostics are wanted while a game looks wrong, and going to
-another page reloads the app and rebuilds the board - so the thing being diagnosed
-would be gone. Pressing the cog, Escape or a click outside closes it.
-
-The same panel is also served at `/diagnostics` as a standalone page, which is
-handy for a bug report or for looking at things with no game open. Both render one
-component, so they cannot drift apart.
-
-It is a live snapshot of *this browser*: relay health and the poll settings the
-deployment is running, the room and its role, the seats in join order, the
-spectator count, the clock skew against the relay, the boards' zone counts, and
-the last events the transport delivered.
+`/diagnostics` is a live snapshot of *this browser*: relay health and the poll
+settings the deployment is running, the room and its role, the seats in join
+order, the spectator count, the clock skew against the relay, the boards' zone
+counts, and the last events the transport delivered.
 
 The section that earns its place is the event list:
 
@@ -374,31 +365,8 @@ served bundle, so the deployment is behind this build.
 
 A marker must survive minification, so pick a string literal, a route path, an
 event name or a CSS class - not an identifier you invented, which the minifier may
-rename.
-
-Three answers are refused deliberately, because each would otherwise be a
-confident guess:
-
-- **a marker in neither build** - it proves nothing, so the tool says so rather
-  than reporting "not deployed" from no evidence
-- **a deployment that cannot be read** - a wrong URL, a 404, or a login wall
-  produces "cannot tell", naming what actually came back. Reading a login page
-  and calling it an empty deployment is the mistake this avoids
-- **a fingerprint that differs** - a deployment built somewhere else (Vercel, CI)
-  compiles the same source into different content hashes, so its fingerprint can
-  never match a local build and the asset diff is noise. When every marker is
-  present the answer is "deployed", with the differing hashes explained rather
-  than reported as drift:
-
-```
-verdict: deployed - every marker is in the served bundle, so this change is live.
-The fingerprint differs (local 1789755944145, live 1789756230756) because the
-deployment was built separately, which is normal and not a sign of drift.
-```
-
-The version fingerprint is most useful for comparing **one deployment against
-itself over time** - before and after a release, or two preview URLs - rather than
-a local build against a remote one.
+rename. If the marker is in neither build the tool says it cannot tell, rather
+than reporting a confident "not deployed" from no evidence.
 
 ### Failures that used to be silent
 
