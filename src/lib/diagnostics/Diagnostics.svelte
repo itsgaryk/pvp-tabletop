@@ -118,6 +118,8 @@
             markedIdle: socket.isIdle,
             documentHidden: socket.hidden(),
             pollInFlight: Boolean(socket.controller),
+            /* actions waiting for their turn under the send pace */
+            pending: socket.pending,
             lastError: socket.lastError(),
             errors: [...socket.errors].reverse().slice(0, 8)
          },
@@ -243,6 +245,13 @@
                {snapshot.transport.documentHidden ? ' (tab hidden)' : ''}
             </span></div>
             <div class="row"><span>poll in flight</span><span>{snapshot.transport.pollInFlight ? 'yes' : 'no'}</span></div>
+            <div class="row" class:bad={snapshot.transport.pending > 0}>
+               <span>queued to send</span>
+               <span>{snapshot.transport.pending}
+                  {snapshot.transport.pending === 0
+                     ? '- nothing waiting'
+                     : '- sending is paced, so these go out a few a second rather than all at once'}</span>
+            </div>
 
             {#if snapshot.transport.lastError}
                <div class="row bad">

@@ -32,6 +32,71 @@ const EVENT_BUFFER = 200 // events fetched per poll
 const MAX_RELAY_ERRORS = 40
 
 /*
+   How fast this client may relay events.
+
+   Every event costs the store ten commands and there is no batching, so a player
+   leaning on a control is, from the relay's point of view, indistinguishable from
+   a runaway script: measured, a burst of 240 events cost 2,722 commands, which is
+   a month of quota in minutes. So sending is paced here, and anything over the
+   pace waits in a queue rather than being dropped.
+
+   Six events a second is about three player actions a second, because most
+   actions relay two events - the state change and the log line that describes it
+   ("Drew 2 cards"). A few actions of that per second is already fast play.
+
+   BURST is the allowance for a quick legitimate sequence - benching four Pokemon
+   in one go should not be slowed down - and the sustained rate is what actually
+   bounds the cost.
+*/
+const SEND_PER_SECOND = 6
+const SEND_BURST = 12
+const MAX_QUEUE = 60
+/*
+   How long a coalescable event waits before it is sent.
+
+   This is what makes coalescing work at all. Without it the burst allowance sends
+   each event the instant it is queued, nothing is ever *waiting* to be merged, and
+   mashing a control still costs one event per press - which is exactly what the
+   measurement showed before this was added.
+
+   Two hundred milliseconds is not perceptible on a value that is already applied
+   locally (the damage number, the turn counter, the clock), and it is long enough
+   that a repeated press folds into the one already waiting.
+*/
+const COALESCE_SETTLE_MS = 200
+/* how long to wait before retrying a send the relay refused */
+const RETRY_BACKOFF_MS = 500
+const MAX_SEND_RETRIES = 4
+
+/*
+   Events that carry an absolute value, where a newer one makes an older one
+   pointless: sending only the latest is correct, not lossy.
+
+   The key matters. Coalescing by name alone would be a bug for the per-slot
+   events - damaging Pikachu and then Bulbasaur in the same tick would keep only
+   one of them, silently losing the other. So anything with a slot in it is keyed
+   by that slot.
+
+   Nothing here is a step or a member of a sequence: a card move, a bench, a
+   discard and a chat message are all left alone, because each of them means
+   something on its own.
+*/
+const COALESCE = {
+   turnChanged: () => 'turnChanged',
+   timerUpdated: () => 'timerUpdated',
+   powerMarker: () => 'powerMarker',
+   powerMarkerUsed: () => 'powerMarkerUsed',
+   pokemonToggle: () => 'pokemonToggle',
+   prizeToggle: () => 'prizeToggle',
+   handToggle: () => 'handToggle',
+   damageUpdated: (data) => `damageUpdated:${data?.slotId}`,
+   statusUpdated: (data) => `statusUpdated:${data?.slotId}`,
+   abilityUpdated: (data) => `abilityUpdated:${data?.slotId}`
+}
+
+const coalesceKey = (event, data) => (COALESCE[event] ? COALESCE[event](data) : null)
+
+/*
    A board in a tab nobody is looking at does not need news by the second. While
    the document is hidden the poll asks the server to check its cursor far less
    often - that check is where the relay's Redis commands come from - which takes
@@ -117,6 +182,16 @@ export class HttpSocket {
          a signal, so recording a failure can never cause another one.
       */
       this.errors = []
+
+      /*
+         Outbound pacing. Everything share()/publishLog() sends goes through this
+         queue, so a burst of actions cannot outrun the relay's cost.
+      */
+      this.queue = []
+      this.tokens = SEND_BURST
+      this.lastRefill = Date.now()
+      this.drainTimer = null
+      this.blockedUntil = 0
    }
 
    /*
@@ -219,6 +294,7 @@ export class HttpSocket {
       this.active = false
       this.setConnected(false)
       this.abortPoll()
+      this.clearQueue()
       if (typeof document !== 'undefined') {
          if (this.onVisibility) document.removeEventListener('visibilitychange', this.onVisibility)
          if (this.onInput) {
@@ -269,10 +345,136 @@ export class HttpSocket {
       sender either.
    */
    emit (event, data) {
-      this.post(event, data).catch((err) => {
+      /* nothing to relay to; share() is where that is reported */
+      if (!this.roomId) return null
+
+      const item = { event, data: data ?? {}, retries: 0 }
+      const key = coalesceKey(event, item.data)
+
+      if (key) {
+         /*
+            An event for the same thing is still waiting its turn. This one carries
+            a value rather than a step, so it simply replaces it - the newest is
+            the only one that matters, and nothing is lost.
+         */
+         const pending = this.queue.find((queued) => queued.key === key)
+         if (pending) {
+            pending.data = item.data
+            this.drain()
+            return null
+         }
+         item.key = key
+         /* held briefly so another press of the same thing can replace it */
+         item.notBefore = Date.now() + COALESCE_SETTLE_MS
+      }
+
+      if (this.queue.length >= MAX_QUEUE) {
+         /*
+            Only reachable from a client ignoring the pace, since coalescing means
+            a human mashing one control never grows the queue. Dropping the oldest
+            keeps the newest actions, which are the ones the player is waiting on.
+         */
+         this.queue.shift()
+         this.recordError(`send:${event}`, `outbound queue is full (${MAX_QUEUE}); the oldest queued event was dropped`)
+      }
+
+      this.queue.push(item)
+      this.drain()
+      return null
+   }
+
+   /* how many actions are waiting to go out, for the diagnostics panel */
+   get pending () {
+      return this.queue.length
+   }
+
+   /*
+      Send as much as the pace allows, then arrange to come back when it allows
+      more. Called on every emit and whenever a send finishes or fails.
+   */
+   drain () {
+      if (this.drainTimer) {
+         clearTimeout(this.drainTimer)
+         this.drainTimer = null
+      }
+
+      const now = Date.now()
+
+      /* a send was refused: wait out the backoff before trying again */
+      if (now < this.blockedUntil) {
+         this.scheduleDrain(this.blockedUntil - now)
+         return
+      }
+
+      const elapsed = now - this.lastRefill
+      if (elapsed > 0) {
+         this.tokens = Math.min(SEND_BURST, this.tokens + (elapsed / 1000) * SEND_PER_SECOND)
+         this.lastRefill = now
+      }
+
+      while (this.queue.length && this.tokens >= 1) {
+         const head = this.queue[0]
+
+         /* still inside its settle window, so a later press can still replace it */
+         const held = (head.notBefore || 0) - Date.now()
+         if (held > 0) {
+            this.scheduleDrain(held)
+            return
+         }
+
+         this.tokens -= 1
+         this.sendOne(this.queue.shift())
+      }
+
+      if (this.queue.length) {
+         /* whichever comes first: the head's settle window, or the next token */
+         const held = Math.max(0, (this.queue[0].notBefore || 0) - Date.now())
+         const tokenIn = Math.ceil(((1 - this.tokens) / SEND_PER_SECOND) * 1000)
+         this.scheduleDrain(Math.max(held, tokenIn, 1))
+      }
+   }
+
+   scheduleDrain (ms) {
+      if (this.drainTimer) return
+      this.drainTimer = setTimeout(() => {
+         this.drainTimer = null
+         this.drain()
+      }, Math.max(1, ms))
+   }
+
+   sendOne (item) {
+      this.post(item.event, item.data).catch((err) => {
          console.error('[relay] send failed', err)
-         this.recordError(`send:${event}`, err.message)
+         this.recordError(`send:${item.event}`, err.message)
+
+         /*
+            Not dropped: put it back at the front so the action survives, and pause
+            before trying again. A 429 from the relay's own ceiling lands here too,
+            which is what makes the two limits work together instead of fighting -
+            the relay is the backstop, and this queue is what stops it being needed.
+         */
+         if (item.retries < MAX_SEND_RETRIES) {
+            item.retries += 1
+            this.queue.unshift(item)
+            this.blockedUntil = Date.now() + RETRY_BACKOFF_MS
+         } else {
+            this.recordError(`send:${item.event}`, 'gave up after repeated failures; that action was not relayed')
+         }
+
+         this.drain()
       })
+   }
+
+   /* leaving a room: whatever was queued belonged to it */
+   clearQueue () {
+      if (this.drainTimer) {
+         clearTimeout(this.drainTimer)
+         this.drainTimer = null
+      }
+      this.queue = []
+      this.blockedUntil = 0
+      this.tokens = SEND_BURST
+      this.lastRefill = Date.now()
    }
 
    /* ------------------------------------------------------------------ rooms -- */
@@ -317,6 +519,7 @@ export class HttpSocket {
    */
    forget () {
       writeSession(null)
+      this.clearQueue()
       this.id = null
       this.roomId = null
       this.cursor = 0
@@ -441,7 +644,10 @@ export class HttpSocket {
       const res = await this.fetch(this.base + url, options)
       const payload = await readJson(res)
       if (!res.ok) {
-         throw new Error(payload.error || `relay request failed (${res.status})`)
+         const err = new Error(payload.error || `relay request failed (${res.status})`)
+         /* kept so a caller can tell "slow down" from "broken" */
+         err.status = res.status
+         throw err
       }
       return payload
    }
