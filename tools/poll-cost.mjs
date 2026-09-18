@@ -10,7 +10,13 @@
  *
  * Set RELAY_POLL_INTERVAL_MS on the dev server to compare settings.
  */
-const BASE = process.env.BASE || 'http://127.0.0.1:3005'
+/*
+   `localhost`, not 127.0.0.1: `vite dev` binds IPv6 (::1) on some machines and
+   an IPv4 literal is then refused outright, while `localhost` resolves to
+   whichever the server actually bound. The fake store is spoken to directly and
+   does bind 127.0.0.1, so that stays a literal.
+*/
+const BASE = process.env.BASE || 'http://localhost:3005'
 const FAKE = process.env.FAKE || 'http://127.0.0.1:6390'
 const WAIT = Number(process.env.WAIT_S || 10) * 1000
 

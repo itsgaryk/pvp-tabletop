@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit'
 import { appendEvent, getRoom, touchMember } from '$lib/relay/store.js'
+import { dismissIdlePrompt } from '$lib/relay/maintain.js'
 
 /*
    Append one game event to a room.
@@ -18,6 +19,11 @@ const EVENTS = new Set([
    /* room lifecycle */
    'chatMessage',
    'spectatorChanged',
+   'roomClosed',
+   /* the idle prompt; both are relayed like any other event so a poll delivers
+      them and a late joiner replays into the prompt that is still outstanding */
+   'idlePrompt',
+   'idleDismissed',
    /* board / game actions */
    'boardState',
    'boardReset',
@@ -143,6 +149,20 @@ export async function POST ({ request }) {
       }
 
       /*
+         "Still playing" is the one event the relay answers itself as well as
+         logging: the outstanding prompt is marked in the room's metadata, so it
+         has to be cleared, and the marker is what decides when the room closes.
+         The event is published the same way either way, so the other player's
+         prompt goes away too.
+      */
+      if (name === 'idleDismissed') {
+         const dismissed = await dismissIdlePrompt(roomId)
+         if (!dismissed) return json({ error: `room ${roomId} no longer exists` }, { status: 404 })
+         await touchMember(roomId, memberId)
+         return json({ seq: dismissed.seq, event: dismissed })
+      }
+
+      /*
          chat is the one event the server reshapes: it stamps the time so both
          players agree on ordering, keeps the log/chat distinction, and names the
          sender, who is the only one who knows their own display name.
@@ -157,7 +177,7 @@ export async function POST ({ request }) {
          opponent's events. Without it a player sees their own message twice -
          once when they publish it locally, once relayed back to them.
       */
-      const event = await appendEvent(roomId, name, payload, { from: memberId })
+      const event = await appendEvent(roomId, name, payload, { from: memberId, meta: room })
       if (!event) return json({ error: `room ${roomId} no longer exists` }, { status: 404 })
 
       /*

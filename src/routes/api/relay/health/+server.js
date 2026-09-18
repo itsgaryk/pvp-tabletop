@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit'
-import { getStore, getStoreSource, pingStore } from '$lib/relay/store.js'
+import { getStore, getStoreSource, pingStore, roomEpoch } from '$lib/relay/store.js'
 import { WAIT_MS, POLL_INTERVAL_MS } from '$lib/relay/config.js'
+import { RELAY_IDLE_MS, RELAY_PROMPT_MS, RELAY_MEMBER_STALE_MS } from '$lib/relay/timing.js'
 
 /*
    Health probe. The client uses this to tell "the relay is broken" apart from
@@ -18,6 +19,28 @@ import { WAIT_MS, POLL_INTERVAL_MS } from '$lib/relay/config.js'
 
 const POLL_SETTINGS = { waitMs: WAIT_MS, intervalMs: POLL_INTERVAL_MS }
 
+/*
+   When an idle room is prompted, and when the prompt gives up. Reported for the
+   same reason the poll settings are: they decide behaviour a test or a
+   troubleshooting session needs to know, and they are environment variables, so
+   reading them from outside is the only way to see what a deployment really runs
+   with. They are not secrets.
+*/
+const IDLE_SETTINGS = {
+   idleMs: RELAY_IDLE_MS,
+   promptMs: RELAY_PROMPT_MS,
+   memberStaleMs: RELAY_MEMBER_STALE_MS
+}
+
+/*
+   Which deployment this is, as the relay stamps it on rooms. Reported because it
+   is otherwise invisible, and it is the thing to check when asking "did this
+   restart really close the old rooms?": two health reads that name the same
+   epoch are the same deployment, and a room made under a different one is closed
+   the next time anybody reads it.
+*/
+const EPOCH = roomEpoch()
+
 /** @type {import('./$types').RequestHandler} */
 export async function GET ({ url }) {
    const probe = url.searchParams.get('probe') === '1'
@@ -34,7 +57,9 @@ export async function GET ({ url }) {
             relay: false,
             store: 'none',
             checked: false,
+            epoch: EPOCH,
             poll: POLL_SETTINGS,
+            idle: IDLE_SETTINGS,
             error: err.message,
             hint: 'Add a Redis/KV integration in the Vercel dashboard, then redeploy.'
          },
@@ -43,12 +68,12 @@ export async function GET ({ url }) {
    }
 
    if (!probe) {
-      return json({ ok: true, relay: true, store: store.kind, from, checked: false, poll: POLL_SETTINGS })
+      return json({ ok: true, relay: true, store: store.kind, from, checked: false, epoch: EPOCH, poll: POLL_SETTINGS, idle: IDLE_SETTINGS })
    }
 
    try {
       await pingStore()
-      return json({ ok: true, relay: true, store: store.kind, from, checked: true, poll: POLL_SETTINGS })
+      return json({ ok: true, relay: true, store: store.kind, from, checked: true, epoch: EPOCH, poll: POLL_SETTINGS, idle: IDLE_SETTINGS })
    } catch (err) {
       return json(
          {
@@ -57,7 +82,9 @@ export async function GET ({ url }) {
             store: store.kind,
             from,
             checked: true,
+            epoch: EPOCH,
             poll: POLL_SETTINGS,
+            idle: IDLE_SETTINGS,
             error: err.message,
             hint: 'The database is configured but not answering - check its quota and status in Vercel → Storage.'
          },

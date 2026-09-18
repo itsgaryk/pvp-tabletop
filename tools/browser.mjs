@@ -131,6 +131,103 @@ class Page {
       })
    }
 
+   /*
+      Answer the page's native dialogs (window.confirm, alert) by itself, from
+      now on. A headless page that raises one and nobody answers sits blocked
+      forever, so any test that clicks a button asking "Sure?" needs this.
+      Returns a list of the dialogs that have been answered.
+   */
+   autoDialogs (accept = true) {
+      this.dialogs = this.dialogs || []
+      if (this.dialogOn) return this.dialogs
+
+      this.dialogOn = true
+      const loop = async () => {
+         for (;;) {
+            const params = await this.waitFor('Page.javascriptDialogOpening')
+            this.dialogs.push(params.message)
+            try {
+               await this.send('Page.handleJavaScriptDialog', { accept })
+            } catch {
+               /* already gone: the page moved on by itself */
+            }
+         }
+      }
+      loop()
+      return this.dialogs
+   }
+
+   /*
+      Wait until the page's text contains `text`, or give up. Used instead of a
+      fixed sleep wherever the point of the check is that something appeared,
+      so a slow deployment or a big replay does not turn into a false failure.
+   */
+   async waitForText (text, { timeout = 15000, poll = 250 } = {}) {
+      const deadline = Date.now() + timeout
+      for (;;) {
+         const found = await this.evaluate(`document.body.innerText.includes(${JSON.stringify(text)})`)
+         if (found) return true
+         if (Date.now() > deadline) return false
+         await sleep(poll)
+      }
+   }
+
+   /* the header's watcher line, as text, or null when nobody is watching */
+   watchLine () {
+      return this.evaluate(`(() => {
+         const el = [...document.querySelectorAll('div')].find((d) => /spectator/.test(d.textContent) && d.children.length === 0)
+         return el ? el.textContent.trim() : null
+      })()`)
+   }
+
+   /* wait for the header to name the number of watchers, or to stop naming any */
+   async waitForWatchers (expected, { timeout = 20000, poll = 300 } = {}) {
+      const deadline = Date.now() + timeout
+      for (;;) {
+         const line = await this.watchLine()
+         const matches = expected === 0
+            ? !/spectator/.test(String(line))
+            : new RegExp(`${expected} spectator`).test(String(line))
+         if (matches) return line
+         if (Date.now() > deadline) return line
+         await sleep(poll)
+      }
+   }
+
+   /*
+      The centred dialogs - "Still playing?" and "Game closed..." - as text, or
+      null when neither is up. Read from the DOM rather than from a screenshot so
+      a check can assert on the words the player actually sees.
+   */
+   dialog () {
+      return this.evaluate(`(() => {
+         const box = document.querySelector('.closed-dialog, .idle-dialog')
+         if (!box) return null
+         return {
+            text: box.innerText.replace(/\\s+/g, ' ').trim(),
+            kind: box.classList.contains('closed-dialog') ? 'closed' : 'idle',
+            clock: box.querySelector('.idle-clock')?.textContent.trim() || null,
+            button: box.querySelector('button')?.textContent.trim() || null,
+            centred: (() => {
+               const r = box.getBoundingClientRect()
+               const dx = Math.abs((r.left + r.right) / 2 - window.innerWidth / 2)
+               const dy = Math.abs((r.top + r.bottom) / 2 - window.innerHeight / 2)
+               return dx < 4 && dy < 4
+            })()
+         }
+      })()`)
+   }
+
+   /* the event names this page's transport has received, newest last */
+   relayEvents () {
+      return this.evaluate(`(() => {
+         try {
+            const raw = globalThis.localStorage.getItem('pvp_session')
+            return raw ? JSON.parse(raw) : null
+         } catch { return null }
+      })()`)
+   }
+
    async clickText (text, { settle = 700, kinds = 'button, [class*="item"]' } = {}) {
       const found = await this.evaluate(`(() => {
          const els = [...document.querySelectorAll(${JSON.stringify(kinds)})]
@@ -192,6 +289,16 @@ class Page {
       await this.setInput('playerName', name)
       await this.setInput('roomId', room)
       await this.clickText('Join Room', { settle: 4000 })
+   }
+
+   /*
+      A seat is a session: joining as somebody else - or spectating a room after
+      having left it - means letting go of the one this browser was holding, or
+      the page will resume the old one on the next load and land somewhere the
+      test did not ask for.
+   */
+   async forgetSession () {
+      await this.evaluate(`(() => { localStorage.removeItem('pvp_session'); return true })()`)
    }
 
    async spectate (room, name = 'Watcher') {
