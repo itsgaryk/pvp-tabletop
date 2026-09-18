@@ -36,6 +36,16 @@
       else openOppSlotDetails(slot)
    }
 
+   /*
+      Double clicking a Pokemon in play shows the card itself, whoever is looking:
+      it is on the table, not in a hand. A single click stays as it was - nothing
+      for a player, the slot's contents for a spectator.
+   */
+   function onDblClick () {
+      if ($pokemonHidden || !top) return
+      openDetails(top)
+   }
+
    function onCtx (e) {
       if ($pokemonHidden) return
       openOppSlotMenu(e.clientX, e.clientY, slot, isActive)
@@ -44,7 +54,8 @@
 
 <div class="slot relative w-max z-15" style="margin-right: calc({$energy.length * 25 + $trainer.length * 35}px * var(--card-scale))"
    on:click|stopPropagation={onClick}
-   on:contextmenu={onCtx}>
+   on:contextmenu={onCtx}
+   on:dblclick={onDblClick}>
 
    {#if $damage}
       <span class="counter absolute bottom-1 left-1 z-15 rounded-full p-4 bg-red-500 text-white font-bold flex justify-center items-center">{$damage}</span>
