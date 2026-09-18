@@ -222,6 +222,12 @@ function describe (event) {
       }
       case 'spectatorChanged':
          return `spectators now ${data.spectators}`
+      case 'idlePrompt':
+         return `IDLE PROMPT raised (prompt window ${Math.round((Number(data.promptMs) || 0) / 1000)}s)`
+      case 'idleDismissed':
+         return 'idle prompt answered - still playing'
+      case 'roomClosed':
+         return `ROOM CLOSED: ${data.reason || 'unknown reason'}`
       case 'boardState': {
          const zones = tally(data.board)
          const cards = (data.cards || []).length
@@ -375,6 +381,25 @@ function analyse ({ events, gone, players }) {
 
    if (last.name === 'boardReset') {
       findings.push({ level: 'warn', text: 'the very last thing that happened in this room was a board reset' })
+   }
+
+   /*
+      The idle story, which is otherwise easy to misread: a prompt with no answer
+      after it means the relay closed the room, and a prompt followed by a
+      dismissal means somebody was there.
+   */
+   const prompts = events.filter((event) => event.name === 'idlePrompt')
+   const dismissals = events.filter((event) => event.name === 'idleDismissed')
+   const lastPrompt = prompts[prompts.length - 1] || null
+
+   if (lastPrompt) {
+      const answered = dismissals.some((event) => event.seq > lastPrompt.seq)
+      findings.push({
+         level: answered ? 'good' : 'warn',
+         text: answered
+            ? `the last idle prompt (#${lastPrompt.seq}) was answered - somebody was still playing`
+            : `the last idle prompt (#${lastPrompt.seq}) was never answered, so the relay closed the room when its window ran out`
+      })
    }
 
    return findings

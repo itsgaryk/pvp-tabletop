@@ -15,6 +15,13 @@ import { PVP_SERVER, APP_ENV } from '$lib/util/env.js'
 import { HttpSocket } from '$lib/relay/client.js'
 import { writable } from './custom/writable.js'
 import { playerName } from './settings.js'
+
+/*
+   Re-exported rather than only imported: the lobby asks whether it is in a room
+   or in solo, and `$solo` in a component is resolved through this module, so it
+   has to be an export of it.
+*/
+export { solo } from './soloState.js'
 import { solo } from './soloState.js'
 
 export let room = writable(null)
@@ -26,6 +33,14 @@ export let spectators = writable(0)
 export let seatedPlayers = writable([])
 /* our own member id, so a player can tell which seat is theirs */
 export let myId = writable(null)
+
+/*
+   The prompt's fallback window when the relay does not say. The relay always
+   sends the window it is actually running with (shortened under test), so this
+   is only used by an old event payload that predates it - and it matches the
+   server's own default rather than inventing a second opinion.
+*/
+const DEFAULT_PROMPT_MS = 10 * 60 * 1000
 
 export const socket = new HttpSocket({ baseUrl: PVP_SERVER })
 
@@ -114,6 +129,87 @@ export function leaveRoom () {
 }
 
 /*
+   Emptying a board when its room is gone belongs to the board (see player.js,
+   which registers its own cleaner below), and is deliberately not imported
+   here. This module and player.js already point at each other - gameplay asks
+   connection to share, connection tells gameplay what arrived - and adding a
+   second direction of *import* to that cycle made one of them evaluate while
+   the other was still half-built, which is a 500 on every page load rather than
+   a subtle bug. So the direction stays: gameplay may import this, not the
+   reverse.
+*/
+const boardCleaners = new Set()
+
+export function onBoardCleanup (clean) {
+   boardCleaners.add(clean)
+   return () => boardCleaners.delete(clean)
+}
+
+export function clearBoard () {
+   for (const clean of [...boardCleaners]) {
+      try {
+         clean()
+      } catch (err) {
+         console.error('[pvp-tabletop] could not clear the board', err)
+      }
+   }
+}
+
+/*
+   A room that has gone, with the relay's reason ('closed', 'idle' or
+   'expired'). Everyone still in a room that ends gets this: a game that was
+   ended on purpose is worth a dialog either way.
+*/
+export let gameClosed = writable(false)
+
+export function dismissGameClosed () {
+   gameClosed.set(false)
+}
+
+socket.onGone((reason) => {
+   /* 'expired' is the 6h TTL noticing an empty room, which is not a game ending */
+   if (reason === 'closed' || reason === 'idle') gameClosed.set(true)
+   idlePromptAt.set(null)
+})
+
+/*
+   The idle prompt.
+
+   The relay raises it as a normal event when nothing has been done in the room
+   for RELAY_IDLE_MS, and the poll carries it - so a client that arrives (or
+   reloads) while a prompt is outstanding replays into it and works out the time
+   left from the prompt's own timestamp on the relay's clock, exactly as the game
+   timer does. Nothing here counts down on its own: the component does the
+   ticking, against `socket.serverNow()`.
+
+   `promptMs` is what the deployment runs with, sent once in the event payload,
+   so a client does not have to be rebuilt to know a test's shortened window.
+*/
+export let idlePromptAt = writable(null)
+
+socket.on('idlePrompt', ({ at, promptMs }) => {
+   idlePromptAt.set({
+      at: Number(at) || socket.serverNow(),
+      promptMs: Number(promptMs) || DEFAULT_PROMPT_MS
+   })
+})
+
+/*
+   Answering is shared, so one player's click takes the prompt off both screens.
+   The relay records it in the same metadata it uses to decide when to give up,
+   which is why it has to be sent rather than just hidden locally.
+*/
+export function dismissIdlePrompt () {
+   if (!idlePromptAt.get() || !socket.roomId) return
+   /* our own click takes effect here at once; the relay tells the other player */
+   idlePromptAt.set(null)
+   socket.emit('idleDismissed', {})
+}
+
+/* the relay answers a later poll with the prompt still outstanding, if it is */
+socket.on('idleDismissed', () => idlePromptAt.set(null))
+
+/*
    How many playing seats are taken, and whether they are all taken. A locked
    lobby only accepts spectators, so the UI uses this to offer "Spectate Game"
    instead of "Join Room".
@@ -165,7 +261,20 @@ socket.on('leftRoom', () => {
    spectators.set(0)
    seatedPlayers.set([])
    myId.set(null)
-   chat.set([])
+   /*
+      An idle prompt belongs to the room, so it goes with it - and so does the
+      ability to answer one: the relay will not take an event from a member who
+      has left, so leaving it on screen would be a button that does nothing.
+   */
+   idlePromptAt.set(null)
+   /*
+      The room this board belonged to is gone, so the board goes with it: an
+      empty table rather than a reset one, because a reset puts the imported
+      deck back and leaving is not setting up again. This is also the path a
+      closed game takes, so a player whose opponent walked away is not left
+      looking at a board nothing can update.
+   */
+   clearBoard()
 })
 
 socket.on('opponentJoined', () => {

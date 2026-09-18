@@ -1,9 +1,11 @@
 import { json } from '@sveltejs/kit'
 import {
    appendEvent,
+   closeRoom,
    createRoom,
    getRoom,
    getStore,
+   isPlayer,
    joinRoom,
    removeMember,
    roomSummary
@@ -15,10 +17,17 @@ import {
    action 'create'   -> makes a new room, caller takes the first playing seat
    action 'join'     -> join as a player, or as a spectator when `role` is
                         'spectator' (or when both seats are taken)
-   action 'leave'    -> removes the caller from the room
+   action 'leave'    -> removes the caller from the room; if no playing seat is
+                        left occupied the room is closed for everyone
 
    The lobby is limited to two players; once both seats are filled it is locked
    and any further arrival can only spectate.
+
+   A room without players is not a game. Leaving a playing seat therefore ends
+   the room - the person still sitting there, and any watchers, are told it is
+   gone and drop back to the lobby - and a spectator leaving never touches it.
+   That distinction is the whole point: watching a game must not be able to keep
+   a dead one open.
 */
 
 /* keep everyone's spectator count in step while a room is open */
@@ -106,15 +115,39 @@ export async function POST ({ request }) {
       if (action === 'leave') {
          const roomId = String(body?.roomId || '').toUpperCase().trim()
          const memberId = body?.memberId
-         if (roomId && memberId) {
-            const room = await getRoom(roomId)
-            const leaving = room ? room.members.find((m) => m.id === memberId) : null
-            await removeMember(roomId, memberId)
-            if (leaving && leaving.role === 'spectator' && await getRoom(roomId)) {
-               await announceSpectators(roomId)
-            }
+         if (!roomId || !memberId) return json({ ok: true })
+
+         const room = await getRoom(roomId)
+         const leaving = room ? room.members.find((m) => m.id === memberId) : null
+
+         const { members, players } = await removeMember(roomId, memberId)
+
+         /*
+            Every other member's poll is what tells them the room has gone, so
+            this reply is only for the leaver: they are already out, and the
+            client uses it to clear its own board rather than to show itself a
+            dialog it does not need.
+         */
+         if (!room && !members.length) return json({ ok: true, closed: true, reason: 'closed' })
+
+         if (!players.length) {
+            /*
+               The last playing seat has been given up. That is the end of the
+               game whatever else is still watching: a room is a game, and a game
+               with nobody sitting in it must not be kept open by spectators.
+               Tell whoever is left first - the event is how the room's own log
+               records why it ended, and a poll already in flight may still carry
+               it - then close the room.
+            */
+            if (members.length) await appendEvent(roomId, 'roomClosed', { reason: 'playerLeft' })
+            await closeRoom(roomId, 'closed')
+            return json({ ok: true, closed: true, reason: 'playerLeft', closedRoom: roomId })
          }
-         return json({ ok: true })
+
+         /* players remain, so a spectator leaving is just a count change */
+         if (leaving && leaving.role === 'spectator') await announceSpectators(roomId)
+
+         return json({ ok: true, closed: false, players: players.length, spectators: members.filter((m) => m.role === 'spectator').length })
       }
 
       return json({ error: `unknown action "${action}"` }, { status: 400 })

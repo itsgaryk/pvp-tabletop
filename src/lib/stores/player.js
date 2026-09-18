@@ -2,7 +2,7 @@ import { get, post } from '$lib/util/fetch-web.js'
 import { board } from './custom/board.js'
 import { pile, slot } from './custom/cards.js'
 import { writable } from './custom/writable.js'
-import { share, react, publishLog, spectating, socket } from './connection.js'
+import { share, react, publishLog, spectating, socket, onBoardCleanup, chat } from './connection.js'
 import { fixOld } from './oldCards.js'
 import { s } from '$lib/util/strings.js'
 import { statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
@@ -33,6 +33,36 @@ export function reset () {
    if (isSpectator()) return
    return resetBoard()
 }
+
+/*
+   Empty the board and the deck list behind it.
+
+   This is what leaving a room needs, and it is deliberately not `reset()`: a
+   board reset throws the board's state away and then rebuilds the deck from the
+   imported list, which is right for Setup and wrong for leaving - a player who
+   has walked away from a room should not still be holding that game's deck. It
+   is not guarded against spectators because the guard exists to stop a spectator
+   changing the *game*, and this only changes what is on their own screen, which
+   is thrown away anyway.
+*/
+export function clearMyBoard () {
+   cards.set([])
+   resetBoard()
+   resetSelection()
+}
+
+/*
+   The board's own half of "the room is gone", handed to the transport rather
+   than imported by it - see the note in connection.js. Everything on this
+   client that belonged to the room goes: the cards, the selection, the log and
+   the table's clock. The other halves (the opponent mirror, and a spectator's
+   two) are cleared by their own listener for `leftRoom`.
+*/
+onBoardCleanup(() => {
+   clearMyBoard()
+   chat.set([])
+   timer.set({ running: false, remaining: 0, at: 0 })
+})
 
 export function importDeck (txt, cb, rd = false) {
    if (isSpectator()) return

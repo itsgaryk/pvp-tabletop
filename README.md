@@ -51,7 +51,9 @@ check `GET /api/relay/health`:
 
 ```json
 { "ok": true, "relay": true, "store": "redis-rest", "from": "pvptabletop_URL",
-  "checked": false, "poll": { "waitMs": 20000, "intervalMs": 2000 } }
+  "checked": false, "epoch": "sha:1f2e3d4c…",
+  "poll": { "waitMs": 20000, "intervalMs": 2000 },
+  "idle": { "idleMs": 600000, "promptMs": 600000, "memberStaleMs": 140000 } }
 ```
 
 `from` names the variable the store came from (the name is not a secret; the
@@ -91,11 +93,89 @@ instead of every 2s) and says so on screen, with a **Reconnect** button. Any
 input, or a message from the other side, puts it straight back on the normal
 beat, so a board the opponent is playing on is never slow.
 
+### Leaving, and what closes a room
+
+A room is a game, and a game is the people playing it. So the rule the relay
+enforces is **a room closes when no playing seat is occupied** — not when it has
+no members. The difference matters: a spectator who never closes their tab
+would otherwise hold a dead room, and its keys, open until the 6-hour TTL
+noticed.
+
+- A **player** leaving gives up a seat. If the other seat is still occupied the
+  game goes on without them; if it was the last one, the room closes.
+- A **spectator** leaving is only a count change, and never closes anything.
+- When a room closes, everybody still in it — the other player, and any watchers
+  — gets a centred **"Game closed. Returned to lobby"** dialog with an OK
+  button, and their board is emptied behind it. The leaver is not shown it:
+  they already know, and they are already back in the lobby.
+- Leaving **empties** the board rather than resetting it. A reset puts a fresh
+  copy of the imported deck back on it, which is right for Setup and wrong for
+  walking away from a game.
+
+Closing the tab is a leave too, and no button sees it: `pagehide` sends a
+`sendBeacon` with the same leave body, and drops the remembered session. A tab
+that was *killed* rather than closed cannot send anything, which is what the
+stale-member sweep below is for.
+
+A closed room leaves a short-lived note (two minutes) saying why, so a member
+whose next poll finds the room missing can tell a game that ended from a room
+the TTL collected — only one of those is worth saying on screen.
+
+### A deploy closes the rooms it replaces
+
+A room is a live game, and the code playing it is the code that was deployed
+when it was created. A restart therefore **ends the games in progress**: rooms
+are stamped with the deployment's epoch (`VERCEL_GIT_COMMIT_SHA` on Vercel, a
+random id per server boot in development) and any read that finds a different
+stamp treats the room as finished, deleting it and telling its members the game
+closed. The stamp rides in the room metadata that every read already fetches, so
+checking it costs no extra store command.
+
+This is deliberate: replaying an old room's events into a new build is the
+failure it prevents, and the trade is that a deploy during a game ends that
+game. The alternative — letting the room continue against handlers it was not
+written for — fails in ways that are much harder to see.
+
+### The idle prompt
+
+A room where nothing has been *done* for `RELAY_IDLE_MS` is asked whether
+anybody is still playing: a centred prompt with a countdown and a **Still
+playing** button. Nobody answering within `RELAY_PROMPT_MS` closes the room.
+Either player can answer, and one click takes the prompt off both screens.
+
+Three things about it are deliberate:
+
+- **Activity means appended events, not presence.** Two players sitting on a
+  board are present and idle, which is exactly the case worth asking about. So
+  the clock runs from `meta.lastActionAt`, stamped into the pipeline that
+  already runs when an event is appended (one `SET` that carries its own TTL, so
+  the room's expiry follows its metadata as it always did).
+- **The players' own polls are the timer — there is no cron and no scheduler.**
+  Vercel's Hobby cron runs about daily and every-five-minutes needs Pro, so the
+  check rides on the read the poll already does on its way out. It is free:
+  the room has been fetched anyway to describe the seats. A room nobody is
+  polling is therefore never swept, and that is a known limit rather than an
+  oversight: a clean tab close removes its member and, when it was the last
+  player, closes the room on the way; a crashed tab leaves a room the 6-hour TTL
+  collects.
+- **The prompt is a normal relayed event.** Polls deliver it and a late joiner
+  replays into it, so a spectator arriving mid-prompt sees the time actually
+  left rather than a fresh window — the countdown is computed against the
+  relay's clock from the event's own timestamp, exactly as the game timer is.
+
+The same routine sweeps members whose presence has gone stale
+(`RELAY_MEMBER_STALE_MS`), which is what stops a killed tab from inflating the
+spectator count for the rest of the room's life. A player left present by
+nobody is dropped the same way, and if that was the last playing seat the room
+closes.
+
 ### Environment variables
 
-All are **optional** and all are **client-side** except the Redis ones. Vite
-inlines the `VITE_*` values into the JavaScript during `npm run build`, so they
-must never hold secrets and changing one requires a redeploy.
+All are **optional**. The `VITE_*` ones are **client-side** and the rest are
+server-side. Vite inlines the `VITE_*` values into the JavaScript during
+`npm run build`, so they must never hold secrets and changing one requires a
+redeploy; the others are read at request time and can be changed in the Vercel
+dashboard (a new deployment is still needed, since the functions restart).
 
 | Variable | What it controls | Default |
 | --- | --- | --- |
@@ -104,6 +184,13 @@ must never hold secrets and changing one requires a redeploy.
 | `VITE_ENV` | `dev` logs every relayed event to the browser console. | `dev` locally, `prod` in a build |
 | `RELAY_POLL_WAIT_MS` | Server-side long-poll window in ms. Larger = fewer requests but more billed function time. | `20000` |
 | `RELAY_POLL_INTERVAL_MS` | How often a waiting poll re-reads the room's event cursor, in ms. This is the relay's main cost dial: the store sees one cheap read per turn, per waiting client, whether or not anything happens. Larger = fewer store commands, at the price of up to that long before an opponent's or a spectator's view catches up. | `2000` |
+| `RELAY_IDLE_MS` | How long a room may see no *action* before it is asked whether anybody is still playing. Presence is not action, so two people sitting on a board are idle. | `600000` (10 min) |
+| `RELAY_PROMPT_MS` | How long that idle prompt waits for an answer before the room is closed. This is also the countdown the players see. | `600000` (10 min) |
+| `RELAY_MEMBER_STALE_MS` | How long a member's presence may go unrefreshed before the relay stops counting them - which is what takes a killed tab out of the spectator count. | 4 poll windows + 60s |
+
+The timing variables are environment variables rather than constants so the
+behaviour can be verified in seconds instead of tens of minutes; set them to a
+few seconds and the whole idle lifecycle happens while you watch.
 
 Do not confuse the `VITE_*` names with Vercel's own system variables
 (`VERCEL_URL`, `VERCEL_ENV`, …), which Vercel lists in the same screen.
@@ -236,6 +323,13 @@ whole long-polls:
 | "still here" (one HSET) | 1 |
 | assembling the reply (room meta, events, members) | 4 |
 
+The idle check rides on that last row rather than adding to it: the room has
+already been read to describe the seats, so `RELAY_IDLE_MS` and the stale-member
+sweep cost a comparison rather than a command. An appended event is still **ten
+commands** too — the activity stamp (`meta.lastActionAt`) is written into the
+metadata the append path already read, in the same `SET` that used to be a plain
+existence check, so it costs nothing either.
+
 Presence is a field of its own in the members hash, so refreshing it is a single
 HSET rather than a read-modify-write of the member record: three commands became
 one, and two clients touching at once can no longer lose each other's role or
@@ -244,9 +338,10 @@ so a change in the dashboard is visible from outside:
 
 ```json
 { "ok": true, "relay": true, "store": "redis-rest", "from": "KV_REST_API_URL",
-  "poll": { "waitMs": 20000, "intervalMs": 2000 } }
+  "epoch": "sha:1f2e3d4c…",
+  "poll": { "waitMs": 20000, "intervalMs": 2000 },
+  "idle": { "idleMs": 600000, "promptMs": 600000, "memberStaleMs": 140000 } }
 ```
-
 A tab nobody is looking at costs far less. While the document is hidden the
 client asks the server to check its cursor every 20s instead of on the default
 beat, and re-polls the moment the tab is looked at again, so the board is up to
@@ -289,8 +384,8 @@ needed, since rejecting an action server-side would mean losing it.
 
 ## Troubleshooting and diagnostics
 
-Three tools, for the three questions that are expensive to answer by hand. Each
-of them exists because the hand-written version of it produced a wrong answer at
+Five tools, for the five questions that are expensive to answer by hand. Each of
+them exists because the hand-written version of it produced a wrong answer at
 least once.
 
 | Question | Where the answer is |
@@ -298,6 +393,41 @@ least once.
 | "What actually happened in that room?" | `node tools/room-log.mjs <ROOM>` |
 | "Is it the state or the client?" | Settings -> Diagnostics (also at `/diagnostics`) |
 | "Has my change actually shipped?" | `node tools/deployed.mjs --url <app> <marker>` |
+| "Does the relay still enforce its own rules?" | `node tools/relay-check.mjs` |
+| "Does the app really do that, in a browser?" | `node tools/browser-check.mjs` |
+
+### Verifying a change: `tools/relay-check.mjs` and `tools/browser-check.mjs`
+
+`relay-check.mjs` asks the relay directly about the four things this project has
+got wrong before — leaving, restarts, the idle prompt and the stale-member sweep
+— and prints a line per check. It needs no browser and no network beyond the
+deployment, so it runs against a Vercel preview as happily as against `vite dev`:
+
+```sh
+node tools/relay-check.mjs                              # against localhost:3005
+BASE=https://your-app.vercel.app node tools/relay-check.mjs
+```
+
+It reads the idle windows out of `/api/relay/health` and, against a deployment
+running the production ten-minute ones, **skips** the timing checks and says so
+rather than either failing or pretending to have run them. Point it at a server
+started with second-scale windows and it exercises the whole lifecycle:
+
+```sh
+node tools/fake-redis.mjs &
+RELAY_IDLE_MS=3000 RELAY_PROMPT_MS=5000 RELAY_MEMBER_STALE_MS=8000 \
+RELAY_POLL_WAIT_MS=1000 RELAY_POLL_INTERVAL_MS=300 \
+KV_REST_API_URL=http://127.0.0.1:6390 KV_REST_API_TOKEN=local npm run dev &
+node tools/relay-check.mjs
+```
+
+`browser-check.mjs` drives the same behaviours through **three real browsers** —
+two players and a spectator, the arrangement that caught the spectator bugs — and
+checks what is actually on screen: the centred dialogs, the board behind them,
+the watcher count in the header, the countdown. It attaches to browsers you
+started yourself, one per page on ports 9222/9223/9224, because a helper that
+spawns its own browsers has twice put an error dialog on somebody's screen. Its
+header comment has the commands.
 
 ### A room's story: `tools/room-log.mjs`
 
@@ -465,4 +595,15 @@ do not work there without a pub/sub adapter).
 - `vercel.json` holds the framework preset only — the output directory comes
   from the adapter's Build Output.
 - Gameplay code talks to `share()` / `react()` in `src/lib/stores/connection.js`
-  and never touches the transport directly.
+  and never touches the transport directly. That direction is deliberate: the
+  transport must not import gameplay, or the two modules evaluate while each
+  other is half-built (it is a 500 on every page load, not a subtle bug). What
+  the transport needs back — "empty this board, the room is gone" — gameplay
+  registers with `onBoardCleanup()` instead.
+- `src/lib/relay/maintain.js` is everything the poll decides on the room it has
+  already read: whether the room is still a game, who has gone stale, and whether
+  to prompt or close. It runs on the poll's one exit path, so all four ways a
+  poll can end are maintained identically.
+- `.github/workflows/ci.yml` runs `tools/relay-check.mjs` against a dev server
+  with second-scale idle windows, then `npm run build`. It never touches a real
+  database, so a push cannot spend a metered quota.

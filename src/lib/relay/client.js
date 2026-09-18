@@ -169,6 +169,15 @@ export class HttpSocket {
       this.controller = null
       this.loop = null
 
+      /*
+         Told "this room is not there any more", with the relay's reason, before
+         the socket forgets it. The transport is what finds out - a poll comes
+         back gone - but what that means (a game that ended, and the board to
+         clear) belongs to the app, so it is handed over rather than decided
+         here.
+      */
+      this.goneListeners = new Set()
+
       /* when this client last did, or heard, anything */
       this.lastActivity = Date.now()
       this.isIdle = false
@@ -215,6 +224,28 @@ export class HttpSocket {
       return this.errors.length ? this.errors[this.errors.length - 1] : null
    }
 
+   /*
+      Watch for the room going away. Called with the relay's reason, of which
+      these matter: 'closed' (a player left, or an idle room went unanswered) and
+      'idle' are games that ended, which is worth saying on screen; 'expired' is
+      the 6h TTL and is not news.
+   */
+   onGone (cb) {
+      this.goneListeners.add(cb)
+      return () => this.goneListeners.delete(cb)
+   }
+
+   raiseGone (reason) {
+      for (const cb of [...this.goneListeners]) {
+         try {
+            cb(reason)
+         } catch (err) {
+            console.error('[relay] gone handler threw', err)
+            this.recordError('gone', err.message)
+         }
+      }
+   }
+
    /* ------------------------------------------------------------ lifecycle -- */
 
    connect () {
@@ -242,6 +273,18 @@ export class HttpSocket {
       */
       if (!this.idleTimer) {
          this.idleTimer = setInterval(() => { if (this.roomId) this.markIdle() }, 5000)
+      }
+
+      /*
+         pagehide, not unload: it is the event that actually fires on a tab
+         close, a navigation away and a bfcache store, and unlike unload it does
+         not disable the back/forward cache. The room and the seat are read from
+         this socket at the moment it fires, because by then the app's stores may
+         already have been torn down.
+      */
+      if (typeof window !== 'undefined' && !this.onPageHide) {
+         this.onPageHide = () => { this.beaconAway() }
+         window.addEventListener('pagehide', this.onPageHide)
       }
 
       this.loop = this.run()
@@ -302,8 +345,12 @@ export class HttpSocket {
             document.removeEventListener('keydown', this.onInput, true)
          }
       }
+      if (typeof window !== 'undefined' && this.onPageHide) {
+         window.removeEventListener('pagehide', this.onPageHide)
+      }
       this.onVisibility = null
       this.onInput = null
+      this.onPageHide = null
       if (this.idleTimer) {
          clearInterval(this.idleTimer)
          this.idleTimer = null
@@ -513,6 +560,50 @@ export class HttpSocket {
    }
 
    /*
+      Leaving because the tab is going away, which cannot wait for a reply.
+
+      sendBeacon is the only request a browser promises to finish while a page is
+      unloading - a normal fetch is cancelled with the page. It is a plain POST of
+      the same body the leave call sends, so the relay needs no special case for
+      it. A text/plain content type is used deliberately: it is a CORS-simple
+      request, so a beacon to a relay on another origin is not turned into a
+      preflight the browser will not wait for. The server parses the JSON body
+      either way.
+
+      What this is for: a spectator closing the tab is a leave that no button
+      ever sees, and without it their member record lingers - and so does the
+      spectator count in everybody else's header - until the sweep notices.
+   */
+   beaconAway () {
+      if (!this.roomId || !this.id) return false
+      if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') return false
+
+      const body = JSON.stringify({
+         action: 'leave',
+         roomId: this.roomId,
+         memberId: this.id
+      })
+
+      /*
+         The remembered session goes with it. A tab that closed is not a seat
+         anybody can come back to, and leaving it in localStorage is what would
+         make the next page load try to rejoin a room this browser has just
+         walked out of.
+      */
+      writeSession(null)
+
+      try {
+         return navigator.sendBeacon(
+            `${this.base}/api/relay/room`,
+            new Blob([body], { type: 'text/plain;charset=UTF-8' })
+         )
+      } catch (err) {
+         this.recordError('leave', `could not send the closing beacon: ${err.message}`)
+         return false
+      }
+   }
+
+   /*
       Out of the room, and no longer worth reconnecting to. The session is what
       lets a reload come back to the same seat, so it goes when the player leaves
       on purpose or the room itself is gone.
@@ -619,6 +710,18 @@ export class HttpSocket {
       - which is what made a message appear twice in the log.
    */
    apply (event) {
+      /*
+         Not in a room: apply nothing.
+         A poll already in flight when this client left, or a reply that crossed
+         the leave, carries the room's events - and applying them rebuilds the
+         board this browser has just walked away from. The case that made this
+         necessary: a player left a room, their board was correctly emptied, and
+         the other player's next full board state then landed in the mirror for
+         an opponent who no longer had a room - so the lobby showed a game still
+         in progress, with somebody else's cards on it.
+      */
+      if (!this.roomId) return
+
       const self = Boolean(event.from) && event.from === this.id
       /*
          The event's own data goes through untouched. It has to: a game timer
@@ -745,7 +848,13 @@ export class HttpSocket {
       if (typeof payload.now === 'number') this.skew = payload.now - Date.now()
 
       if (payload.gone) {
-         // The room expired or no longer exists; drop back to the lobby.
+         /*
+            The room has been closed or expired. Say why before letting go of it:
+            the app decides whether that is a dialog, and it cannot decide after
+            the room id is gone.
+         */
+         const reason = payload.reason || 'expired'
+         this.raiseGone(reason)
          this.forget()
          return
       }

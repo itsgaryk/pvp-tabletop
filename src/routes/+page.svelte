@@ -4,6 +4,8 @@
    import { solo } from '$lib/stores/solo.js'
    import Board from '$lib/play/Board.svelte'
    import Controls from '$lib/play/Controls.svelte'
+   import IdlePrompt from '$lib/play/dialogs/IdlePrompt.svelte'
+   import GameClosed from '$lib/play/dialogs/GameClosed.svelte'
    import Connection from './Connection.svelte'
    import DeckInput from './DeckInput.svelte'
 
@@ -37,3 +39,11 @@
    <Board />
    <Connection />
 </div>
+
+<!--
+   The two things that take over the whole screen. Both are about the room rather
+   than the board: an idle room asking whether anybody is still playing, and a
+   room that has closed while somebody was still in it.
+-->
+<IdlePrompt />
+<GameClosed />

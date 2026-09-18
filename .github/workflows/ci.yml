@@ -1,0 +1,68 @@
+name: CI
+
+# What this checks, and why these three things:
+#
+#   the relay's own rules  tools/relay-check.mjs, against a dev server pointed at
+#                          a stand-in store, with the idle windows turned down to
+#                          seconds so the whole lifecycle runs here
+#   the app compiles       `npm run build`, the same command Vercel runs
+#   the tree is reviewable  nothing else; a browser check needs real browsers and
+#                          is run by hand (tools/browser-check.mjs)
+#
+# It deliberately does not touch a real database: the relay's commands are
+# counted by tools/fake-redis.mjs, so a metered Upstash quota is never spent by
+# a push.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # the store the relay talks to: Upstash's REST protocol, counted
+      - name: Start the stand-in store
+        run: node tools/fake-redis.mjs &
+
+      - name: Start the dev server on short windows
+        env:
+          KV_REST_API_URL: http://127.0.0.1:6390
+          KV_REST_API_TOKEN: local
+          RELAY_IDLE_MS: 3000
+          RELAY_PROMPT_MS: 5000
+          RELAY_MEMBER_STALE_MS: 8000
+          RELAY_POLL_WAIT_MS: 1000
+          RELAY_POLL_INTERVAL_MS: 300
+        run: npm run dev &
+
+      - name: Wait for the relay
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3005/api/relay/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "the dev server never answered"
+          exit 1
+
+      - name: Check the relay's behaviour
+        env:
+          BASE: http://localhost:3005
+          FAKE: http://127.0.0.1:6390
+        run: node tools/relay-check.mjs
+
+      - name: Build
+        run: npm run build
