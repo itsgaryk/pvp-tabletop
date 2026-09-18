@@ -39,6 +39,13 @@
  *   node tools/browser-check.mjs --only idle       # one section
  *   CDP_PORTS=9222,9223 node tools/browser-check.mjs
  *
+ * The restart section re-stamps a room's metadata, so it needs the store the
+ * relay is reading: locally that is tools/fake-redis.mjs, and against a
+ * deployment it must be named (REDIS_URL, REDIS_TOKEN - Upstash's REST protocol,
+ * the same credentials the relay uses). Without it that one section is skipped
+ * with the reason, rather than writing to some other database and reporting the
+ * code as broken.
+ *
  * The idle windows have to be short enough that a scripted run reaches them, and
  * long enough that setup (two imports and two set-ups, a few seconds) does not
  * trip them first: 8s idle and 12s prompt is the arrangement these checks were
@@ -62,13 +69,34 @@ const check = (label, ok, detail = '') => {
 
 /* ------------------------------------------------------------- the store -- */
 
+/*
+   The restart section re-stamps a room's metadata, which only means anything if
+   that store is the one the relay under test is reading. Writing to a local
+   stand-in while the relay reads a deployment's database does not fail loudly -
+   the room simply stays as it was, and the section reports that the *code* is
+   broken. That is the worst possible answer from a verification tool, so the
+   restart section refuses to run unless the store is one we can name.
+*/
+const LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(BASE)
+const STORE_URL = process.env.REDIS_URL
+   ? process.env.REDIS_URL.replace(/\/+$/, '')
+   : (LOCAL ? FAKE : null)
+const STORE_TOKEN = process.env.REDIS_TOKEN || 'local'
+const STORE_REASON = STORE_URL
+   ? null
+   : `the store ${BASE} reads is not named - set REDIS_URL and REDIS_TOKEN to check this`
+
 async function redis (...args) {
-   const res = await fetch(FAKE, {
+   if (!STORE_URL) throw new Error(STORE_REASON)
+   const res = await fetch(STORE_URL, {
       method: 'POST',
-      headers: { Authorization: 'Bearer local', 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${STORE_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(args)
    })
-   return (await res.json()).result
+   if (!res.ok) throw new Error(`store ${args[0]} failed: ${res.status}`)
+   const body = await res.json()
+   if (body.error) throw new Error(`store error: ${body.error}`)
+   return body.result
 }
 
 /* ------------------------------------------------------------- the pages -- */
@@ -232,22 +260,38 @@ if (want('closed')) {
 /* ------------------------------------------------------------ 3. restart -- */
 
 if (want('restart')) {
-   const room = await seatGame('a restart closes a room somebody is sitting in')
-   console.log(`  room ${room}`)
+   if (!STORE_URL) {
+      console.log(`\nskipped the restart section - ${STORE_REASON}`)
+   } else {
+      const room = await seatGame('a restart closes a room somebody is sitting in')
+      console.log(`  room ${room}`)
 
-   const key = `pvp:room:${room}:meta`
-   const meta = JSON.parse(await redis('GET', key))
-   await redis('SET', key, JSON.stringify({ ...meta, epoch: 'sha:0000000000000000000000000000000000000000' }))
-   console.log('  re-stamped the room with another deployment\'s epoch')
+      /*
+         Re-stamp the room as belonging to another deployment, which is exactly
+         the state a previous deploy leaves behind. Read it back first: if the
+         store we just wrote to is not the one the relay reads, the write is
+         invisible to it and this section would blame the code for it.
+      */
+      const key = `pvp:room:${room}:meta`
+      const meta = JSON.parse(await redis('GET', key))
+      const stamped = { ...meta, epoch: 'sha:0000000000000000000000000000000000000000' }
+      await redis('SET', key, JSON.stringify(stamped))
 
-   const dialog = await dialogWhenUp(alice, 'closed', { timeout: 40000 })
-   check('the player is told the game closed', dialog !== null, JSON.stringify(dialog))
-   check('with the agreed wording', /Game closed\. Returned to lobby/.test(dialog?.text || ''), dialog?.text)
-   if (dialog) await alice.clickText('OK', { settle: 1500, kinds: 'button' })
-   check('the player lands in the lobby', (await alice.counts()).mode === 'lobby', (await alice.counts()).mode)
-   check('with an empty board', emptyBoard(await emptyBoardWhen(alice)), JSON.stringify(await zones(alice)))
-   check('and the room forgotten', (await alice.relayEvents()) === null)
-   check('the other player is told too', (await dialogWhenUp(bob, 'closed', { timeout: 40000 })) !== null)
+      const readBack = JSON.parse(await redis('GET', key) || 'null')
+      if (readBack?.epoch !== stamped.epoch) {
+         throw new Error(`the store did not keep the re-stamp (${readBack?.epoch}), so it is not the store under test`)
+      }
+      console.log('  re-stamped the room with another deployment\'s epoch')
+
+      const dialog = await dialogWhenUp(alice, 'closed', { timeout: 40000 })
+      check('the player is told the game closed', dialog !== null, JSON.stringify(dialog))
+      check('with the agreed wording', /Game closed\. Returned to lobby/.test(dialog?.text || ''), dialog?.text)
+      if (dialog) await alice.clickText('OK', { settle: 1500, kinds: 'button' })
+      check('the player lands in the lobby', (await alice.counts()).mode === 'lobby', (await alice.counts()).mode)
+      check('with an empty board', emptyBoard(await emptyBoardWhen(alice)), JSON.stringify(await zones(alice)))
+      check('and the room forgotten', (await alice.relayEvents()) === null)
+      check('the other player is told too', (await dialogWhenUp(bob, 'closed', { timeout: 40000 })) !== null)
+   }
 }
 
 /* --------------------------------------------------------------- 4. idle -- */
