@@ -255,6 +255,130 @@ date by the time it is read. Measured: **~0.27 commands/second** hidden against
 missed event on screen within milliseconds of
 regaining focus.
 
+## Troubleshooting and diagnostics
+
+Three tools, for the three questions that are expensive to answer by hand. Each
+of them exists because the hand-written version of it produced a wrong answer at
+least once.
+
+| Question | Where the answer is |
+| --- | --- |
+| "What actually happened in that room?" | `node tools/room-log.mjs <ROOM>` |
+| "Is it the state or the client?" | the app's `/diagnostics` screen |
+| "Has my change actually shipped?" | `node tools/deployed.mjs --url <app> <marker>` |
+
+### A room's story: `tools/room-log.mjs`
+
+The relay keeps a room as an ordered event log, so every question about a broken
+game is really a question about that log. Reading it by hand - fetch
+`/api/relay/poll?since=0`, scan for the last `boardState`, look for a
+`boardReset` - is easy to do badly, and a bad read is how a wrong conclusion gets
+drawn.
+
+```sh
+node tools/room-log.mjs ABC123                       # against the dev server
+node tools/room-log.mjs ABC123 --tail 40             # just the end of the log
+node tools/room-log.mjs ABC123 --json > room.json    # attach it to a bug report
+BASE=https://your-app.vercel.app node tools/room-log.mjs ABC123
+```
+
+It prints the seats in join order, a timeline with the seconds since the first
+event, the counts per event name and per sender, and then a **verdict**:
+
+```
+what this log says
+  [ok] the last full board state (#6) holds 67 cards (deck 45, hand 7, prizes 6, discard 4, active 2, bench 3)
+  [ok] the last full board state (#6) is newer than the last spectator change (#5)
+  [-] 11 events over 0s (first #1 at 2026-09-18 17:44:21Z, last #11 at 2026-09-18 17:44:21Z)
+
+verdict: no problem visible in the log - if the board is wrong, suspect the client
+```
+
+That last line is the point. `[x]` findings mean the **state** is wrong and the log
+says so - a board reset with nothing published after it, a full state that is
+empty, a sequence gap, an event burst from two clients echoing each other. No
+`[x]` at all means the relay's own record is sound, which moves the suspicion to
+the client - and that is what `/diagnostics` is for.
+
+It is **read-only**, and deliberately so: it never sends a `memberId`, so the
+relay records no presence for it and spends no writes. Reading a small room costs
+four commands (two `GET`, one `LRANGE`, one `HGETALL`) and a room larger than one
+poll page costs one extra round.
+
+### The `/diagnostics` screen
+
+`/diagnostics` is a live snapshot of *this browser*: relay health and the poll
+settings the deployment is running, the room and its role, the seats in join
+order, the spectator count, the clock skew against the relay, the boards' zone
+counts, and the last events the transport delivered.
+
+The section that earns its place is the event list:
+
+```
+age   seq   event              from          handled
+2s    41    boardState         Alice         yes
+2s    42    damageUpdated      Bob           yes
+1s    43    prizeToggle        relay         IGNORED
+```
+
+`IGNORED` means the relay delivered that event and **no handler in this client
+was listening for it**. That is the shape of the spectator bugs: the log was
+healthy, the poll delivered everything, the board stayed empty and nothing on
+screen or in the console said why. An event with no listener used to disappear
+without a trace; now it is a line here.
+
+The zone counts are read through `exportBoard()`, the same shape a player sends
+the relay - so "deck 45, hand 7, bench 3" here is the number this client is
+*publishing*, not a second opinion about the board. If that disagrees with what
+the other half shows, the fault is in between.
+
+There is also a **Copy report** button, which puts the whole snapshot on the
+clipboard as JSON.
+
+### Claiming a deploy: `tools/deployed.mjs`
+
+Merged is not deployed. A build can lag a merge by minutes, and checking by eye
+twice is how "deployed" gets claimed when it is not. This asks the deployment
+itself:
+
+```sh
+node tools/deployed.mjs --url https://your-app.vercel.app
+node tools/deployed.mjs --url https://your-app.vercel.app "some literal from your change"
+node tools/deployed.mjs --local            # just this build, no network
+```
+
+It answers two ways, because either alone can mislead:
+
+- **the fingerprint** - SvelteKit writes `/_app/version.json`, and each asset
+  carries a content hash in its filename. It prints both versions and compares the
+  module graph file by file. Assets are discovered the way a browser discovers
+  them, by following `import()` from the served HTML, so a route chunk that is not
+  preloaded still counts as present.
+- **the marker** - a literal string you know is in your change, searched in both
+  the local build and the served bundle. `local yes, deployment no` is the exact
+  answer to "has my merge shipped?":
+
+```
+verdict: NOT DEPLOYED - "last relay error" is in the local build but not in the
+served bundle, so the deployment is behind this build.
+```
+
+A marker must survive minification, so pick a string literal, a route path, an
+event name or a CSS class - not an identifier you invented, which the minifier may
+rename. If the marker is in neither build the tool says it cannot tell, rather
+than reporting a confident "not deployed" from no evidence.
+
+### Failures that used to be silent
+
+A relay fault used to end at `console.error` and nowhere else, so a board could
+sit there quietly wrong with nothing to explain it. The transport now keeps the
+last 40 faults - failed sends, failed polls, handlers that threw, and events
+dropped with nowhere to send them - and the connection panel shows the most
+recent one as `relay: <kind> - <reason>`. The full list is on `/diagnostics`.
+
+Solo mode is excluded from "dropped event" reports on purpose: having no room is
+the design there, so it is not a fault.
+
 ## Server (optional, self-hosted)
 
 `VITE_PVP_SERVER` predates the in-project relay: it can point at a relay you run

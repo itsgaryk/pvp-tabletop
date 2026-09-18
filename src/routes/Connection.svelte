@@ -1,5 +1,5 @@
 <script>
-   import { onMount } from 'svelte'
+   import { onMount, onDestroy } from 'svelte'
    import Chat from './Chat.svelte'
    import Spinner from './Spinner.svelte'
    import GameActions from '$lib/play/GameActions.svelte'
@@ -10,7 +10,7 @@
    import {
       connected, room, spectating, spectators, chat,
       createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary, roomError,
-      idle, resume
+      idle, resume, socket
    } from '$lib/stores/connection.js'
    import { solo, startSolo, exitSolo } from '$lib/stores/solo.js'
 
@@ -43,6 +43,25 @@
          relay = { state: 'error', error: err.message }
       }
    })
+
+   /*
+      The last thing the relay transport recorded going wrong.
+
+      Failures used to end at console.error, so a board could sit there quietly
+      wrong with nothing on screen to say why - which is how the spectator bugs
+      survived so many rounds. Watched on a timer rather than by subscribing,
+      because the transport's record is a plain array rather than a store.
+   */
+   let relayFault = null
+   let faultTimer = null
+
+   onMount(() => {
+      const watch = () => { relayFault = socket.lastError() }
+      watch()
+      faultTimer = setInterval(watch, 1000)
+   })
+
+   onDestroy(() => clearInterval(faultTimer))
 
    $: if (roomId.length >= 6) scheduleStatus(roomId)
    else status = null
@@ -249,6 +268,21 @@
       </button>
 
    {/if}
+
+   <!--
+      The last relay fault, if there was one, and the way to the full picture.
+      A silent failure is the expensive kind, so the reason is on screen rather
+      than only in the console.
+   -->
+   <div class="mt-2 flex flex-col gap-1 text-xs text-[var(--text-color-two)]">
+      {#if relayFault}
+         <div class="text-red-500 break-words">
+            relay: {relayFault.kind} - {relayFault.message}
+         </div>
+      {/if}
+
+      <a href="/diagnostics" class="text-center underline">Diagnostics</a>
+   </div>
 </div>
 
 <style>

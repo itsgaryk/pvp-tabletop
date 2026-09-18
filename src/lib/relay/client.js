@@ -23,6 +23,15 @@ const POLL_IDLE_MS = 300 // pause before re-polling after an error
 const EVENT_BUFFER = 200 // events fetched per poll
 
 /*
+   How many things that went wrong to keep. They are kept because a relay fault
+   is otherwise invisible: a failed send, a poll that 500s and an event that
+   arrives with no handler all used to end at console.error and nowhere else, so
+   "the log was healthy and nothing was on screen" had no answer. Bounded, so a
+   long session cannot grow it.
+*/
+const MAX_RELAY_ERRORS = 40
+
+/*
    A board in a tab nobody is looking at does not need news by the second. While
    the document is hidden the poll asks the server to check its cursor far less
    often - that check is where the relay's Redis commands come from - which takes
@@ -101,6 +110,34 @@ export class HttpSocket {
 
       /* this browser's clock against the relay's, for events that arrive late */
       this.skew = 0
+
+      /*
+         The last few faults, newest last, for the diagnostics screen and for a
+         bug report. Nothing here is delivered as an event: this is a record, not
+         a signal, so recording a failure can never cause another one.
+      */
+      this.errors = []
+   }
+
+   /*
+      Note something that went wrong, or something that was quietly ignored.
+      `kind` is short and greppable ('poll', 'send', 'handler:boardState').
+   */
+   recordError (kind, message) {
+      this.errors.push({
+         at: Date.now(),
+         kind: String(kind),
+         message: String(message ?? 'no message').slice(0, 300)
+      })
+      if (this.errors.length > MAX_RELAY_ERRORS) {
+         this.errors.splice(0, this.errors.length - MAX_RELAY_ERRORS)
+      }
+      return this
+   }
+
+   /* the newest fault, for a one-line "relay: ..." note in the connection panel */
+   lastError () {
+      return this.errors.length ? this.errors[this.errors.length - 1] : null
    }
 
    /* ------------------------------------------------------------ lifecycle -- */
@@ -232,7 +269,10 @@ export class HttpSocket {
       sender either.
    */
    emit (event, data) {
-      this.post(event, data).catch((err) => console.error('[relay] send failed', err))
+      this.post(event, data).catch((err) => {
+         console.error('[relay] send failed', err)
+         this.recordError(`send:${event}`, err.message)
+      })
    }
 
    /* ------------------------------------------------------------------ rooms -- */
@@ -264,6 +304,7 @@ export class HttpSocket {
          })
       } catch (err) {
          console.error('[relay] leave failed', err)
+         this.recordError('leave', err.message)
       }
       this.forget()
       return { ok: true }
@@ -454,6 +495,7 @@ export class HttpSocket {
             if (err && err.name === 'AbortError') continue
             this.setConnected(false)
             console.error('[relay] poll failed', err)
+            this.recordError('poll', err.message)
             await this.sleep(POLL_IDLE_MS)
          }
       }
@@ -581,22 +623,34 @@ export class HttpSocket {
    }
 
    deliver (event, data, { meta = null, local = false } = {}) {
+      /*
+         Whether anything is listening for this event at all. An event that
+         arrives and is applied by nobody is the failure that took the longest to
+         find in the spectator bugs - the relay was healthy, the poll delivered
+         everything, and the client silently dropped it - so the answer is
+         computed here and handed to the observers below rather than guessed at
+         afterwards.
+      */
+      const handlers = this.listeners.get(event)
+      const handled = Boolean(handlers && handlers.size)
+
       for (const cb of this.anyListeners) {
          try {
-            cb(event, data, meta, local)
+            cb(event, data, meta, local, handled)
          } catch (err) {
             console.error(`[relay] onAny handler for "${event}" threw`, err)
+            this.recordError(`onAny:${event}`, err.message)
          }
       }
 
-      const handlers = this.listeners.get(event)
-      if (!handlers) return
+      if (!handled) return
 
       for (const cb of [...handlers]) {
          try {
             cb(data, meta, { local })
          } catch (err) {
             console.error(`[relay] handler for "${event}" threw`, err)
+            this.recordError(`handler:${event}`, err.message)
          }
       }
    }
