@@ -19,6 +19,13 @@
    */
    export let anchored = false
 
+   /*
+      Vertically centred instead of pinned near the top. A short panel reads better
+      high up, but a tall one - the diagnostics dialog - wants the middle of the
+      window, where it is equally reachable from anywhere on the screen.
+   */
+   export let centered = false
+
    export function open () {
       isOpen = true
       closeAll()
@@ -68,6 +75,7 @@
    <!-- as wide as what is in it, and centred rather than pinned to a corner -->
    <div class="m-8 z-20 bg-[var(--popup-color)] rounded-md border border-black w-max max-w-[calc(100vw-4rem)]"
       class:anchored
+      class:centered
       use:clickOutside on:outclick={closed}
       use:escape on:esc={closed}>
 
@@ -111,5 +119,20 @@
       right: 0.75rem;
       transform: none;
       margin: 0;
+   }
+
+   /*
+      The middle of the window. The base rule already centres it horizontally, so
+      this only has to move it down half the viewport and pull it back up by half
+      its own height.
+
+      `margin: 0` is load-bearing: the base rule carries `m-8`, and a margin on a
+      fixed element with `left: 50%` shifts the box before the transform is
+      applied, which parked the dialog a visible 32px right and down of centre.
+   */
+   .centered {
+      top: 50%;
+      margin: 0;
+      transform: translate(-50%, -50%);
    }
 </style>
