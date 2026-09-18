@@ -255,6 +255,21 @@ export function share (event, data) {
    if (spectating.get()) return
 
    if (APP_ENV === 'dev') console.log('Sharing event ' + event, data)
+
+   /*
+      Nowhere to send it. In solo that is the design, and a board in the lobby
+      that has not joined a room yet is normal too - so neither is a fault. What
+      is not normal is a transport that still believes it is in a room: then the
+      event really was lost, and it used to go without a word, which reads
+      exactly like the relay having ignored it.
+   */
+   if (!room.get()) {
+      if (!solo.get() && socket.roomId) {
+         socket.recordError(`send:${event}`, `the event was dropped: room is ${room.get()}, the relay still has ${socket.roomId}`)
+      }
+      return
+   }
+
    socket.emit(event, {
       ...data, room: room.get()
    })
