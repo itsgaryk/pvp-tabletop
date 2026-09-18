@@ -4,17 +4,10 @@
    import { powerMarker, setPowerMarker } from '$lib/stores/player.js'
    import { spectating } from '$lib/stores/connection.js'
    import Popup from './Popup.svelte'
-   import Diagnostics from './Diagnostics.svelte'
 
    let popup
    export const open = () => popup.open()
    export const close = () => popup.close()
-
-   /*
-      Opening the dialog closes this menu: a Popup closes every other Popup when it
-      opens, so the settings menu gets out of the way by itself.
-   */
-   let diagnostics
 
    const setScale = (scale) => {
       if (browser) {
@@ -106,15 +99,9 @@
          Last on purpose. This is a diagnostic rather than a setting, so it does
          not belong among the things you change while playing, but it should be
          findable the moment something looks wrong.
-
-         It opens a dialog rather than navigating: going to another page reloads
-         the app and rebuilds the board, which is exactly the thing you are trying
-         to look at while it is still wrong.
       -->
       <div class="p-4 bg-[var(--bg-color-zero)] rounded-b-md">
-         <button class="diagnostics-link" on:click|stopPropagation={() => diagnostics.open()}>
-            Diagnostics
-         </button>
+         <a class="px-1 underline" href="/diagnostics">Diagnostics</a>
          <p class="text-sm">
             Relay health, the current room, the seat order and the events this browser has received -
             for telling a broken board apart from a broken client.
@@ -122,15 +109,3 @@
       </div>
    </div>
 </Popup>
-
-<Diagnostics bind:this={diagnostics} />
-
-<style>
-   /*
-      A button, not a link: it opens a panel over the board instead of going to
-      another page. Styled to still read as the link it looks like.
-   */
-   .diagnostics-link {
-      @apply px-1 underline;
-   }
-</style>
