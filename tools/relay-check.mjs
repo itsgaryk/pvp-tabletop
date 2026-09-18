@@ -33,13 +33,35 @@
  *
  *   REDIS_URL=... REDIS_TOKEN=... node tools/relay-check.mjs
  *
+ * Those two checks are skipped unless the store it is given belongs to the relay
+ * it is checking. Against a deployment that means naming the store explicitly;
+ * locally it defaults to tools/fake-redis.mjs. A verifier that silently reads a
+ * different database from the one under test reports the wrong answer
+ * confidently, so it refuses rather than guesses.
+ *
  * Read-only outside the rooms it creates itself. Every room it makes is its own,
  * and they are all closed or left to expire on their own.
  */
 
 const BASE = (process.env.BASE || 'http://localhost:3005').replace(/\/+$/, '')
-const REDIS_URL = (process.env.REDIS_URL || process.env.FAKE || 'http://127.0.0.1:6390').replace(/\/+$/, '')
-const REDIS_TOKEN = process.env.REDIS_TOKEN || 'local'
+
+/*
+   The checks that need the store itself - reading a room's metadata, re-stamping
+   it with another deployment's epoch - are only meaningful against the store the
+   relay under test is actually using. Getting that wrong is worse than not
+   running them: pointed at a deployment while reading a local stand-in, they
+   compare two unrelated databases and report the deployment as broken, which is
+   exactly the wrong answer and exactly the kind of confident nonsense this tool
+   exists to prevent.
+*/
+const LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(BASE)
+const REDIS_URL = process.env.REDIS_URL
+   ? process.env.REDIS_URL.replace(/\/+$/, '')
+   : (LOCAL ? (process.env.FAKE || 'http://127.0.0.1:6390') : null)
+const REDIS_TOKEN = process.env.REDIS_TOKEN || process.env.FAKE_TOKEN || 'local'
+const STORE_REASON = REDIS_URL
+   ? null
+   : `no store for ${BASE} is named - set REDIS_URL and REDIS_TOKEN to check this`
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -94,7 +116,6 @@ const readMeta = async (roomId) => {
    const raw = await redis('GET', `pvp:room:${roomId}:meta`)
    return raw ? JSON.parse(raw) : null
 }
-
 const writeMeta = (roomId, meta) => redis('SET', `pvp:room:${roomId}:meta`, JSON.stringify(meta))
 
 /* --------------------------------------------------------------- report -- */
@@ -211,6 +232,9 @@ console.log('\nleaving')
 console.log('\nrestart')
 if (!health.epoch) {
    skip('a room carries the deployment epoch', 'the health probe does not report one')
+} else if (!REDIS_URL) {
+   skip('a room carries the deployment epoch', STORE_REASON)
+   skip('a room from another deployment reads as gone', STORE_REASON)
 } else {
    const a = (await create()).body
    const meta = await readMeta(a.roomId)
