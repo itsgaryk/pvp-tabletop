@@ -72,10 +72,17 @@
       use:escape on:esc={closed}>
 
       <slot></slot>
-      <!-- one action per line: a panel is not a toolbar -->
-      <div class="flex flex-col items-center gap-2 p-2">
-         <slot name="buttons"></slot>
-      </div>
+      <!--
+         One action per line: a panel is not a toolbar. Rendered only when a panel
+         actually has actions, so the settings menu - which has none, since the cog,
+         Escape and a click outside all close it - does not carry an empty padded
+         strip along its foot.
+      -->
+      {#if $$slots.buttons}
+         <div class="flex flex-col items-center gap-2 p-2">
+            <slot name="buttons"></slot>
+         </div>
+      {/if}
    </div>
 {/if}
 

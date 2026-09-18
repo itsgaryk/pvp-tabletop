@@ -30,7 +30,13 @@
    }
 </script>
 
-<!-- controls asks the popup whether it is open, so the button can close it -->
+<!--
+   controls asks the popup whether it is open, so the button can close it.
+
+   There is no Close button in here: the cog toggles the menu, Escape closes it,
+   and a click anywhere outside it closes it too, so a button for it was one way
+   too many to do the same thing.
+-->
 <Popup bind:this={popup} anchored>
    <div class="p-4">
       <div class="p-4 bg-[var(--bg-color-zero)] rounded-t-md">
@@ -83,20 +89,23 @@
          </p>
       </div>
 
-      <div class="p-4 bg-[var(--bg-color-zero)] rounded-b-md">
+      <div class="p-4 bg-[var(--bg-color-zero)]">
          <p class="px-1 text-sm">
             The board is always shown in dark mode.
          </p>
       </div>
+
+      <!--
+         Last on purpose. This is a diagnostic rather than a setting, so it does
+         not belong among the things you change while playing, but it should be
+         findable the moment something looks wrong.
+      -->
+      <div class="p-4 bg-[var(--bg-color-zero)] rounded-b-md">
+         <a class="px-1 underline" href="/diagnostics">Diagnostics</a>
+         <p class="text-sm">
+            Relay health, the current room, the seat order and the events this browser has received -
+            for telling a broken board apart from a broken client.
+         </p>
+      </div>
    </div>
-
-   <svelte:fragment slot="buttons">
-      <button class="action" on:click={() => popup.close()}>Close</button>
-   </svelte:fragment>
 </Popup>
-
-<style>
-   button.action {
-      @apply px-3 py-2 rounded-lg font-bold text-white bg-[var(--primary-color)];
-   }
-</style>
