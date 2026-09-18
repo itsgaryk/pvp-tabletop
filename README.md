@@ -255,6 +255,38 @@ date by the time it is read. Measured: **~0.27 commands/second** hidden against
 missed event on screen within milliseconds of
 regaining focus.
 
+### Spam, and what a burst costs
+
+Every relayed event costs the store ten commands, and there is no batching: ten
+actions fired at once cost ten times one action. Measured, a client emitting as
+fast as it could — 240 events in six seconds — cost **2,722 commands**, which is a
+month's allowance in minutes. A player leaning on a control is, to the store, a
+runaway script.
+
+Two things bound that now, and neither discards an action:
+
+- **Coalescing.** Events carrying an *absolute value* — the turn number, damage on
+  a slot, the clock, the markers and toggles — wait 200 ms before being sent, so a
+  second press replaces the one still waiting instead of adding to it. Ten presses
+  of `+1` on the clock relay as **one** event carrying all ten minutes. The key
+  includes the slot, not just the event name, so damaging two different Pokémon
+  keeps both.
+- **Pacing.** Everything else goes out at a sustained six events a second, which is
+  about three player actions a second — most actions relay two events, the change
+  and the log line describing it. Anything over that waits in a queue **on the
+  client** and follows a moment later, in order. Nothing is dropped, and the
+  diagnostics panel shows how many are waiting.
+
+The same burst now costs **472 commands instead of 2,722**.
+
+The relay also refuses more than eight events a second from one member — a backstop
+for what a client cannot cover, such as an old bundle still open in a browser. It
+costs no extra commands: the room's recent events were read a moment earlier to
+check membership, and each carries its sender and time, so the count is free.
+Being derived from a read rather than an atomic counter it is approximate when
+requests arrive together; the client's own queue is what keeps it from being
+needed, since rejecting an action server-side would mean losing it.
+
 ## Troubleshooting and diagnostics
 
 Three tools, for the three questions that are expensive to answer by hand. Each

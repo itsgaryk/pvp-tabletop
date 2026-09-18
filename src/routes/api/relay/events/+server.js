@@ -45,6 +45,47 @@ const EVENTS = new Set([
    'oppDamageUpdated'
 ])
 
+/*
+   A ceiling on how fast one member may write to a room.
+
+   This is a backstop, not the mechanism. Clients pace their own sending and queue
+   the overflow, so ordinary play never reaches it; it is here for what a client
+   cannot cover - an old bundle still open in somebody's browser, a script, a
+   future bug - because every event costs the store ten commands, and a client
+   ignoring that spends a month of quota in minutes.
+
+   The count is free. The room's recent events were read a moment ago to check
+   membership, and each carries its sender and timestamp, so asking "how many has
+   this member written in the last second?" adds no command at all. Adding a
+   counter in Redis to enforce a limit on Redis commands would be self-defeating.
+
+   Being derived from a read rather than an atomic counter, it is approximate
+   under concurrency - two simultaneous writes can both pass the check. That is
+   acceptable for a cost guard and would not be for a security control.
+
+   Eight a second, against a client pace of six, so the client should never trip
+   it; a player who somehow does is queued by their own client rather than losing
+   the action.
+*/
+const MAX_EVENTS_PER_SECOND = 8
+const RATE_WINDOW_MS = 1000
+
+/* how many of this member's events landed inside the window */
+function recentFrom (room, memberId, now) {
+   const cutoff = now - RATE_WINDOW_MS
+   let count = 0
+
+   /* events are oldest first, so the recent ones are at the end */
+   for (let i = room.events.length - 1; i >= 0; i--) {
+      const past = room.events[i]
+      if (!past || past.ts < cutoff) break
+      if (past.from === memberId) count++
+      if (count >= MAX_EVENTS_PER_SECOND) break
+   }
+
+   return count
+}
+
 /** @type {import('./$types').RequestHandler} */
 export async function POST ({ request }) {
    let body
@@ -81,6 +122,24 @@ export async function POST ({ request }) {
       */
       if (name !== 'chatMessage' && member.role === 'spectator') {
          return json({ error: 'spectators cannot change the game' }, { status: 403 })
+      }
+
+      /*
+         Too many at once. Refused rather than queued here, because a serverless
+         function cannot hold a queue: it lives for one request, and two requests
+         may run on different instances, so a queue on this side would either be
+         lost or have to be stored in Redis - spending commands to save them. The
+         sender's own queue is what holds the action and retries it.
+      */
+      if (recentFrom(room, memberId, Date.now()) >= MAX_EVENTS_PER_SECOND) {
+         return json(
+            {
+               error: `too many actions at once: at most ${MAX_EVENTS_PER_SECOND} events a second are relayed`,
+               rateLimited: true,
+               retryAfterMs: 250
+            },
+            { status: 429 }
+         )
       }
 
       /*
