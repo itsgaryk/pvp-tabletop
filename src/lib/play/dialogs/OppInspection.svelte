@@ -1,6 +1,8 @@
 <script>
+   import { ctrlA } from '$lib/actions/customEvents.js'
    import Card from '../opponent/Card.svelte'
    import Popup from './Popup.svelte'
+   import { selectPile } from '$lib/stores/player.js'
 
    let pile = null
    let popup
@@ -25,7 +27,12 @@
       <button class="flex-1 tab rounded-tl-md" class:active={view === 'natural'} on:click={() => view = 'natural'}>Natural</button>
       <button class="flex-1 tab rounded-tr-md" class:active={view === 'sorted'} on:click={() => view = 'sorted'}>Sorted</button>
    </div>
-   <div class="flex flex-wrap gap-1 p-2 inspection">
+   <!--
+      Ctrl+A takes the whole pile, the same key the player's own view answers to.
+      A spectator cannot select anything, so there it does nothing.
+   -->
+   <div class="flex flex-wrap gap-1 p-2 inspection"
+      tabindex="0" use:ctrlA on:ctrlA={() => selectPile(pile)}>
       {#if view === 'sorted'}
          {#each sortedPile as card (card._id)}
             <Card {card} pile={pile} />

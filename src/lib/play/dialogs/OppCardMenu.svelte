@@ -3,14 +3,15 @@
    import ContextMenu from '$lib/components/ContextMenu.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import { defaultOpponent } from '$lib/stores/opponent.js'
-   import { soloMoveCard, soloCardToPlay, soloCardAttach } from '$lib/stores/solo.js'
+   import { soloMoveCard, soloCardToPlay, soloCardAttach, soloCardToStadium } from '$lib/stores/solo.js'
 
    const { openDetails } = getContext('boardActions')
 
    /*
       A card on the far half, in solo: the other side is yours too, so a card there
-      can be moved the way one of your own can be. Online this menu is never
-      opened - the other half belongs to somebody else.
+      can be moved the way one of your own can be - to any zone of that half, or
+      into play as one of its Pokemon. Online this menu is never opened; the other
+      half belongs to somebody else.
    */
    let menu
    let pile = null
@@ -22,8 +23,8 @@
       menu.open(x, y)
    }
 
-   function move (target, label) {
-      soloMoveCard(pile, card, target, label)
+   function move (target, label, options = {}) {
+      soloMoveCard(pile, card, target, label, options)
       menu.close()
    }
 
@@ -37,12 +38,17 @@
       menu.close()
    }
 
+   function toStadium () {
+      soloCardToStadium(pile, card)
+      menu.close()
+   }
+
    function show () {
       openDetails(card)
       menu.close()
    }
 
-   $: ({ hand, discard, lz, prizes, deck, active } = defaultOpponent)
+   $: ({ hand, discard, lz, prizes, deck, table, stadium, active } = defaultOpponent)
 </script>
 
 <ContextMenu bind:this={menu} heading={card?.name} headingClick={card ? show : null}>
@@ -52,19 +58,27 @@
       <ContextMenuOption click={attach} text="Attach to Active" disabled={!$active} />
 
       {#if pile !== hand}
-         <ContextMenuOption click={() => move(hand, 'Moved to hand')} text="To Hand" />
+         <ContextMenuOption click={() => move(hand, 'Moved to their hand')} text="To Hand" />
       {/if}
       {#if pile !== discard}
          <ContextMenuOption click={() => move(discard, 'Discarded')} text="To Discard" />
+      {/if}
+      {#if pile !== stadium}
+         <ContextMenuOption click={toStadium} text="To Stadium" />
+      {/if}
+      {#if pile !== deck}
+         <ContextMenuOption click={() => move(deck, 'Shuffled into their deck', { shuffle: true })} text="Shuffle Into Deck" />
+         <ContextMenuOption click={() => move(deck, 'Put on top of their deck')} text="To Top of Deck" />
+         <ContextMenuOption click={() => move(deck, 'Put on the bottom of their deck', { bottom: true })} text="To Bottom of Deck" />
       {/if}
       {#if pile !== lz}
          <ContextMenuOption click={() => move(lz, 'Sent to the Lost Zone')} text="To Lost Zone" />
       {/if}
       {#if pile !== prizes}
-         <ContextMenuOption click={() => move(prizes, 'Moved to prizes')} text="To Prizes" />
+         <ContextMenuOption click={() => move(prizes, 'Moved to their prizes')} text="To Prizes" />
       {/if}
-      {#if pile !== deck}
-         <ContextMenuOption click={() => move(deck, 'Put on top of the deck')} text="To Deck" />
+      {#if pile !== table}
+         <ContextMenuOption click={() => move(table, 'Moved to the table')} text="To Table" />
       {/if}
 
       <ContextMenuOption click={show} text="Show Details" />
