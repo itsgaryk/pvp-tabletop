@@ -4,6 +4,7 @@
    import cardback from '$lib/assets/cardback_int.png'
    import { solo } from '$lib/stores/solo.js'
    import { spectating } from '$lib/stores/connection.js'
+   import { defaultOpponent } from '$lib/stores/opponent.js'
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { dragging } from '$lib/dnd/pointer.js'
@@ -17,13 +18,19 @@
    export let revealed = true
 
    /*
-      A player only watches the far half: its cards are not theirs to open, click
-      or drag. Inspecting them is a spectator's job - and solo's, where that half
-      is yours. Left-click selection and dragging are wired in solo only, above.
+      A player may look at the far half's cards where they are on show - a Pokemon
+      in play, a Stadium - but not what is in its hand or its prizes. Those are
+      hidden for a reason, and a double click must not be a way round it. A
+      spectator, and solo, may open anything: nothing there is a secret from them.
    */
    function onDetails () {
-      if (!$spectating && !$solo) return
-      openDetails(card)
+      if ($spectating || $solo) {
+         openDetails(card)
+         return
+      }
+
+      const hidden = pile === defaultOpponent.hand || pile === defaultOpponent.prizes
+      if (!hidden) openDetails(card)
    }
 
    function onDragStart () {
