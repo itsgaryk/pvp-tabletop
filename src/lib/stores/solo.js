@@ -1,7 +1,10 @@
 import { get, post } from '$lib/util/fetch-web.js'
 import { writable } from './custom/writable.js'
 import { solo } from './soloState.js'
-import { resetBoard, timer } from './player.js'
+import {
+   resetBoard, timer,
+   cardSelection, slotSelection, resetSelection, selectionPile
+} from './player.js'
 import { defaultOpponent, spectatorFlipped } from './opponent.js'
 import { slot } from './custom/cards.js'
 import { fixOld } from './oldCards.js'
@@ -73,11 +76,17 @@ function logForOpponent (message) {
 }
 
 /*
-   Which half a pile belongs to. Cards do not cross between the halves in solo -
+   Which half a zone belongs to. Cards do not cross between the halves in solo -
    each side plays its own board - with two exceptions, the Stadium and the table,
-   which are the shared zones on the table. This is asked on every drag while the
-   pointer is moving, so it answers false rather than throwing at anything it does
-   not recognise: a drag that cannot be judged is a drag that is not allowed.
+   which are the shared zones on the table.
+
+   The Stadium is a single card rather than a list of them, but it is a zone of
+   that half all the same, so it answers yes here: that is what lets a card be
+   taken off it, and what keeps a card from the other side from landing on it.
+
+   This is asked on every drag while the pointer is moving, so it answers false
+   rather than throwing at anything it does not recognise: a drag that cannot be
+   judged is a drag that is not allowed.
 */
 export function onOpponentHalf (pile) {
    if (!pile || typeof pile !== 'object') return false
@@ -85,20 +94,62 @@ export function onOpponentHalf (pile) {
    const o = defaultOpponent
    if (!o) return false
 
-   return [ o.hand, o.deck, o.discard, o.lz, o.prizes, o.table, o.pickup ]
+   return [ o.hand, o.deck, o.discard, o.lz, o.prizes, o.table, o.pickup, o.stadium ]
       .some((own) => own && own === pile)
+}
+
+/* whether a Pokemon in play is one of the far half's */
+export function onOpponentSlot (s) {
+   const o = defaultOpponent
+   if (!s || !o) return false
+
+   return o.active.get() === s || o.bench.get().includes(s)
+}
+
+/*
+   Whether what is selected right now was selected on the far half. Both halves
+   share one selection, so this is how the board asks which board a keypress or a
+   menu entry is meant for.
+*/
+export function onOpponentSelection () {
+   return onOpponentHalf(selectionPile) || slotSelection.get().some(onOpponentSlot)
+}
+
+/*
+   Taking a card off one of the far half's zones, and putting one into another.
+   Every zone here is a list except the Stadium, which holds the single card that
+   is in play: that one is set and cleared rather than pushed and removed, and
+   playing a second card on it discards the first, the way it does on your own.
+*/
+function takeFrom (source, card) {
+   if (source === defaultOpponent.stadium) defaultOpponent.stadium.set(null)
+   else source.remove(card)
+}
+
+function putInto (target, card, bottom = false) {
+   if (target === defaultOpponent.stadium) {
+      const current = defaultOpponent.stadium.get()
+      if (current) defaultOpponent.discard.push(current)
+      defaultOpponent.stadium.set(card)
+   } else if (bottom) target.unshift(card)
+   else target.push(card)
 }
 
 /*
    Moving one particular card on the other half, which is what a right click on a
    card there offers. The card knows which pile it is in; the target is one of the
-   other half's own piles.
+   other half's own zones.
 */
-export function soloMoveCard (pile, card, target, label = null) {
+export function soloMoveCard (pile, card, target, label = null, options = {}) {
    if (!pile || !card || !target) return
 
-   pile.remove(card)
-   target.push(card)
+   takeFrom(pile, card)
+   if (options.shuffle) {
+      target.push(card)
+      target.shuffle()
+   } else {
+      putInto(target, card, options.bottom)
+   }
 
    logForOpponent(`${label || 'Moved'} ${card.name || 'a card'}`)
 }
@@ -107,7 +158,7 @@ export function soloMoveCard (pile, card, target, label = null) {
 export function soloCardToPlay (pile, card, where = 'bench') {
    if (!pile || !card) return
 
-   pile.remove(card)
+   takeFrom(pile, card)
    const s = slot(card)
 
    if (where === 'active') {
@@ -126,12 +177,121 @@ export function soloCardAttach (pile, card) {
    const active = defaultOpponent.active.get()
    if (!pile || !card || !active) return
 
-   pile.remove(card)
+   takeFrom(pile, card)
    const energy = String(card.supertype || '').toLowerCase() === 'energy'
    if (energy) active.energy.push(card)
    else active.trainer.push(card)
 
    logForOpponent(`Attached ${card.name} to ${active.name || 'their Active'}`)
+}
+
+/* a card off that half goes onto that half's Stadium, replacing what is there */
+export function soloCardToStadium (pile, card) {
+   if (!pile || !card) return
+
+   takeFrom(pile, card)
+   putInto(defaultOpponent.stadium, card)
+
+   logForOpponent(`Played ${card.name || 'a card'} to the Stadium`)
+}
+
+/*
+   Attaching (or evolving) the selected cards onto one of that half's Pokemon:
+   the click or drop that the Attach / Evolve action asks for. Everything is the
+   far half's own, so the cards come off the pile they were selected in and go
+   under that Pokemon.
+*/
+export function soloSlotAttach (s, evolve = false) {
+   if (!s) return false
+
+   const cards = [ ...cardSelection.get() ]
+   if (!cards.length || !onOpponentHalf(selectionPile)) return false
+
+   const from = selectionPile.name
+
+   for (const card of cards) {
+      takeFrom(selectionPile, card)
+      if (evolve) s.pokemon.push(card)
+      else if (card.card_type === 'trainer') s.trainer.push(card)
+      else s.energy.push(card)
+   }
+
+   const what = cards.map((card) => card.name).join(', ')
+   logForOpponent(evolve
+      ? `Evolved {${s.name || 'a Pokemon'}} into [${what}] from the ${from}`
+      : `Attached [${what}] from the ${from} to {${s.name || 'a Pokemon'}}`)
+
+   resetSelection()
+   return true
+}
+
+/*
+   The names the far half's zones go by in its log lines, so a move reads the way
+   the same move on your own half reads.
+*/
+const ZONE_LABEL = {
+   hand: 'Hand',
+   deck: 'Deck',
+   discard: 'Discard',
+   lz: 'Lost Zone',
+   prizes: 'Prizes',
+   table: 'Table',
+   bench: 'Bench',
+   active: 'Active',
+   stadium: 'Stadium'
+}
+
+/*
+   Moving whatever is selected on the far half into one of that half's own zones:
+   the keyboard's moves, which on your own board are `moveSelection`, `toBench`,
+   `toActive` and `toStadium`. Both halves share one selection, so when the
+   selection was made over there these are what its keys have to call - otherwise
+   a card selected on the far half would be carried across the table into yours.
+
+   A Pokemon in play goes over with everything under it, as it does on your own
+   half. Each card is logged as it lands, in Player 2's name.
+*/
+export function soloSelectedTo (zone, options = {}) {
+   const o = defaultOpponent
+   const cards = [ ...cardSelection.get() ]
+   const slots = [ ...slotSelection.get() ]
+
+   if (!cards.length && !slots.length) return false
+
+   if (cards.length) {
+      if (!onOpponentHalf(selectionPile)) return false
+
+      for (const card of cards) {
+         if (zone === 'bench' || zone === 'active') soloCardToPlay(selectionPile, card, zone)
+         else if (zone === 'stadium') soloCardToStadium(selectionPile, card)
+         else if (zone === 'deck') soloMoveCard(selectionPile, card, o.deck, options.bottom ? 'Put on the bottom of their deck' : 'Put on top of their deck', options)
+         else soloMoveCard(selectionPile, card, o[zone], `Moved to their ${ZONE_LABEL[zone] || 'board'}`)
+      }
+   } else {
+      if (!slots.some(onOpponentSlot)) return false
+
+      for (const s of slots) {
+         if (zone === 'active') soloSlotToActive(s)
+         else if (zone === 'bench') soloSlotToBench(s)
+         else if (zone === 'discard') soloSlotToDiscard(s)
+         else if (o[zone]) {
+            /* into a pile: the Pokemon and everything under it */
+            const under = [ ...s.trainer.get(), ...s.energy.get(), ...s.pokemon.get() ]
+            o[zone].merge(under)
+            s.pokemon.clear()
+            s.energy.clear()
+            s.trainer.clear()
+            s.damage.set(0)
+            if (o.active.get() === s) o.active.set(null)
+            else o.bench.remove(s)
+
+            logForOpponent(`Moved {${s.name || 'a Pokemon'}} and everything under it to their ${ZONE_LABEL[zone]}`)
+         }
+      }
+   }
+
+   resetSelection()
+   return true
 }
 
 export function soloDraw (count = 1) {
@@ -226,4 +386,57 @@ export function soloSlotToBench (s) {
    defaultOpponent.bench.add(s)
 
    logForOpponent(`Moved ${s.name || 'a Pokemon'} to the Bench`)
+}
+
+/*
+   The far half's own pile menus. They are the piles' housekeeping - shuffling a
+   discard or the prizes back in, showing the prizes - which online the pile's
+   owner does for themselves and in solo is done for the other side too.
+*/
+
+export function soloShuffleDiscardIntoDeck () {
+   const count = defaultOpponent.discard.get().length
+   if (!count) return
+
+   defaultOpponent.deck.merge(defaultOpponent.discard.get())
+   defaultOpponent.discard.clear()
+   defaultOpponent.deck.shuffle()
+
+   logForOpponent(`Shuffled their discard (${count}) into their deck`)
+}
+
+/* showing the prizes is the far half's own view state, the way it is on yours */
+export function soloTogglePrizes () {
+   defaultOpponent.prizesFlipped.update((flipped) => !flipped)
+}
+
+export function soloShufflePrizes () {
+   if (!defaultOpponent.prizes.get().length) return
+
+   defaultOpponent.prizes.shuffle()
+   logForOpponent('Shuffled their prizes')
+}
+
+export function soloShufflePrizesIntoDeck () {
+   const count = defaultOpponent.prizes.get().length
+   if (!count) return
+
+   defaultOpponent.deck.merge(defaultOpponent.prizes.get())
+   defaultOpponent.prizes.clear()
+   defaultOpponent.deck.shuffle()
+
+   logForOpponent(`Shuffled their prizes (${count}) into their deck`)
+}
+
+export function soloShufflePrizesToBottom () {
+   const count = defaultOpponent.prizes.get().length
+   if (!count) return
+
+   /* shuffle first, then place them under the deck - index 0 is the bottom */
+   defaultOpponent.prizes.shuffle()
+   while (defaultOpponent.prizes.get().length) {
+      defaultOpponent.deck.unshift(defaultOpponent.prizes.pop())
+   }
+
+   logForOpponent(`Shuffled their prizes (${count}) to the bottom of their deck`)
 }

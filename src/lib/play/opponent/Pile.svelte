@@ -1,8 +1,9 @@
 <script>
    import ContextMenu from '$lib/components/ContextMenu.svelte'
+   import { ctrlA } from '$lib/actions/customEvents.js'
    import { dnd } from '$lib/dnd/actions.js'
    import { source } from '$lib/dnd/store.js'
-   import { cardSelection, moveSelection } from '$lib/stores/player.js'
+   import { cardSelection, moveSelection, resetSelection, selectPile } from '$lib/stores/player.js'
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import { solo, soloMoveCard, soloCardToPlay, onOpponentHalf } from '$lib/stores/solo.js'
 
@@ -23,8 +24,14 @@
       menu.open(rect.left, rect.bottom)
    }
 
+   /*
+      Right clicking the pile itself does what it does on your own half: the
+      selection goes first, then the pile's own menu. Online there is no menu to
+      open, so this is left to the half's owner.
+   */
    function onCtx (e) {
       if (!showMenu || !menu) return
+      resetSelection()
       menu.open(e.clientX, e.clientY)
    }
 
@@ -65,6 +72,7 @@
 
 <div class="p-1 rounded flex flex-col focus:outline-none relative" tabindex="0"
    on:contextmenu={onCtx}
+   use:ctrlA on:ctrlA={() => { if (showMenu) selectPile(pile) }}
    use:dnd={dndConfig}>
 
    {#if name}

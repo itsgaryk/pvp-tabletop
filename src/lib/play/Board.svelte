@@ -4,8 +4,8 @@
    import { publishLog, spectating, seatedPlayers, myId } from '$lib/stores/connection.js'
    import { pick, shuffle, pokemonHidden, handRevealed } from '$lib/stores/player.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
-   import { defaultOpponent, spectatorOpponents, spectatorFlipped } from '$lib/stores/opponent.js'
-   import { solo } from '$lib/stores/solo.js'
+   import { defaultOpponent, spectatorOpponents, spectatorFlipped, handRevealed as oppHandRevealed } from '$lib/stores/opponent.js'
+   import { solo, onOpponentSelection, soloSelectedTo } from '$lib/stores/solo.js'
    import { playerName, zoneBorders } from '$lib/stores/settings.js'
    import { message } from '$lib/stores/message.js'
 
@@ -198,30 +198,40 @@
 
    /* Keyboard shortcuts */
 
+   /*
+      In solo the far half is yours too, so a selection can have been made over
+      there. Both halves share one selection, so each key has to ask which board
+      it is meant for: the same key that moves your own selection moves that
+      half's own zones, and never carries a card across the table into yours.
+   */
+   const farSelected = () => $solo && onOpponentSelection()
+
    function keydown (e) {
       const key = e.key.toLowerCase()
 
       const digit = parseInt(e.code.slice(-1)) // e.code contains the number key pressed, e.g. "Digit1", even if it has been turned into a different key by holding Option on Mac
       if (digit && Number.isInteger(digit)) e.altKey ? openSelection(deck, digit) : draw(digit)
 
-      else if (key === 'd') moveSelection(discard)
-      else if (key === 'h') moveSelection(hand)
-      else if (key === 'l') moveSelection(lz)
-      else if (key === 'p') moveSelection(prizes)
-      else if (key === 'b') toBench()
-      else if (key === 'a' && !holdingCtrlOrCmd(e)) toActive()
+      else if (key === 'd') farSelected() ? soloSelectedTo('discard') : moveSelection(discard)
+      else if (key === 'h') farSelected() ? soloSelectedTo('hand') : moveSelection(hand)
+      else if (key === 'l') farSelected() ? soloSelectedTo('lz') : moveSelection(lz)
+      else if (key === 'p') farSelected() ? soloSelectedTo('prizes') : moveSelection(prizes)
+      else if (key === 'b') farSelected() ? soloSelectedTo('bench') : toBench()
+      else if (key === 'a' && !holdingCtrlOrCmd(e)) farSelected() ? soloSelectedTo('active') : toActive()
       else if (key === 'g') {
-         if ($cardSelection.length) toStadium()
+         if (farSelected()) soloSelectedTo('stadium')
+         else if ($cardSelection.length) toStadium()
          else if (stadium.val) publishLog(`Stadium: ${stadium.val.name}`)
       }
 
       else if (key === 's') {
-         if ($cardSelection.length || $slotSelection.length) moveSelection(deck, { shuffle: true })
+         if (farSelected()) soloSelectedTo('deck', { shuffle: true })
+         else if ($cardSelection.length || $slotSelection.length) moveSelection(deck, { shuffle: true })
          else shuffle()
       }
 
-      else if (key === 't') moveSelection(deck)
-      else if (key === 'm') moveSelection(deck, { bottom: true })
+      else if (key === 't') farSelected() ? soloSelectedTo('deck') : moveSelection(deck)
+      else if (key === 'm') farSelected() ? soloSelectedTo('deck', { bottom: true }) : moveSelection(deck, { bottom: true })
 
       /*
          Space shows the selected card's details - the keyboard's version of
@@ -257,7 +267,8 @@
 
       else if (key === 'w') moveSelection(table) // older version table shortcut without the extra functionality
       else if (key === 'x') {
-         if ($cardSelection.length) moveSelection(table)
+         if (farSelected()) soloSelectedTo('table')
+         else if ($cardSelection.length) moveSelection(table)
          else if ($table.length) {
             selectPile(table)
             moveSelection(hand)
@@ -339,17 +350,18 @@
 
       <div class="gameboard min-h-0 relative flex-1" class:zone-borders={$zoneBorders}>
 
-         <!--
+          <!--
             A player sees this half rotated, which is what puts its bar under the
             hand, its counts above the bar, and the right spacing around both. A
             spectator sees both halves, so its copy of this half is laid out the
             same way and the cards are turned back up again ("upright").
 
-            In solo the hands are never rotated, because a hand carries its pile
-            menu inside this div and turning it upside down turns the menu with
-            it. A flipped solo board puts the player's own board up here.
+            Solo reads both halves too, so this one is always laid out as a top
+            half with its cards turned back up - the hand included, flipped or not.
+            The hand's pile menu is portalled out of the rotated subtree (see
+            ContextMenu.svelte), so turning the half does not turn the menu with it.
          -->
-         <div class="hand2" class:flip={!$spectating && !$solo} class:upright={$spectating || ($solo && !soloSwapped)}>
+         <div class="hand2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
             {#if soloSwapped}<Hand />{:else}<OppHand store={topStore} />{/if}
          </div>
 
@@ -374,28 +386,38 @@
          </div>
 
          <div class="play2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
-            {#if soloSwapped}<Table />{:else}<OppTable store={topStore} />{/if}
+            <OppTable store={topStore} />
          </div>
 
-         <div class="play" class:upright-cards={soloSwapped}>
+         <!--
+            The two tables share the one grid cell, so the player's own is the one
+            on top (see .play below) however the board is flipped: a card dropped
+            in the middle lands on the table being played rather than on the other
+            half's. While it is empty and nothing is being dragged it takes no
+            pointer events, which is what lets a click reach the other half's table
+            lying underneath it.
+         -->
+         <div class="play" class:empty={$solo && !$table.length && !$dragging}>
             {#if $spectating}
             <OppTable store={bottomStore} />
-         {:else if soloSwapped}
-            <OppTable store={topStore} />
          {:else}
             <Table />
          {/if}
          </div>
 
          <div class="stadium2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
-            {#if soloSwapped}<Stadium />{:else}<OppStadium store={topStore} />{/if}
+            <OppStadium store={topStore} />
          </div>
 
-         <div class="stadium" class:upright-cards={soloSwapped}>
+         <!--
+            The two stadiums share this cell as well. The player's own stays on top
+            and stays theirs, flipped or not: the other half's is the one behind it
+            (it is what a click falls through to when nothing is in play), and
+            flipping the board must not take the player's own out of reach.
+         -->
+         <div class="stadium">
             {#if $spectating}
             <OppStadium store={bottomStore} />
-         {:else if soloSwapped}
-            <OppStadium store={topStore} />
          {:else}
             <Stadium />
          {/if}
@@ -405,7 +427,7 @@
             <div class="active2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
                {#if soloSwapped}<Active />{:else}<OppActive store={topStore} />{/if}
             </div>
-            <div class="active1" class:upright-cards={soloSwapped}>
+            <div class="active1">
                {#if $spectating}
             <OppActive store={bottomStore} />
          {:else if soloSwapped}
@@ -416,7 +438,7 @@
             </div>
          </div>
 
-         <div class="bench" class:upright-cards={soloSwapped}>
+         <div class="bench">
             {#if $spectating}
             <OppBench store={bottomStore} />
          {:else if soloSwapped}
@@ -428,7 +450,7 @@
 
          <div class="veil" class:applied={$pokemonHidden}></div>
 
-         <div class="lz" class:upright-cards={soloSwapped}>
+         <div class="lz">
             {#if $spectating}
             <OppLostZone store={bottomStore} />
          {:else if soloSwapped}
@@ -438,7 +460,7 @@
          {/if}
          </div>
 
-         <div class="discard" class:upright-cards={soloSwapped}>
+         <div class="discard">
             {#if $spectating}
             <OppDiscard store={bottomStore} />
          {:else if soloSwapped}
@@ -448,7 +470,7 @@
          {/if}
          </div>
 
-         <div class="deck" class:upright-cards={soloSwapped}>
+         <div class="deck">
             {#if $spectating}
             <OppDeck store={bottomStore} />
          {:else if soloSwapped}
@@ -458,7 +480,7 @@
          {/if}
          </div>
 
-         <div class="prizes" class:upright-cards={soloSwapped}>
+         <div class="prizes">
             {#if $spectating}
             <OppPrizes store={bottomStore} />
          {:else if soloSwapped}
@@ -473,8 +495,12 @@
             player's own hand, whose pile context menu renders inside this div, or
             a spectator's mirror of the player on the bottom half. Rotating it
             turned the cards and the menu upside down.
+
+            The "revealed" tint says whose hand this is showing, so a flipped solo
+            board follows the hand that is down here now (the other half's) rather
+            than the player's own, which has moved to the top.
          -->
-         <div class="hand" class:revealed={$handRevealed && !$spectating} class:upright-cards={soloSwapped}>
+         <div class="hand" class:revealed={!$spectating && (soloSwapped ? $oppHandRevealed : $handRevealed)}>
             {#if $spectating}
             <OppHand store={bottomStore} />
          {:else if soloSwapped}
@@ -762,16 +788,12 @@
    }
 
    /*
-      A flipped solo board puts the mirrored half in the bottom position, where
-      the layout is already the right way round - so its pictures and counters
-      need turning back up, but the half itself must not be rotated.
+      The two tables share one grid cell and the player's own is the one on top, so
+      while it is empty and nothing is being dragged it stands aside and lets
+      clicks through to the other half's table underneath it (see the .play div).
    */
-   .upright-cards :global(img.card),
-   .upright-cards :global(.count),
-   .upright-cards :global(.counter),
-   .upright-cards :global(.marker),
-   .upright-cards :global(.ability-stripe) {
-      transform: scale(-1, -1);
+   .play.empty {
+      pointer-events: none;
    }
 
    /*
