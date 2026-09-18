@@ -171,8 +171,16 @@
       slotMenu.open(x, y)
    }
 
+   /*
+      The far half's Pokemon. In solo that half is the player's own, so it gets the
+      player's own menu: the same entries and wording, with a movement landing on
+      that half because that is where the selection is (see SlotMenu). Online that
+      Pokemon belongs to somebody else, so the menu is the one a player uses on the
+      other side of the table - damage, status effects, a declared target.
+   */
    function openOppSlotMenu (x, y, slot, active) {
-      oppSlotMenu.open(x, y, slot, active)
+      if ($solo) slotMenu.open(x, y)
+      else oppSlotMenu.open(x, y, slot, active)
    }
 
    /* a single card on the far half, which is only reachable in solo */

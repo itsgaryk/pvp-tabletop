@@ -80,7 +80,14 @@ export function slots () {
 
    const remove = (slot) => {
       update(v => {
-         v.splice(v.indexOf(slot), 1)
+         /*
+            A slot that is not in the list is left alone: splice(-1, 1) is the
+            last one, so an absent slot used to take a different Pokemon off the
+            board - which is what a selection made on the far half in solo could
+            do to the player's own Bench.
+         */
+         const i = v.indexOf(slot)
+         if (i >= 0) v.splice(i, 1)
          return v
       })
    }

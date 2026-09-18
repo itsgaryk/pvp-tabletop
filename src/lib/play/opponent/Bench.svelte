@@ -3,22 +3,33 @@
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import { ctrlA } from '$lib/actions/customEvents.js'
    import { dnd } from '$lib/dnd/actions.js'
-   import { source } from '$lib/dnd/store.js'
+   import { source, draggedCard } from '$lib/dnd/store.js'
    import { cardSelection, resetSelection, selectSlot } from '$lib/stores/player.js'
-   import { solo, soloCardToPlay, onOpponentHalf } from '$lib/stores/solo.js'
+   import { solo, soloCardToPlay, soloSlotToBench, onOpponentHalf, onOpponentSlot } from '$lib/stores/solo.js'
 
    /* which player's board this component shows */
    export let store = defaultOpponent
-   $: ({ bench } = store)
+   $: ({ bench, active } = store)
 
    /*
       In solo a card dragged from the far half can be put on its Bench - the same
-      drop the player's own Bench accepts.
+      drop the player's own Bench accepts. A Pokemon in play lands here only when
+      it is that half's Active, which is the Active being benched, the way your own
+      moves between the two spots.
    */
-   const allowDrop = () => $solo && onOpponentHalf($source) && !$bench.includes($source)
+   const allowDrop = () => $solo && (
+      ($source === 'slot' && onOpponentSlot($draggedCard) && $draggedCard === $active) ||
+      ($source !== 'slot' && onOpponentHalf($source) && !$bench.includes($source))
+   )
 
    function onDrop () {
       if (!$solo || !$source) return
+
+      if ($source === 'slot') {
+         if (onOpponentSlot($draggedCard)) soloSlotToBench($draggedCard)
+         resetSelection()
+         return
+      }
 
       for (const card of [ ...$cardSelection ]) {
          soloCardToPlay($source, card, 'bench')

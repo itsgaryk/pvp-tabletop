@@ -268,25 +268,18 @@ export function soloSelectedTo (zone, options = {}) {
          else soloMoveCard(selectionPile, card, o[zone], `Moved to their ${ZONE_LABEL[zone] || 'board'}`)
       }
    } else {
-      if (!slots.some(onOpponentSlot)) return false
+      /*
+         Only the far half's own Pokemon: both halves share the selection, so a
+         near-half slot can be in it too, and that must not be carried over here.
+      */
+      const own = slots.filter(onOpponentSlot)
+      if (!own.length) return false
 
-      for (const s of slots) {
+      for (const s of own) {
          if (zone === 'active') soloSlotToActive(s)
          else if (zone === 'bench') soloSlotToBench(s)
          else if (zone === 'discard') soloSlotToDiscard(s)
-         else if (o[zone]) {
-            /* into a pile: the Pokemon and everything under it */
-            const under = [ ...s.trainer.get(), ...s.energy.get(), ...s.pokemon.get() ]
-            o[zone].merge(under)
-            s.pokemon.clear()
-            s.energy.clear()
-            s.trainer.clear()
-            s.damage.set(0)
-            if (o.active.get() === s) o.active.set(null)
-            else o.bench.remove(s)
-
-            logForOpponent(`Moved {${s.name || 'a Pokemon'}} and everything under it to their ${ZONE_LABEL[zone]}`)
-         }
+         else if (o[zone]) soloSlotToPile(s, o[zone], ZONE_LABEL[zone] || 'board')
       }
    }
 
@@ -386,6 +379,66 @@ export function soloSlotToBench (s) {
    defaultOpponent.bench.add(s)
 
    logForOpponent(`Moved ${s.name || 'a Pokemon'} to the Bench`)
+}
+
+/*
+   A Pokemon in play into one of that half's piles, with everything under it: the
+   whole slot goes, and the Pokemon is named in the line. `where` is what the
+   pile is called in the log.
+*/
+export function soloSlotToPile (s, target, where = 'pile') {
+   if (!s || !target) return
+
+   const under = [ ...s.trainer.get(), ...s.energy.get(), ...s.pokemon.get() ]
+   target.merge(under)
+
+   s.pokemon.clear()
+   s.energy.clear()
+   s.trainer.clear()
+   s.damage.set(0)
+
+   if (defaultOpponent.active.get() === s) defaultOpponent.active.set(null)
+   else defaultOpponent.bench.remove(s)
+
+   logForOpponent(`Moved {${s.name || 'a Pokemon'}} and everything under it to their ${where}`)
+}
+
+/*
+   The same split the player's own "Return Pokemon, Discard Rest" makes: the
+   Pokemon (and anything evolved under it) to that half's hand, the energy and
+   tools that were attached to it to that half's discard.
+*/
+export function soloSlotReturn (s) {
+   if (!s) return
+
+   const pokemon = [ ...s.pokemon.get() ]
+   const rest = [ ...s.energy.get(), ...s.trainer.get() ]
+
+   defaultOpponent.hand.merge(pokemon)
+   defaultOpponent.discard.merge(rest)
+
+   s.pokemon.clear()
+   s.energy.clear()
+   s.trainer.clear()
+   s.damage.set(0)
+
+   if (defaultOpponent.active.get() === s) defaultOpponent.active.set(null)
+   else defaultOpponent.bench.remove(s)
+
+   logForOpponent(`Returned {${s.name || 'a Pokemon'}} to their hand and discarded the rest`)
+}
+
+/* everything attached to one of that half's Pokemon, to that half's discard */
+export function soloSlotDiscardEnergy (s) {
+   if (!s) return
+
+   const count = s.energy.get().length
+   if (!count) return
+
+   defaultOpponent.discard.merge(s.energy.get())
+   s.energy.clear()
+
+   logForOpponent(`Discarded ${count} energy from {${s.name || 'a Pokemon'}}`)
 }
 
 /*

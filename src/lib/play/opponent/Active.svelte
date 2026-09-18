@@ -2,9 +2,9 @@
    import Slot from './Slot.svelte'
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import { dnd } from '$lib/dnd/actions.js'
-   import { source } from '$lib/dnd/store.js'
-   import { cardSelection } from '$lib/stores/player.js'
-   import { solo, soloCardToPlay, onOpponentHalf } from '$lib/stores/solo.js'
+   import { source, draggedCard } from '$lib/dnd/store.js'
+   import { cardSelection, resetSelection } from '$lib/stores/player.js'
+   import { solo, soloCardToPlay, soloSlotToActive, onOpponentHalf, onOpponentSlot } from '$lib/stores/solo.js'
 
    /* which player's board this component shows */
    export let store = defaultOpponent
@@ -12,13 +12,25 @@
 
    /*
       In solo a card dragged from the far half can be put in its Active spot - the
-      same drop the player's own Active accepts. Only that half's own cards: cards
-      do not cross between the halves.
+      same drop the player's own Active accepts - and so can one of its Pokemon in
+      play, which promotes it and sends the Active to the Bench. Only that half's
+      own either way: nothing crosses between the halves.
    */
-   const allowDrop = () => $solo && onOpponentHalf($source)
+   const allowDrop = () => $solo && (
+      onOpponentHalf($source) ||
+      ($source === 'slot' && onOpponentSlot($draggedCard))
+   )
 
    function onDrop () {
-      if (!$solo || !onOpponentHalf($source)) return
+      if (!$solo) return
+
+      if ($source === 'slot') {
+         if (onOpponentSlot($draggedCard)) soloSlotToActive($draggedCard)
+         resetSelection()
+         return
+      }
+
+      if (!onOpponentHalf($source)) return
 
       const cards = [ ...$cardSelection ]
       const first = cards.shift()
