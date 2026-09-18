@@ -606,8 +606,18 @@ export function setTimer ({ running, remaining }, at = null) {
    return { running: Boolean(running), remaining: left }
 }
 
-/* entering a room starts the clock at zero, with a board that can be read */
-react('joinedRoom', () => {
+
+/*
+   Somebody started watching. A spectator's board comes from the room's event log,
+   and a replay can end at a state that is not what the table looks like now - an
+   import's empty board, a reset, a whole game's worth of moves since the last
+   full state. So when the watcher count changes, say what the board looks like.
+   This only ever adds state, and a board state does not change the watcher count,
+   so it cannot answer itself.
+*/
+react('spectatorChanged', () => shareBoardstate())
+
+/* entering a room starts the clock at zero, with a board that can be read */react('joinedRoom', () => {
    timer.set({ running: false, remaining: 0, at: 0 })
    pokemonHidden.set(false)
 })
