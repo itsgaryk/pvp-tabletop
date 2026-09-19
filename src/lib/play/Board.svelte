@@ -152,8 +152,8 @@
       A name of more than one word is broken over its words (see .zone-label), so
       it reads as a small centred block rather than one long line across a zone.
       The names are the ones the game uses, which are not always the words the
-      zone's own component goes by: the discard pile is a Discard and the prize
-      cards are Prizes.
+      zone's own component goes by: the discard pile is a Discard, the prize cards
+      are Prizes, and the active spot is an Active.
    */
    const zoneLabels = [
       { area: 'hand2', text: 'Hand' },
@@ -173,7 +173,7 @@
    ]
 
    /* the active area holds one of these per player, so it is written twice */
-   const activeLabel = 'Active\nSpot'
+   const activeLabel = 'Active'
 
    let inspectionModal
    let selectionModal
@@ -855,7 +855,14 @@
       min-width: 0;
    }
 
-   .gameboard > div > :global(div:first-child) {
+   /*
+      A zone's component fills its zone. Not a zone's name, though, and that needs
+      saying: the first of the active area's two names is the first child of that
+      cell, so it was stretched to the whole zone - which put its words at the top
+      of the zone rather than in the middle of it. A name is sized by its own
+      words (see .zone-label).
+   */
+   .gameboard > div > :global(div:first-child:not(.zone-label)) {
       @apply w-full h-full;
    }
 
@@ -902,7 +909,7 @@
       pointer-events: none;
    }
 
-   .active > div > :global(div:first-child) {
+   .active > div > :global(div:first-child:not(.zone-label)) {
       @apply w-full h-full;
    }
 
