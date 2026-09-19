@@ -138,6 +138,43 @@
       used: markerUsed(used, mark)
    }))
 
+   /*
+      The name of each zone, to be written in the middle of it while the zone
+      borders are turned on in Settings - they are a pair, a border to see where a
+      zone begins and a name to say which one it is.
+
+      One label per cell of the board's grid, which is why the table and the
+      stadium appear once each: both players play into the same cell, so its two
+      zones are drawn on top of one another and share the one name. The active
+      area is the exception - it is a cell holding one zone per player - so it is
+      labelled twice (see the markup).
+
+      A name of more than one word is broken over its words (see .zone-label), so
+      it reads as a small centred block rather than one long line across a zone.
+      The names are the ones the game uses, which are not always the words the
+      zone's own component goes by: the discard pile is a Discard and the prize
+      cards are Prizes.
+   */
+   const zoneLabels = [
+      { area: 'hand2', text: 'Hand' },
+      { area: 'prizes2', text: 'Prizes' },
+      { area: 'deck2', text: 'Deck' },
+      { area: 'discard2', text: 'Discard' },
+      { area: 'lz2', text: 'Lost\nZone' },
+      { area: 'bench2', text: 'Bench' },
+      { area: 'play', text: 'Table' },
+      { area: 'stadium', text: 'Stadium' },
+      { area: 'prizes', text: 'Prizes' },
+      { area: 'bench', text: 'Bench' },
+      { area: 'lz', text: 'Lost\nZone' },
+      { area: 'discard', text: 'Discard' },
+      { area: 'deck', text: 'Deck' },
+      { area: 'hand', text: 'Hand' }
+   ]
+
+   /* the active area holds one of these per player, so it is written twice */
+   const activeLabel = 'Active\nSpot'
+
    let inspectionModal
    let selectionModal
    let slotModal
@@ -484,6 +521,16 @@
             <Active />
          {/if}
             </div>
+
+            <!--
+               This cell is the one that holds two zones, so it carries two names:
+               its own grid splits into the two players' active spots, and each
+               label is centred in the row it names rather than in the cell.
+            -->
+            {#if $zoneBorders}
+               <div class="zone-label active-label active-label-top">{activeLabel}</div>
+               <div class="zone-label active-label active-label-bottom">{activeLabel}</div>
+            {/if}
          </div>
 
          <div class="bench">
@@ -557,6 +604,25 @@
             <Hand />
          {/if}
          </div>
+
+         <!--
+            The zones' names, from Settings: they are drawn with the zone borders
+            and only then, in the middle of each zone. A label is not a part of the
+            board - a zone is what a card is dropped on and clicked in - so it
+            takes no pointer events at all and cannot be selected, the way the
+            outline itself cannot.
+
+            They are placed by the name of the grid area they belong to, and each
+            one is a direct child of the board rather than of the half it names:
+            a label inside a rotated half would be drawn upside down. That is also
+            what lets the table and the stadium have one label between two halves
+            (see zoneLabels).
+         -->
+         {#if $zoneBorders}
+            {#each zoneLabels as label (label.area)}
+               <div class="zone-label" style:grid-area={label.area}>{label.text}</div>
+            {/each}
+         {/if}
       </div>
 
       <Message bind:this={messageAlert} />
@@ -664,16 +730,63 @@
       Optional zone outlines, from Settings: they draw where each area of the
       board begins and ends, for both players. The active area holds one zone per
       player, and the veil is only a shading over the whole board, so neither is
-      outlined as one.
+      outlined as one. Neither is a zone's name: a label sits inside a zone rather
+      than being one.
    */
-   .gameboard.zone-borders > :global(div:not(.veil)) {
+   .gameboard.zone-borders > :global(div:not(.veil):not(.zone-label)) {
       outline: 1px dashed var(--zone-border-color);
       outline-offset: -1px;
    }
 
-   .gameboard.zone-borders .active > :global(div) {
+   .gameboard.zone-borders .active > :global(div:not(.zone-label)) {
       outline: 1px dashed var(--zone-border-color);
       outline-offset: -1px;
+   }
+
+   /*
+      The name of a zone, in the middle of it - drawn with the outlines above, so
+      that a line says where a zone begins and a word says which zone it is.
+
+      Small and quiet, since the cards are what the player is looking at, and on a
+      translucent plate so that a card in the middle of the zone does not make it
+      unreadable. pre-line is what puts the words of a two-word name on separate
+      lines. Nothing here can be clicked, dragged or selected: the zone under it is
+      what the board reacts to, and a label that swallowed a click would be a hole
+      in the middle of every zone.
+   */
+   .zone-label {
+      align-self: center;
+      justify-self: center;
+      position: relative;
+      z-index: 6;
+      padding: 0.05rem 0.3rem;
+      border-radius: 0.25rem;
+      background-color: var(--overlay-color);
+      color: var(--text-color);
+      font-size: 0.7rem;
+      font-weight: 700;
+      line-height: 1.15;
+      text-align: center;
+      white-space: pre-line;
+      pointer-events: none;
+      user-select: none;
+   }
+
+   /*
+      The active area is the one cell holding a zone per player, so it holds a
+      label per player as well - each centred in its own row of that cell rather
+      than in the cell as a whole.
+   */
+   .active-label {
+      grid-column: 1;
+   }
+
+   .active-label-top {
+      grid-row: 1;
+   }
+
+   .active-label-bottom {
+      grid-row: 2;
    }
 
    /*

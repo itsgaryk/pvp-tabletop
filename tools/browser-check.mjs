@@ -18,8 +18,9 @@
  *              clears it for everyone, and an unanswered one closes the room
  *   panel      the board panel's own changes: the glow that stays until it is
  *              clicked, the clock in both directions, the Chat tab lit by a
- *              message that arrived unseen, and both markers at once - each with
- *              its own click, its own used state and its own log line
+ *              message that arrived unseen, the zone names that come with the
+ *              zone outlines, and both markers at once - each with its own
+ *              click, its own used state and its own log line
  *
  *   node tools/browser-check.mjs --only panel      # just that section
  *
@@ -933,6 +934,102 @@ if (want('panel')) {
       described.length > 0 && described.length === shape.length &&
          !described.some((t) => /Talonflame|once you have used that power|Outlines each area|events this browser has received|always shown in dark mode/.test(t)),
       JSON.stringify(described))
+
+   /*
+      The zone names, which are drawn with the zone outlines and only then: a line
+      says where a zone begins, a word says which zone it is. They are board
+      furniture rather than a setting of their own, so this reads them off the
+      board - and reads them with the menu closed, because a name the menu is
+      covering is a name this cannot say anything about.
+
+      Read against the zone each one lands in rather than against the board, since
+      that is where a name belongs: the active area is the one cell holding two
+      zones, one per player, and its two names are centred in those.
+   */
+   const cog = () => alice.evaluate(`(() => {
+      const b = [...document.querySelectorAll('button')].find((el) => (el.getAttribute('aria-label') || el.title) === 'Settings')
+      if (b) b.click()
+      return Boolean(b)
+   })()`)
+
+   const zoneLabels = () => alice.evaluate(`(() => {
+      const cells = [...document.querySelectorAll('.gameboard > div, .active > .active1, .active > .active2')]
+         .map((el) => ({ cls: el.className, rect: el.getBoundingClientRect() }))
+
+      return [...document.querySelectorAll('.zone-label')].map((el) => {
+         const rect = el.getBoundingClientRect()
+         const mid = { x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2 }
+         /*
+            the smallest zone the name is in: for a name in the active area that is
+            its own row rather than the two rows together.
+         */
+         const zone = cells
+            .filter((c) => mid.x >= c.rect.left - 1 && mid.x <= c.rect.right + 1 &&
+               mid.y >= c.rect.top - 1 && mid.y <= c.rect.bottom + 1)
+            .sort((a, b) => a.rect.width * a.rect.height - b.rect.width * b.rect.height)[0]
+
+         const under = document.elementFromPoint(Math.round(mid.x), Math.round(mid.y))
+         return {
+            text: el.innerText.replace(/\\s+/g, ' ').trim(),
+            lines: el.innerText.split('\\n').filter((line) => line.trim()).length,
+            zone: zone ? zone.cls : null,
+            centred: zone
+               ? Math.abs(mid.x - (zone.rect.left + zone.rect.right) / 2) < 3 &&
+                  Math.abs(mid.y - (zone.rect.top + zone.rect.bottom) / 2) < 3
+               : false,
+            upright: getComputedStyle(el).transform === 'none',
+            clickable: under === el || el.contains(under)
+         }
+      })
+   })()`)
+
+   /* whatever an earlier run left behind, this reads the board from outlines off */
+   const outlineBox = () => alice.evaluate(`(() => {
+      const label = [...document.querySelectorAll('.setting label')].find((l) => /Show borders/.test(l.textContent))
+      const input = label && label.querySelector('input')
+      if (!input) return null
+      if (input.checked) input.click()
+      return input.checked
+   })()`)
+
+   check('the zone outlines are off to begin with', (await outlineBox()) === false)
+   await sleep(800)
+   check('so the board carries no zone names', (await zoneLabels()).length === 0, JSON.stringify(await zoneLabels()))
+
+   await alice.clickText('Show borders around the board zones', { settle: 900, kinds: 'label' })
+   await sleep(500)
+   await cog()
+   await sleep(900)
+
+   const named = await zoneLabels()
+   /* sorted, so the check is about which names are there and not where they land */
+   const tally = (names) => Object
+      .entries(names.reduce((all, name) => ({ ...all, [name]: (all[name] || 0) + 1 }), {}))
+      .sort()
+   check('turning the outlines on names every zone', named.length === 16, JSON.stringify(named.map((l) => l.text)))
+   check('both halves, with the table and the stadium named once between them',
+      JSON.stringify(tally(named.map((l) => l.text))) === JSON.stringify([
+         ['Active Spot', 2], ['Bench', 2], ['Deck', 2], ['Discard', 2], ['Hand', 2],
+         ['Lost Zone', 2], ['Prizes', 2], ['Stadium', 1], ['Table', 1]
+      ]),
+      JSON.stringify(tally(named.map((l) => l.text))))
+   check('each name in the middle of its own zone, and none of them turned over',
+      named.length > 0 && named.every((l) => l.centred && l.upright),
+      JSON.stringify(named.filter((l) => !l.centred || !l.upright)))
+   check('a name of two words broken over its two lines',
+      named.filter((l) => l.text === 'Lost Zone' || l.text === 'Active Spot').every((l) => l.lines === 2) &&
+         named.filter((l) => !/ /.test(l.text)).every((l) => l.lines === 1),
+      JSON.stringify(named.map((l) => [l.text, l.lines])))
+   check('and a name takes no click, so the zone under it still does',
+      named.length > 0 && named.every((l) => !l.clickable), JSON.stringify(named.filter((l) => l.clickable)))
+
+   /* the menu this section found open is left open, and the outlines as they were */
+   await cog()
+   await sleep(700)
+   const offAgain = await outlineBox()
+   await sleep(800)
+   check('turning them off is what puts the names away',
+      offAgain === false && (await zoneLabels()).length === 0, JSON.stringify(await zoneLabels()))
 
    check('the marker list ends with Both', (await alice.evaluate(`[...document.querySelectorAll('input[name="powerMarker"]')].map((i) => i.parentElement.textContent.trim()).join(',')`)) === 'Off,VStar,GX,Both')
 
