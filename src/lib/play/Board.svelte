@@ -585,7 +585,21 @@
          {/if}
          </div>
 
-         <div class="veil" class:applied={$pokemonHidden}></div>
+         <!--
+            The veil: the shading drawn over the Pokemon in play while Hide Pokemon
+            is on. One rectangle per zone that holds Pokemon - the active area, and
+            each half's bench - because those are the zones it is about.
+
+            It is *not* a zone itself: each rectangle is placed by the area it
+            covers rather than declared as one, so it is outside both the zone
+            outlines and the zone names. It used to be a single rectangle across the
+            middle of the board, which also shaded the Stadium's cell (and the
+            Pokemon Power bands inside it) and the table - zones holding no Pokemon,
+            and ones a player still has to read while their own are hidden.
+         -->
+         {#each ['active', 'bench2', 'bench'] as area (area)}
+            <div class="veil" class:applied={$pokemonHidden} style="grid-area: {area}"></div>
+         {/each}
 
          <div class="lz">
             {#if $spectating}
@@ -1059,12 +1073,13 @@
       transform: scale(-1, -1);
    }
 
+   /*
+      The veil takes no pointer events and is placed by the area it covers (see the
+      markup): the active area, and each half's bench. Half strength over whatever
+      is under it, and above the cards so that what is hidden is actually obscured.
+   */
    .veil {
       pointer-events: none;
-      grid-row-start: prizes;
-      grid-row-end: bench;
-      grid-column-start: stadium;
-      grid-column-end: bench;
    }
 
    .veil.applied {
