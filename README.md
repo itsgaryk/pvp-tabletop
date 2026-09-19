@@ -543,6 +543,16 @@ click, its own used state and its own log line:
 node tools/browser-check.mjs --only panel     # just that section
 ```
 
+It answers the relay's "Still playing?" while it works. The idle windows are the
+room's clock rather than one section's, and they are set in seconds for the idle
+section's sake — and this is the section that spends longer than that reading the
+board without appending anything to the relay. Unanswered, the prompt closed the
+room halfway through and every check after it read the main menu: eighteen
+failures with one dialog behind them, and three that passed because an empty list
+satisfies "none of them do X". Its checks that assert an absence — the deck is
+shut, nobody has been told the time is up, no marks are left — now ask for the
+board as well, so a room that has gone cannot pass them.
+
 Its `lobby` section covers the way in — the **main menu**. The menu is the logo and
 the four buttons and nothing else on the window: the board, the settings cog and
 Edit Deck all stand aside while it is up. The logo sits to the left of the buttons,
