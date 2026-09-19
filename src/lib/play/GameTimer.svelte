@@ -36,8 +36,15 @@
    /* what the clock read last tick, so passing a mark can be noticed */
    let lastRemaining = null
 
-   /* whether it was running last tick, so running out can be told from being at zero */
-   let wasRunning = $timerStore.running
+   /*
+      Whether it was running last tick, so running out can be told from being at
+      zero. Deliberately not seeded from the store: a top-level declaration is
+      compiled *above* the store's own subscription, so `$timerStore` is not
+      there yet and reading it throws - a board that will not open at all. The
+      first tick seeds it, and nothing can be missed, because a clock cannot run
+      out before this component has ticked once.
+   */
+   let wasRunning = false
 
    /*
       Set while somebody has just put a time on the clock by hand. Being *set* to
@@ -52,8 +59,13 @@
    let flyTimer
    let expired = false
 
-   /* what the clock reads, re-taken every tick so a late tick catches up */
-   let remaining = remainingAt($timerStore)
+   /*
+      What the clock reads, re-taken every tick so a late tick catches up. It
+      deliberately starts at zero rather than from the store, for the reason
+      `wasRunning` above gives: reading `$timerStore` here would be reading it
+      before it exists.
+   */
+   let remaining = 0
 
    $: totalSeconds = Math.ceil(remaining / 1000)
    $: hours = Math.floor(totalSeconds / 3600)
