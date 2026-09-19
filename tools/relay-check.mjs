@@ -4,8 +4,12 @@
  * Four things this project has got wrong, and that a change can get wrong
  * again without anything on screen to say so:
  *
- *   leaving    a room is a game, so it closes when no playing seat is occupied -
- *              a spectator must never be able to hold a dead one open
+ *   leaving    a game is the people playing it: a player who walks out ends the
+ *              room for the other player and any watchers, and the ending says
+ *              which one it was - somebody left, somebody never arrived, or
+ *              somebody did not come back
+ *   waiting    a room nobody joins closes itself, and a game whose player
+ *              vanished without leaving waits for them before giving up
  *   restart    a room belongs to the deployment that made it, so a new build
  *              closes the old rooms rather than replaying them into new handlers
  *   idle       a room where nothing has been *done* is prompted, and a prompt
@@ -17,6 +21,7 @@
  *
  *   node tools/fake-redis.mjs &
  *   RELAY_IDLE_MS=3000 RELAY_PROMPT_MS=5000 RELAY_MEMBER_STALE_MS=8000 \
+ *   RELAY_HOST_WAIT_MS=3000 RELAY_REJOIN_WAIT_MS=10000 \
  *   RELAY_POLL_WAIT_MS=1000 RELAY_POLL_INTERVAL_MS=300 \
  *   KV_REST_API_URL=http://127.0.0.1:6390 KV_REST_API_TOKEN=local npm run dev &
  *   node tools/relay-check.mjs
@@ -172,11 +177,16 @@ if (!health.ok) {
 const IDLE = Number(health.idle?.idleMs) || 0
 const PROMPT = Number(health.idle?.promptMs) || 0
 const STALE = Number(health.idle?.memberStaleMs) || 0
+const HOST_WAIT = Number(health.room?.hostWaitMs) || 0
+const REJOIN_WAIT = Number(health.room?.rejoinWaitMs) || 0
 const fast = IDLE > 0 && IDLE <= 30000 && PROMPT <= 60000
 const quick = STALE > 0 && STALE <= 30000
+const hostFast = HOST_WAIT > 0 && HOST_WAIT <= 30000
+const rejoinFast = REJOIN_WAIT > 0 && REJOIN_WAIT <= 60000
 
 console.log(`  store ${health.store}${health.from ? ` (from ${health.from})` : ''}, epoch ${health.epoch}`)
 console.log(`  idle ${IDLE}ms, prompt ${PROMPT}ms, member stale ${STALE}ms, poll hold ${health.poll?.waitMs}ms`)
+console.log(`  host wait ${HOST_WAIT}ms, rejoin wait ${REJOIN_WAIT}ms`)
 if (!fast) console.log('  windows are the production ones: the timing checks will be skipped')
 
 /* ------------------------------------------------------- 1. leaving ------- */
@@ -188,18 +198,16 @@ console.log('\nleaving')
    const w = (await spectate(a.roomId)).body
 
    const left = await leave(a.roomId, a.memberId)
-   check('one player leaving a live game keeps the room open', left.body.closed === false, JSON.stringify(left.body))
+   check('one player leaving closes the game for the other', left.body.closed === true, JSON.stringify(left.body))
+   check('and names the ending', left.body.reason === 'playerLeft', String(left.body.reason))
 
    const bPoll = await poll(a.roomId, b.memberId)
-   check('the remaining player is not evicted', bPoll.body.gone !== true)
-   check('and holds the only seat', bPoll.body.players?.length === 1, JSON.stringify(bPoll.body.players))
-
-   const last = await leave(a.roomId, b.memberId)
-   check('the last player leaving closes the room', last.body.closed === true && last.body.reason === 'playerLeft', JSON.stringify(last.body))
+   check('the remaining player is told it is gone', bPoll.body.gone === true, JSON.stringify(bPoll.body))
+   check('as a player who left', bPoll.body.reason === 'playerLeft', String(bPoll.body.reason))
 
    const wPoll = await poll(a.roomId, w.memberId)
-   check('the spectator is told it is gone', wPoll.body.gone === true, JSON.stringify(wPoll.body))
-   check('as a closed game rather than an expiry', wPoll.body.reason === 'closed', String(wPoll.body.reason))
+   check('the spectator is told too', wPoll.body.gone === true, JSON.stringify(wPoll.body))
+   check('with the same reason', wPoll.body.reason === 'playerLeft', String(wPoll.body.reason))
 
    check('the room is gone from the lobby', (await summary(a.roomId)).status === 404)
 }
@@ -218,13 +226,122 @@ console.log('\nleaving')
 
 {
    const a = (await create()).body
-   await leave(a.roomId, a.memberId)
-   check('a player alone in a room closes it by leaving', (await summary(a.roomId)).status === 404)
+   const w = (await spectate(a.roomId)).body
+   const left = await leave(a.roomId, a.memberId)
+   check('the last player leaving closes the room', left.body.closed === true, JSON.stringify(left.body))
+   check('and names that ending too', left.body.reason === 'allPlayersLeft', String(left.body.reason))
+
+   const wPoll = await poll(a.roomId, w.memberId)
+   check('the watcher is told the room ran out of players', wPoll.body.gone === true && wPoll.body.reason === 'allPlayersLeft', JSON.stringify(wPoll.body))
 }
 
 {
    const missing = await poll('ZZZZZZ', 'nobody')
    check('an unknown room reads as expired, not closed', missing.body.gone === true && missing.body.reason === 'expired', JSON.stringify(missing.body))
+}
+
+/* -------------------------------------------------------- 2. waiting ------- */
+
+console.log('\nwaiting')
+if (!hostFast) {
+   skip('a room nobody joins closes itself', `host wait is ${HOST_WAIT}ms`)
+} else {
+   const a = (await create()).body
+   check('a new room reports the window it is waiting on', Number(a.hostWait?.deadlineAt) > Date.now(), JSON.stringify(a.hostWait))
+
+   const closed = await pollUntil(a.roomId, a.memberId, (body) => body.gone, { timeout: HOST_WAIT + 20000 })
+   check('a room nobody joins closes itself', closed.gone === true, JSON.stringify(closed))
+   check('and says the opponent never arrived', closed.reason === 'opponentTimeout', String(closed.reason))
+   check('so the room is gone from the lobby', (await summary(a.roomId)).status === 404)
+
+   /* the wait is for a second player, not a countdown on a live game */
+   const both = (await create()).body
+   await join(both.roomId)
+   await sleep(HOST_WAIT + 2000)
+   check('a room with two players is not closed by the host window', (await summary(both.roomId)).status === 200)
+
+   /*
+      And the case that looks the same but is not: a room that had its second
+      player and lost them before the creator's window ran out. It is a game
+      waiting for somebody to come back, not an unused code - so the host window
+      must not be what ends it, whatever the clock says.
+   */
+   const lost = (await create()).body
+   const gone = (await join(lost.roomId)).body
+   await leave(lost.roomId, gone.memberId)
+   await sleep(HOST_WAIT + 2000)
+   const after = await poll(lost.roomId, lost.memberId)
+   check(
+      'a room whose guest left is not closed by the host window',
+      after.body.gone !== true || after.body.reason !== 'opponentTimeout',
+      after.body.gone ? `closed as ${after.body.reason}` : 'still open'
+   )
+}
+
+if (!rejoinFast || !quick) {
+   skip('a player who vanished is waited for', `rejoin wait is ${REJOIN_WAIT}ms, member stale ${STALE}ms`)
+   skip('and the ending names a player who did not come back', '')
+   skip('a player who does rejoin calls the wait off', '')
+} else {
+   const a = (await create()).body
+   const b = (await join(a.roomId)).body
+
+   /*
+      `b` stops polling. Its presence goes stale, the sweep stops counting it as
+      sitting there - and the room starts waiting for it to come back. Its seat
+      is kept, not given up: that is what makes the reconnect below work.
+
+      The table is kept busy throughout. The idle window is a *different* clock
+      and is deliberately shorter than the wait being checked here, so a test
+      that simply sits still would watch the room idle-close and report the
+      wrong ending.
+   */
+   const keepBusy = setInterval(() => {
+      emit(a.roomId, a.memberId, 'boardReset').catch(() => {})
+   }, Math.max(500, Math.floor(IDLE / 3)))
+
+   let waited
+   let closed
+   try {
+      waited = await pollUntil(a.roomId, a.memberId, (body) => body.rejoin || body.gone, { timeout: STALE + 20000 })
+      check('a vanished player stops counting as present', waited.opponent?.count === 0, JSON.stringify(waited.opponent))
+      check('but keeps the seat that is being held', waited.players?.length === 2, JSON.stringify(waited.players))
+      check('the wait is announced to the player still there', Boolean(waited.rejoin), JSON.stringify(waited.rejoin))
+
+      closed = await pollUntil(a.roomId, a.memberId, (body) => body.gone, { timeout: REJOIN_WAIT + 20000 })
+   } finally {
+      clearInterval(keepBusy)
+   }
+
+   check('the wait runs out and the room closes', closed.gone === true, JSON.stringify(closed))
+   check('and names a player who did not come back', closed.reason === 'rejoinTimeout', String(closed.reason))
+
+   /* and the other way round: rejoining calls the wait off */
+   const c = (await create()).body
+   const d = (await join(c.roomId)).body
+
+   /*
+      The same busy table, for the same reason: the host has to still be in a
+      room that is waiting when the guest comes back, not in one that idled out.
+   */
+   const keepAlive = setInterval(() => {
+      emit(c.roomId, c.memberId, 'boardReset').catch(() => {})
+   }, Math.max(500, Math.floor(IDLE / 3)))
+
+   let after
+   try {
+      await pollUntil(c.roomId, c.memberId, (body) => body.rejoin || body.gone, { timeout: STALE + 20000 })
+
+      /* the same member id coming back is what makes this the same player */
+      const back = await join(c.roomId, 'Other', d.memberId)
+      check('a player who reconnects takes their own seat back', back.body.role === 'guest' && back.body.memberId === d.memberId, JSON.stringify({ role: back.body.role, memberId: back.body.memberId, wanted: d.memberId }))
+
+      after = await poll(c.roomId, c.memberId)
+   } finally {
+      clearInterval(keepAlive)
+   }
+
+   check('and the wait is called off', !after.body.rejoin && after.body.gone !== true, JSON.stringify(after.body.rejoin || after.body.reason))
 }
 
 /* ------------------------------------------------------- 2. restart ------- */
@@ -243,7 +360,7 @@ if (!health.epoch) {
    await writeMeta(a.roomId, { ...meta, epoch: 'boot:some-previous-deployment' })
    const gone = await poll(a.roomId, a.memberId)
    check('a room from another deployment reads as gone', gone.body.gone === true, JSON.stringify(gone.body))
-   check('and as a closed game', gone.body.reason === 'closed', String(gone.body.reason))
+   check('and is named a restart rather than a game somebody ended', gone.body.reason === 'restart', String(gone.body.reason))
    check('the stale room is deleted', (await readMeta(a.roomId)) === null)
    check('and cannot be joined back into', (await join(a.roomId)).status === 404)
 }

@@ -105,9 +105,11 @@
       /*
          Setting up hides your Pokemon: a fresh board is not meant to be read over
          your shoulder. It does exactly what clicking Hide Pokemon does - the same
-         action, not a copy of it - and the button says so by glowing for a moment,
-         since that is the one thing the log line does not mention. Solo is playing
-         both sides yourself, so there is nobody to hide them from.
+         action, not a copy of it - and the button says so by glowing, since that
+         is the one thing the log line does not mention. The glow stays until the
+         button is pressed: it is pointing at the control that brings them back,
+         and a player who has not looked yet has not stopped needing to know. Solo
+         is playing both sides yourself, so there is nobody to hide them from.
 
          Hidden before the board is shared, not after: whoever is watching us takes
          the state from either the event or the board state, and the board state has
@@ -115,7 +117,7 @@
       */
       if (!$solo) {
          switchVisibility()
-         glowHideButton()
+         hideGlow = true
       }
 
       publishLog('Setup' + ($autoMulligan ? ` - ${mulligans} Mulligans` : ''))
@@ -155,6 +157,8 @@
 
    function switchVisibility () {
       setVisibility(!pokemonHidden.get())
+      /* the player has found the button, so it stops asking to be found */
+      hideGlow = false
    }
 
    /* hiding and showing, as a state rather than a toggle */
@@ -163,15 +167,13 @@
       share('pokemonToggle', { hidden })
    }
 
-   /* the Hide Pokemon button says so for a moment when Setup does it for you */
+   /*
+      Setup hides the board for you, and the button says which one did it. It
+      stays lit until the button is clicked rather than fading on a timer: the
+      glow is the only thing that tells a player their own board is hidden, and a
+      few seconds is not long enough to be sure it was seen.
+   */
    let hideGlow = false
-   let glowTimer
-
-   function glowHideButton () {
-      hideGlow = true
-      clearTimeout(glowTimer)
-      glowTimer = setTimeout(() => { hideGlow = false }, 2500)
-   }
 
    /* Keyboard shortcuts */
 
@@ -267,9 +269,13 @@
       @apply opacity-50;
    }
 
-   /* Setup hides the board for you, and the button shows which one did it */
+   /*
+      Setup hides the board for you, and the button shows which one did it. The
+      pulse repeats rather than stopping after a couple of beats: it stays until
+      the button is clicked, which for a player who is mid-turn may be a while.
+   */
    .game-actions button.glow {
-      animation: hide-glow 1s ease-in-out 2;
+      animation: hide-glow 1s ease-in-out infinite;
    }
 
    @keyframes hide-glow {

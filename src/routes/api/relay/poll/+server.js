@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit'
-import { closedReason, getRoom, getRoomSeq, getStore, touchMember } from '$lib/relay/store.js'
-import { maintainRoom, pruneStaleMembers } from '$lib/relay/maintain.js'
+import { closedReason, getRoom, getRoomSeq, getStore, playersOf, SEAT_HELD, touchMember } from '$lib/relay/store.js'
+import { maintainRoom, pruneStaleMembers, startRejoinWait } from '$lib/relay/maintain.js'
 import { WAIT_MS, POLL_INTERVAL_MS, MAX_REQUESTED_INTERVAL_MS } from '$lib/relay/config.js'
 
 /*
@@ -45,6 +45,10 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
    both players label the halves with it - so it is sent on every poll, because
    the seats are not fixed when the watcher arrives: the second player may only
    sit down later.
+
+   A seat being held for a player who has gone quiet is still *their* seat,
+   which is why this lists every seat-holder rather than only the present ones:
+   the board does not move to the other half because somebody's laptop slept.
 */
 const seats = (room) => room.members
    .filter((m) => m.role === 'host' || m.role === 'guest')
@@ -54,7 +58,13 @@ const seats = (room) => room.members
 const opponentState = (room, memberId) => {
    const now = Date.now()
    const others = room.members.filter((m) => m.id !== memberId)
-   const fresh = others.filter((m) => now - (m.lastSeen || 0) < PRESENCE_MS)
+   /*
+      Somebody is present if their poll has refreshed them recently - and a seat
+      that is being held is not present, however recently it was last touched.
+      That distinction is the point of the sweep: a player whose laptop closed
+      stops being "here" at once, while keeping the seat they will come back to.
+   */
+   const fresh = others.filter((m) => m.lastSeen !== SEAT_HELD && now - (m.lastSeen || 0) < PRESENCE_MS)
    const me = room.members.find((m) => m.id === memberId)
 
    return {
@@ -102,7 +112,12 @@ export async function GET ({ url }) {
    const goneReason = async () => {
       try {
          const reason = await closedReason(roomId)
-         return reason === 'closed' || reason === 'idle' ? reason : 'expired'
+         /*
+            'expired' means the TTL collected a room nobody was in, which is not
+            worth saying on screen; every other reason is a game that ended, and
+            each says something different about why.
+         */
+         return reason === 'expired' ? 'expired' : reason
       } catch {
          return 'expired'
       }
@@ -120,10 +135,23 @@ export async function GET ({ url }) {
    */
    async function finish (room, { events = [], waited = null } = {}) {
       const now = Date.now()
-      const { members } = await pruneStaleMembers(store, roomId, room.members, now)
-      room.members = members
+      const swept = await pruneStaleMembers(store, roomId, room.members, now)
+      room.members = swept.members
 
-      const verdict = await maintainRoom(store, roomId, room, now)
+      /*
+         A playing seat was swept: somebody vanished without leaving, so the
+         game waits for them rather than ending on the spot. Their seat record
+         is still there - that is how they get it back - but it is not being
+         sat in, so the question is whether anybody else is still here to wait.
+         The mark is written here - once - and the room carries on;
+         `maintainRoom` is what closes it when the wait runs out.
+      */
+      if (swept.seatsLost && playersOf(room.members).length) {
+         await startRejoinWait(roomId, now)
+         room = (await getRoom(roomId)) || room
+      }
+
+      const verdict = await maintainRoom(store, roomId, room, now, swept.heldSeats)
       if (verdict.gone) return goneReply()
 
       const seq = lastSeq(room)
@@ -141,6 +169,9 @@ export async function GET ({ url }) {
             in the reply as well as in the prompt event, because a long prompt
             can outlive the room's retained event log. */
          idle: verdict.idle,
+         /* a wait running for a player who vanished, on the same terms: a board
+            that arrives late sees the time actually left to rejoin. */
+         rejoin: verdict.rejoin,
          waited: waited === null ? now - started : waited
       }
 

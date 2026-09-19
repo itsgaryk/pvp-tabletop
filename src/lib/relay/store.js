@@ -3,10 +3,12 @@
 
    Keys (all namespaced under the room):
 
-      pvp:room:<id>:meta      JSON { id, createdAt, lastActionAt, idlePromptedAt, epoch }
+      pvp:room:<id>:meta      JSON { id, createdAt, lastActionAt, idlePromptedAt,
+                                    hostDeadlineAt, rejoinDeadlineAt, epoch }
       pvp:room:<id>:seq       integer                     last event number
       pvp:room:<id>:events    list of JSON events, newest first
-      pvp:room:<id>:members   hash: memberId -> JSON { role, name, lastSeen }
+      pvp:room:<id>:members   hash: memberId -> JSON { role, name }, plus a
+                                    `seen:<memberId>` field carrying presence
       pvp:room:<id>:closed    why a room that has just gone, went (2 min TTL)
 
    Every room mutation is a *single-key* atomic Redis command (INCR, LPUSH,
@@ -27,6 +29,13 @@
 
 export const ROOM_TTL_S = 60 * 60 * 6 // rooms are dropped 6h after the last write
 export const MAX_EVENTS = 400 // events kept per room
+
+/*
+   Imported here rather than passed in: the host wait is stamped into a room's
+   metadata at the moment it is created, so this is the one place that has to
+   know the window. timing.js imports nothing, so there is no cycle.
+*/
+import { RELAY_HOST_WAIT_MS } from './timing.js'
 
 /*
    How long the note of why a room closed outlives the room itself. Long enough
@@ -159,6 +168,14 @@ function memoryStore () {
          db.members.delete(mkey(id, mid))
          db.seen.delete(mkey(id, mid))
       },
+      /*
+         Forget that a member is here, without forgetting the member: a playing
+         seat is held for whoever went quiet, so only presence goes (see the
+         redis store).
+      */
+      async clearPresence (id, mid) {
+         db.seen.set(mkey(id, mid), SEAT_HELD)
+      },
       /* presence is its own mark, so refreshing it never rewrites the member */
       async touchMember (id, mid, at) {
          db.seen.set(mkey(id, mid), at)
@@ -167,7 +184,9 @@ function memoryStore () {
          const out = []
          for (const [key, member] of db.members) {
             if (key.startsWith(id + '|')) {
-               out.push({ id: key.slice(id.length + 1), ...member, lastSeen: Math.max(member.lastSeen || 0, db.seen.get(key) || 0) })
+               const presence = db.seen.get(key)
+               /* the presence mark is the authority; a missing one means "never polled" */
+               out.push({ id: key.slice(id.length + 1), ...member, lastSeen: presence })
             }
          }
 
@@ -299,6 +318,15 @@ function redisRestStore (url, token) {
          await command('HDEL', k.members(id), mid, seenField(mid))
       },
       /*
+         Forget that a member is here, without forgetting the member: a playing
+         seat is held for whoever went quiet, so only presence goes. The mark is
+         written rather than deleted, so a later read cannot fall back to
+         anything and call the seat occupied again.
+      */
+      async clearPresence (id, mid) {
+         await command('HSET', k.members(id), seenField(mid), String(SEAT_HELD))
+      },
+      /*
          One command, not three. Presence changes on every poll of every client,
          so it is kept as its own field rather than read-modify-writing the whole
          member record: touching it is a single HSET, and two clients touching at
@@ -323,7 +351,13 @@ function redisRestStore (url, token) {
          }
 
          for (const member of members) {
-            member.lastSeen = Math.max(member.lastSeen || 0, seen.get(member.id) || 0)
+            /*
+               The presence field is the authority. A member record no longer
+               carries `lastSeen` of its own precisely so that clearing presence
+               cannot be undone by reading the record back - which is what would
+               happen if a stale copy lived in the JSON.
+            */
+            member.lastSeen = seen.has(member.id) ? seen.get(member.id) : undefined
          }
 
          return members.sort(bySeat)
@@ -469,13 +503,30 @@ export async function createRoom (name = null) {
          is idle from the moment it exists, which is what the idle prompt wants
          to be true. `idlePromptedAt` is 0 - nothing asked yet. `epoch` is the
          deployment that made it, and is what makes a restart close it.
+         `hostDeadlineAt` is when the room stops waiting for a second player;
+         it is stamped here rather than derived from a constant so a room keeps
+         the window it was created under, whatever the deployment later runs.
       */
-      const meta = { id, createdAt: now, lastActionAt: now, idlePromptedAt: 0, epoch: roomEpoch() }
+      const meta = {
+         id,
+         createdAt: now,
+         lastActionAt: now,
+         idlePromptedAt: 0,
+         hostDeadlineAt: now + RELAY_HOST_WAIT_MS,
+         /*
+            Whether a second player has ever sat down. The host window is only
+            about a room nobody joined: once this is true the room has been a
+            game, and a game that loses a player is waited for rather than
+            declared never started.
+         */
+         guestJoined: false,
+         epoch: roomEpoch()
+      }
       const created = await store.setMeta(id, meta, { nx: true })
       if (!created) continue
 
       const memberId = newMemberId()
-      await store.setMember(id, memberId, { role: 'host', name: cleanName(name), lastSeen: Date.now() })
+      await addMember(id, memberId, 'host', name)
       return { roomId: id, memberId, role: 'host' }
    }
 
@@ -537,6 +588,32 @@ export const isPlayer = (member) => Boolean(member) && PLAYER_ROLES.includes(mem
 
 export const playersOf = (members) => (members || []).filter(isPlayer)
 
+/*
+   Presence for a seat whose player has gone quiet.
+
+   It has to be a mark of its own rather than a timestamp, because both of the
+   obvious timestamps are already taken: `0` is in the past for ever and would
+   read as present to every freshness test, and a real timestamp would read as
+   present for one poll window and then be swept again. One is a moment no room
+   was ever created at, so it can only mean "held".
+
+   A member with no `lastSeen` at all is a joiner whose first poll has not
+   landed; that is not the same thing, and counts as sitting there.
+*/
+export const SEAT_HELD = 1
+
+/*
+   The playing seats a room still *counts*, which is not the same as the seats it
+   still knows about.
+
+   A player who goes quiet keeps their seat record - that is what lets them come
+   back to it - but stops being presence-fresh, and a room should not be read as
+   fully staffed while one of its players is not there.
+*/
+export const seatIsOccupied = (member) => isPlayer(member) && member.lastSeen !== SEAT_HELD
+
+export const countSeats = (members) => (members || []).filter(seatIsOccupied).length
+
 export const spectatorsOf = (members) => (members || []).filter((m) => m.role === 'spectator')
 
 /*
@@ -551,14 +628,20 @@ export async function roomSummary (roomId) {
    const room = await getRoom(roomId)
    if (!room) return null
 
-   const players = room.members.filter((m) => PLAYER_ROLES.includes(m.role))
+   /*
+      A seat being held for a player who went quiet is not a player sitting in
+      it, so the lobby reads it as free - but joining it again with their own
+      member id gives it back to them, because the seat record was never given
+      up.
+   */
+   const players = countSeats(room.members)
    const spectators = room.members.filter((m) => m.role === 'spectator')
 
    return {
       roomId: room.id,
-      players: players.length,
+      players,
       maxPlayers: 2,
-      locked: players.length >= 2,
+      locked: players >= 2,
       spectators: spectators.length
    }
 }
@@ -598,6 +681,18 @@ export async function joinRoom (roomId, { memberId = null, role = 'guest', name 
 
    const newId = newMemberId()
    await addMember(id, newId, assigned, name)
+
+   /*
+      A second player has now sat down, so this room is no longer a room nobody
+      joined: the window it was created with stops applying, and from here on
+      the room is a game that waits for its players rather than one waiting to
+      become a game at all. It is a single field on metadata this call has
+      already read, so it costs one write and only on the join that seats
+      somebody.
+   */
+   if (assigned === 'guest' && !room.guestJoined) {
+      await saveMeta(id, room, { guestJoined: true })
+   }
 
    /*
       Re-read after adding the caller so `room.members` includes them; the route
@@ -689,10 +784,52 @@ export async function setIdlePrompted (roomId, at = 0) {
    return next
 }
 
+/*
+   Start the wait for a player who vanished without leaving to come back, and
+   answer with the moment it now reads.
+
+   The first deadline wins, so two polls noticing the same absence - and two
+   players each noticing the other - produce one window rather than extending
+   each other's. Like the idle mark, this is a read-modify-write on metadata
+   that is only touched when a member actually goes, so it costs nothing while
+   everybody is present.
+*/
+export async function setRejoinDeadline (roomId, at = 0) {
+   const store = getStore()
+   const id = normalizeRoomId(roomId)
+   const meta = await store.getMeta(id)
+   if (!meta) return null
+
+   const existing = Number(meta.rejoinDeadlineAt || 0)
+   if (existing) return existing
+
+   const next = Number(at) || 0
+   if (!next) return 0
+
+   await saveMeta(id, meta, { rejoinDeadlineAt: next })
+   return next
+}
+
+/* the wait is over - somebody came back, or the room moved on */
+export async function clearRejoinDeadline (roomId) {
+   const store = getStore()
+   const id = normalizeRoomId(roomId)
+   const meta = await store.getMeta(id)
+   if (!meta || !meta.rejoinDeadlineAt) return
+
+   await saveMeta(id, meta, { rejoinDeadlineAt: 0 })
+}
+
 export async function addMember (roomId, memberId, role, name = null) {
    const store = getStore()
    const id = normalizeRoomId(roomId)
-   await store.setMember(id, memberId, { role, name: cleanName(name), lastSeen: Date.now() })
+   /*
+      `lastSeen` is deliberately not part of the member record: presence lives in
+      the member hash's own field (see touchMember), so a record written here
+      cannot resurrect a presence the sweep has cleared.
+   */
+   await store.setMember(id, memberId, { role, name: cleanName(name) })
+   await store.touchMember(id, memberId, Date.now())
 }
 
 export async function touchMember (roomId, memberId) {
@@ -726,38 +863,62 @@ export async function removeMember (roomId, memberId) {
    the 6h TTL quietly collected - the two look identical from a key that has
    simply stopped existing, and only one of them is worth saying something about.
 
-   `reason` is for the relay's own record; the poll translates it for clients
-   into a single 'closed', because every one of these - a player leaving, a
-   restart, an idle prompt nobody answered - means the same thing to the people
-   in the room: the game is over and they are in the lobby.
+   `reason` is not just a record: the poll hands it to the clients, and each one
+   says something different on screen - an opponent who left, one who never
+   arrived, one who did not come back, a table nobody answered for. A room
+   closed by an older deployment carries no reason at all, and reads as 'closed'.
 */
 export async function closeRoom (roomId, reason = 'closed') {
+   const store = getStore()
+   const id = normalizeRoomId(roomId)
+
+   await noteCloseReason(id, reason)
+   await store.delRoom(id)
+   return { closed: true, reason }
+}
+
+/*
+   Leave the note about why a room closed, without closing anything.
+
+   This exists for the case where a room carries on without one of its players:
+   the note is written the moment they walk out - so a poll already in flight
+   can still be told why - but the room itself stays up while the other player
+   waits for them to come back. If that wait runs out, the same note is
+   overwritten with the reason it finally ended under.
+
+   The note is a courtesy: a room that cannot be annotated still has to be
+   deleted, so a failure here is logged rather than thrown.
+*/
+export async function noteCloseReason (roomId, reason) {
    const store = getStore()
    const id = normalizeRoomId(roomId)
 
    try {
       await store.setClosed(id, reason)
    } catch (err) {
-      /*
-         The note is a courtesy. A room that cannot be annotated still has to be
-         deleted, or a restart would leave every stale room in place.
-      */
       console.error('[relay] could not record why a room closed', err)
    }
 
-   await store.delRoom(id)
-   return { closed: true, reason }
+   return reason
 }
 
 /*
    Why a room that is not there any more is not there, as the poll reports it.
-   Read only when a room is already missing, so it costs nothing on any path
-   where the room exists.
+
+   The specific endings are passed through rather than folded into 'closed',
+   because each one says something different on screen - an opponent who never
+   arrived, one who left, one who did not come back, an idle table. Only the
+   room's own TTL produces 'expired', which is not news.
+
+   A room closed by an older deployment (or one whose note has already lapsed)
+   still reads as 'closed', so nothing that used to be told has stopped being
+   told.
 */
+export const CLOSE_REASONS = ['playerLeft', 'opponentTimeout', 'rejoinTimeout', 'allPlayersLeft', 'idle', 'restart']
+
 export async function closedReason (roomId) {
    const store = getStore()
    const stored = await store.getClosed(normalizeRoomId(roomId))
 
-   /* 'idle' has its own meaning on screen; everything else is a game that ended */
-   return stored === 'idle' ? 'idle' : stored ? 'closed' : 'expired'
+   return CLOSE_REASONS.includes(stored) ? stored : (stored ? 'closed' : 'expired')
 }

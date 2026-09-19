@@ -122,6 +122,13 @@ export function spectateRoom (roomId) {
 }
 
 export function leaveRoom () {
+   /*
+      Leaving on purpose puts the last ending away before the request goes out: a
+      room a player leaves now ends for whoever is left, so a poll already in
+      flight can come back gone - and the leaver, who is the reason it ended,
+      must not be shown the dialog about it.
+   */
+   forgetGameClosed()
    return socket.leaveRoom(room.get()).catch((err) => {
       console.error('[pvp-tabletop] could not leave the room', err)
       return null
@@ -156,19 +163,43 @@ export function clearBoard () {
 }
 
 /*
-   A room that has gone, with the relay's reason ('closed', 'idle' or
-   'expired'). Everyone still in a room that ends gets this: a game that was
-   ended on purpose is worth a dialog either way.
+   A room that has gone, with the relay's reason, or null when there is nothing
+   to say. Everyone still in a room that ends gets this: a game that was ended on
+   purpose is worth a dialog either way - and which words it uses is the relay's
+   answer, not a second opinion here.
+
+   The reasons, and what each one means to the people still in the room:
+
+      opponentTimeout  the room waited for a second player and none arrived
+      playerLeft       the other player walked out, so the game is over
+      rejoinTimeout    a player vanished and did not come back in time
+      allPlayersLeft   every seat was given up; only watchers are still here
+      closed           a game that ended, from a deployment that did not say how
+      idle             an idle prompt nobody answered
+      restart          the deployment changed under the room
+
+   'expired' - the 6h TTL collecting a room nobody was in - is not news, so it
+   is deliberately not among them.
 */
-export let gameClosed = writable(false)
+export let gameClosedReason = writable(null)
 
 export function dismissGameClosed () {
-   gameClosed.set(false)
+   gameClosedReason.set(null)
+}
+
+/*
+   Forgetting the last room's ending. The dialog is about a room, so entering a
+   new one or leaving on purpose has to put it away: otherwise a player who has
+   just closed a game themselves is shown the words for the game before it, which
+   is exactly what happened the first time a player's own leave ended a room.
+*/
+function forgetGameClosed () {
+   gameClosedReason.set(null)
+   idlePromptAt.set(null)
 }
 
 socket.onGone((reason) => {
-   /* 'expired' is the 6h TTL noticing an empty room, which is not a game ending */
-   if (reason === 'closed' || reason === 'idle') gameClosed.set(true)
+   if (reason && reason !== 'expired') gameClosedReason.set(reason)
    idlePromptAt.set(null)
 })
 
@@ -230,13 +261,40 @@ async function refreshSummary (roomId) {
 }
 
 socket.on('createdRoom', ({ roomId, role }) => {
+   forgetGameClosed()
+   hostWait.set(null)
+   waiting.set(null)
    spectating.set(role === 'spectator')
    myId.set(socket.id)
    room.set(roomId)
    refreshSummary(roomId)
 })
 
+/*
+   The waits a room can be under.
+
+   `hostWait` is the window a freshly created room has to find a second player
+   before it closes itself, so the person sitting alone is told they are on a
+   clock rather than being returned to the lobby with no warning. `waiting` is a
+   player who vanished without leaving: their seat is held, and the game is
+   paused until they come back or the wait runs out.
+
+   Both are values from the relay - `deadlineAt` on its clock - so the display
+   counts down against `socket.serverNow()`, exactly as the game timer and the
+   idle prompt do.
+*/
+export let hostWait = writable(null)
+export let waiting = writable(null)
+
+socket.on('roomWait', ({ hostWait: host, rejoin }) => {
+   if (host) hostWait.set(host)
+   waiting.set(rejoin || null)
+})
+
 socket.on('joinedRoom', ({ roomId, role }) => {
+   forgetGameClosed()
+   hostWait.set(null)
+   waiting.set(null)
    spectating.set(role === 'spectator')
    myId.set(socket.id)
    room.set(roomId)
@@ -244,6 +302,9 @@ socket.on('joinedRoom', ({ roomId, role }) => {
 })
 
 socket.on('spectatingRoom', ({ roomId }) => {
+   forgetGameClosed()
+   hostWait.set(null)
+   waiting.set(null)
    spectating.set(true)
    myId.set(socket.id)
    room.set(roomId)
@@ -261,6 +322,8 @@ socket.on('leftRoom', () => {
    spectators.set(0)
    seatedPlayers.set([])
    myId.set(null)
+   hostWait.set(null)
+   waiting.set(null)
    /*
       An idle prompt belongs to the room, so it goes with it - and so does the
       ability to answer one: the relay will not take an event from a member who

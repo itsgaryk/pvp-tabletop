@@ -5,14 +5,20 @@
  * catches the rules. This asks the *app* - real pages, real clicks, real polls -
  * which is the only way the client half of these behaviours can be seen:
  *
- *   leaving    a player leaving closes the room, the other player gets the
- *              centred "Game closed. Returned to lobby" dialog, and both boards
- *              are emptied behind it
+ *   leaving    a player leaving ends the game for the one still sitting there,
+ *              who gets the centred "Room closed: player left the room" dialog
+ *              and an emptied board behind it; the leaver is not shown it
  *   beacon     a spectator whose TAB CLOSES drops out of the count, with no
  *              button pressed - the pagehide beacon
  *   restart    a room stamped by another deployment closes on the next poll
  *   idle       the prompt appears with a live countdown, either player's answer
  *              clears it for everyone, and an unanswered one closes the room
+ *   panel      the board panel's own changes: the glow that stays until it is
+ *              clicked, the clock in both directions, the Chat tab lit by a
+ *              message that arrived unseen, and both markers at once with the
+ *              settings panel around them
+ *
+ *   node tools/browser-check.mjs --only panel      # just that section
  *
  * It does **not** launch browsers. That is deliberate, and it is the lesson from
  * two failed attempts: a helper that spawned its own Edge instances made Edge
@@ -224,13 +230,21 @@ if (want('leave')) {
    check('and the other half is empty, not a game they have left',
       (await alice.counts()).top.deck === 0 && (await alice.counts()).top.prizes === 0,
       JSON.stringify((await alice.counts()).top))
-   check('the other player keeps the room', (await bob.counts()).mode === 'room', (await bob.counts()).mode)
-   check('and keeps their board', (await zones(bob)).deck > 0, JSON.stringify(await zones(bob)))
 
-   await bob.clickText('Leave Room', { settle: 4000 })
-   await sleep(2000)
-   check('the last player leaving closes it for everyone', (await bob.counts()).mode === 'lobby', (await bob.counts()).mode)
-   check('and empties their board', emptyBoard(await emptyBoardWhen(bob)), JSON.stringify(await zones(bob)))
+   /*
+      A game is the people playing it: the player who walked out ends it for the
+      one still sitting there, who is told which ending this was rather than
+      being left on a board nothing can update.
+   */
+   const walked = await dialogWhenUp(bob, 'closed', { timeout: 30000 })
+   check('the player left behind is told the game ended', walked !== null, JSON.stringify(walked))
+   check('and which ending it was', /player left the room/.test(walked?.text || ''), walked?.text)
+   check('they are back in the lobby', (await bob.counts()).mode === 'lobby', (await bob.counts()).mode)
+   check('with their board emptied', emptyBoard(await emptyBoardWhen(bob)), JSON.stringify(await zones(bob)))
+
+   await bob.clickText('OK', { settle: 1500, kinds: 'button' })
+   await sleep(1000)
+   check('the last player out is the one who left, so nothing else closes', (await bob.dialog()) === null, JSON.stringify(await bob.dialog()))
 }
 
 /* ------------------------------------------------- 2. the closed dialog --- */
@@ -250,7 +264,7 @@ if (want('closed')) {
    const gone = await dialogWhenUp(watcher, 'closed', { timeout: 30000 })
    check('the watcher is told the game closed', gone !== null, JSON.stringify(gone))
    check('the dialog is centre-screen', gone?.centred === true, JSON.stringify(gone))
-   check('with the agreed wording', /Game closed\. Returned to lobby/.test(gone?.text || ''), gone?.text)
+   check('with the wording for the ending that happened', /player left the room/.test(gone?.text || ''), gone?.text)
    check('and an OK button', gone?.button === 'OK', gone?.button)
    if (gone) check('OK dismisses it', (await watcher.clickText('OK', { settle: 1500, kinds: 'button' })) === true)
    check('the dialog goes away', await dialogCleared(watcher, { timeout: 6000 }))
@@ -285,7 +299,7 @@ if (want('restart')) {
 
       const dialog = await dialogWhenUp(alice, 'closed', { timeout: 40000 })
       check('the player is told the game closed', dialog !== null, JSON.stringify(dialog))
-      check('with the agreed wording', /Game closed\. Returned to lobby/.test(dialog?.text || ''), dialog?.text)
+      check('and that it was the update, not a player', /server was updated/.test(dialog?.text || ''), dialog?.text)
       if (dialog) await alice.clickText('OK', { settle: 1500, kinds: 'button' })
       check('the player lands in the lobby', (await alice.counts()).mode === 'lobby', (await alice.counts()).mode)
       check('with an empty board', emptyBoard(await emptyBoardWhen(alice)), JSON.stringify(await zones(alice)))
@@ -341,7 +355,7 @@ if (want('idle')) {
 
    const closed = await dialogWhenUp(alice, 'closed', { timeout: 60000 })
    check('an unanswered prompt closes the room', closed?.kind === 'closed', JSON.stringify(closed))
-   check('the player is told', /Game closed\. Returned to lobby/.test(closed?.text || ''), closed?.text)
+   check('the player is told why', /idle prompt/.test(closed?.text || ''), closed?.text)
    if (closed) await alice.clickText('OK', { settle: 1500, kinds: 'button' })
    check('and lands in the lobby with an empty board',
       (await alice.counts()).mode === 'lobby' && emptyBoard(await emptyBoardWhen(alice)),
@@ -349,6 +363,113 @@ if (want('idle')) {
    check('the other player is told too', (await dialogWhenUp(bob, 'closed', { timeout: 30000 }))?.kind === 'closed')
 }
 
-browser.detach()
+/* ------------------------------------------------------------- 5. panel --- */
+
+/*
+   The board panel's own changes, which nothing in relay-check can see because
+   none of them cross the wire: they are what the page does with a click. Each
+   one is a thing that used to be wrong, so each check is written against the
+   thing that was wrong rather than against the code that replaced it.
+*/
+if (want('panel')) {
+   const room = await seatGame('the board panel: the glow, the clock, the Chat tab and both markers')
+   console.log(`  room ${room}`)
+
+   const hideButton = () => alice.evaluate(`(() => {
+      const b = [...document.querySelectorAll('.game-actions button')].find((el) => /Pok/.test(el.textContent))
+      return b ? { text: b.textContent.trim(), glow: b.classList.contains('glow') } : null
+   })()`)
+
+   const chatTab = () => alice.evaluate(`(() => {
+      const b = [...document.querySelectorAll('.tabs button')].find((el) => el.textContent.trim() === 'Chat')
+      return b ? { unread: b.classList.contains('unread'), active: b.classList.contains('active') } : null
+   })()`)
+
+   const timerRow = () => alice.evaluate(`(() => {
+      const row = document.querySelector('.timer-row')
+      if (!row) return null
+      return {
+         labels: [...row.querySelectorAll('button')].map((b) => b.textContent.trim()),
+         disabled: [...row.querySelectorAll('button')].filter((b) => b.disabled).map((b) => b.textContent.trim()),
+         clock: row.querySelector('.clock')?.textContent.trim() || null
+      }
+   })()`)
+
+   const markers = (page) => page.evaluate(`[...document.querySelectorAll('.power-marker')].map((el) => ({
+      marks: [...el.querySelectorAll('img.mark')].map((i) => i.getAttribute('alt')),
+      mine: el.classList.contains('mine'),
+      stacked: el.classList.contains('stacked')
+   }))`)
+
+   /* Setup hides the board and says so; the glow used to fade on a timer */
+   await alice.clickText('Show Pokémon', { settle: 1500, kinds: 'button' })
+   await alice.clickText('Setup', { settle: 2500 })
+   const lit = await hideButton()
+   check('Setup lights the Hide Pokemon button', lit?.glow === true, JSON.stringify(lit))
+   await sleep(5000)
+   check('and it stays lit rather than fading', (await hideButton())?.glow === true, JSON.stringify(await hideButton()))
+   await alice.clickText('Show Pokémon', { settle: 2000, kinds: 'button' })
+   check('clicking the button is what puts it out', (await hideButton())?.glow === false, JSON.stringify(await hideButton()))
+
+   /* the timer, both ways */
+   const both = await timerRow()
+   check('the clock offers both directions', JSON.stringify(both?.labels) === JSON.stringify(['-1', '-10', '-1m', '\u23EF\uFE0F', '+1m', '+10', '+50']), JSON.stringify(both?.labels))
+   await alice.clickText('+1m', { settle: 1500, kinds: 'button' })
+   check('adding a minute works', (await timerRow())?.clock === '01:00', (await timerRow())?.clock)
+   await alice.clickText('-10', { settle: 1500, kinds: 'button' })
+   check('and taking ten seconds off works', (await timerRow())?.clock === '00:50', (await timerRow())?.clock)
+   for (let i = 0; i < 14; i++) await alice.clickText('-1m', { settle: 400, kinds: 'button' })
+   await sleep(1200)
+   const floored = await timerRow()
+   check('taking time away stops at zero', floored?.clock === '00:00', floored?.clock)
+   check('and disables itself there', (floored?.disabled || []).includes('-1m'), JSON.stringify(floored?.disabled))
+   await alice.clickText('+10', { settle: 1000, kinds: 'button' })
+
+   /* the Chat tab, which is only ever lit by a message that arrived unseen */
+   check('the Chat tab starts quiet', (await chatTab())?.unread === false, JSON.stringify(await chatTab()))
+   await bob.clickText('Chat', { settle: 1200, kinds: 'button' })
+   await bob.setInput('message', 'hello there')
+   await bob.clickText('Send', { settle: 1500, kinds: 'button' })
+   await sleep(4000)
+   check('a chat line lights it while the log is showing', (await chatTab())?.unread === true, JSON.stringify(await chatTab()))
+   await alice.clickText('Chat', { settle: 1500, kinds: 'button' })
+   check('looking at the tab puts it out', (await chatTab())?.unread === false, JSON.stringify(await chatTab()))
+   check('and the message is there', (await alice.counts()).chat > 0, String((await alice.counts()).chat))
+   await alice.clickText('Game', { settle: 1200, kinds: 'button' })
+   await alice.clickText('Flip Coin', { settle: 2000, kinds: 'button' })
+   await sleep(2500)
+   check('a game-log line does not light it', (await chatTab())?.unread === false, JSON.stringify(await chatTab()))
+
+   /* both markers at once, and the settings panel around them */
+   await alice.evaluate(`(() => {
+      const cog = [...document.querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') || b.title) === 'Settings')
+      if (cog) cog.click()
+      return Boolean(cog)
+   })()`)
+   await sleep(1200)
+
+   const shape = await alice.evaluate(`[...document.querySelectorAll('.setting')].map((b) => ({
+      title: b.querySelector('.title')?.textContent.trim() || null,
+      tinted: getComputedStyle(b).backgroundColor
+   }))`)
+   check('every setting has a heading', shape.length > 0 && shape.every((s) => s.title), JSON.stringify(shape.map((s) => s.title)))
+   check('and they share one look', new Set(shape.map((s) => s.tinted)).size === 1, JSON.stringify(shape.map((s) => s.tinted)))
+   check('the marker list ends with Both', (await alice.evaluate(`[...document.querySelectorAll('input[name="powerMarker"]')].map((i) => i.parentElement.textContent.trim()).join(',')`)) === 'Off,VStar,GX,Both')
+
+   await alice.clickText('Both', { settle: 1500, kinds: 'label' })
+   await sleep(2500)
+   const mine = (await markers(alice)).find((m) => m.mine)
+   check('Both shows the two marks together', JSON.stringify(mine?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(mine))
+   check('stacked, not one instead of the other', mine?.stacked === true, JSON.stringify(mine))
+   await sleep(3000)
+   const far = (await markers(bob)).find((m) => !m.mine)
+   check('and the opponent sees both as well', JSON.stringify(far?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(far))
+
+   await alice.clickText('Off', { settle: 1500, kinds: 'label' })
+   await sleep(2000)
+   check('turning it off clears them', (await markers(alice)).length === 0, JSON.stringify(await markers(alice)))
+}
+
+await browser.detach()
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall checks passed')
 process.exitCode = failures ? 1 : 0

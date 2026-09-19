@@ -101,25 +101,65 @@ no members. The difference matters: a spectator who never closes their tab
 would otherwise hold a dead room, and its keys, open until the 6-hour TTL
 noticed.
 
-- A **player** leaving gives up a seat. If the other seat is still occupied the
-  game goes on without them; if it was the last one, the room closes.
-- A **spectator** leaving is only a count change, and never closes anything.
-- When a room closes, everybody still in it — the other player, and any watchers
-  — gets a centred **"Game closed. Returned to lobby"** dialog with an OK
-  button, and their board is emptied behind it. The leaver is not shown it:
-  they already know, and they are already back in the lobby.
+What that means in each case, and what the other people in the room are told:
+
+- **A player leaving closes the game for everybody else.** The remaining player
+  and any watchers get a centred **"Room closed: player left the room"** dialog
+  with an OK button, and their board is emptied behind it. The leaver is not
+  shown it: they already know, and they are already back in the lobby.
+- **The last player leaving** closes the room too, but the ending is named
+  differently — **"Room closed: all players left the room"** — because to a
+  watcher that is a different game.
+- **A spectator leaving** is only a count change, and never closes anything.
+- **A player who vanishes without leaving** — a killed tab, a crash, a browser
+  that lost the network — is *waited for*, not walked out on. See below.
 - Leaving **empties** the board rather than resetting it. A reset puts a fresh
   copy of the imported deck back on it, which is right for Setup and wrong for
   walking away from a game.
 
 Closing the tab is a leave too, and no button sees it: `pagehide` sends a
-`sendBeacon` with the same leave body, and drops the remembered session. A tab
-that was *killed* rather than closed cannot send anything, which is what the
-stale-member sweep below is for.
+`sendBeacon`, which carries one field (`agentOffline`) saying that nobody chose
+this. That is what lets the relay tell a beacon from the Leave Room button, and
+the two mean opposite things — one ends the game, the other holds the seat. A
+tab that was *killed* rather than closed cannot send anything at all, which is
+what the stale-member sweep is for; that path starts the same wait.
 
 A closed room leaves a short-lived note (two minutes) saying why, so a member
 whose next poll finds the room missing can tell a game that ended from a room
-the TTL collected — only one of those is worth saying on screen.
+the TTL collected — only one of those is worth saying on screen. The note names
+*which* ending it was, and the poll hands that name to the client, so each
+ending gets its own words rather than one generic dialog.
+
+### Waiting: for an opponent, and for one who vanished
+
+Two waits are part of a room's life, and both are counted by the players' own
+polls — no cron, exactly as the idle prompt below.
+
+**A room nobody joins closes itself** after `RELAY_HOST_WAIT_MS` (ten minutes).
+A room is not a game until somebody sits opposite, and a code nobody ever used
+should not hold a room — and its keys — for the six hours the TTL would
+otherwise allow. The creator sees the countdown while they wait, and then
+**"Room closed: opponent did not join"**.
+
+That window is *only* about a room nobody joined: it is stamped into the room's
+metadata when the room is made, and a flag set when a second player first sits
+down retires it. A room that had two players and lost one is a game waiting for
+somebody to come back, not an unused code — closing it as "the opponent never
+arrived" because the creator's original ten minutes had since passed would be
+exactly the wrong thing to say.
+
+**A player who vanished is waited for** — `RELAY_REJOIN_WAIT_MS`, fifteen
+minutes. Their seat is *held*, not given up: the member record stays, and only
+their presence goes. So the player who reloads, or gets their network back, and
+returns with the same member id is recognized as the person who was sitting
+there and gets their own seat and role back — rather than being seated as
+somebody new, or refused a seat in their own game. The player still at the table
+sees a live countdown. If the wait runs out the room closes for whoever is left,
+with **"Room closed: player did not rejoin"**.
+
+The two are deliberately different sizes. A player who *chose* to leave ends the
+game at once — there is nothing to wait for — and a player who merely
+disappeared is given long enough to come back.
 
 ### A deploy closes the rooms it replaces
 
@@ -165,9 +205,11 @@ Three things about it are deliberate:
 
 The same routine sweeps members whose presence has gone stale
 (`RELAY_MEMBER_STALE_MS`), which is what stops a killed tab from inflating the
-spectator count for the rest of the room's life. A player left present by
-nobody is dropped the same way, and if that was the last playing seat the room
-closes.
+spectator count for the rest of the room's life. A player who goes stale is
+treated differently from a spectator: the seat is **held** for them (see above)
+and the rejoin wait starts, while a stale spectator is simply removed. If the
+sweep leaves nobody actually sitting in a seat — and no seat being held — the
+room closes.
 
 ### Environment variables
 
@@ -186,7 +228,9 @@ dashboard (a new deployment is still needed, since the functions restart).
 | `RELAY_POLL_INTERVAL_MS` | How often a waiting poll re-reads the room's event cursor, in ms. This is the relay's main cost dial: the store sees one cheap read per turn, per waiting client, whether or not anything happens. Larger = fewer store commands, at the price of up to that long before an opponent's or a spectator's view catches up. | `2000` |
 | `RELAY_IDLE_MS` | How long a room may see no *action* before it is asked whether anybody is still playing. Presence is not action, so two people sitting on a board are idle. | `600000` (10 min) |
 | `RELAY_PROMPT_MS` | How long that idle prompt waits for an answer before the room is closed. This is also the countdown the players see. | `600000` (10 min) |
-| `RELAY_MEMBER_STALE_MS` | How long a member's presence may go unrefreshed before the relay stops counting them - which is what takes a killed tab out of the spectator count. | 4 poll windows + 60s |
+| `RELAY_MEMBER_STALE_MS` | How long a member's presence may go unrefreshed before the relay stops counting them - which is what takes a killed tab out of the spectator count, and what starts the rejoin wait for a player. | 4 poll windows + 60s |
+| `RELAY_HOST_WAIT_MS` | How long a newly created room waits for a second player before it closes itself. Only applies to a room nobody ever joined. | `600000` (10 min) |
+| `RELAY_REJOIN_WAIT_MS` | How long a game whose player vanished without leaving waits for them to come back before it closes. | `900000` (15 min) |
 
 The timing variables are environment variables rather than constants so the
 behaviour can be verified in seconds instead of tens of minutes; set them to a
@@ -398,24 +442,27 @@ least once.
 
 ### Verifying a change: `tools/relay-check.mjs` and `tools/browser-check.mjs`
 
-`relay-check.mjs` asks the relay directly about the four things this project has
-got wrong before — leaving, restarts, the idle prompt and the stale-member sweep
-— and prints a line per check. It needs no browser and no network beyond the
-deployment, so it runs against a Vercel preview as happily as against `vite dev`:
+`relay-check.mjs` asks the relay directly about the things this project has
+got wrong before — leaving, the two waits, restarts, the idle prompt and the
+stale-member sweep — and prints a line per check. It needs no browser and no
+network beyond the deployment, so it runs against a Vercel preview as happily as
+against `vite dev`:
 
 ```sh
 node tools/relay-check.mjs                              # against localhost:3005
 BASE=https://your-app.vercel.app node tools/relay-check.mjs
 ```
 
-It reads the idle windows out of `/api/relay/health` and, against a deployment
-running the production ten-minute ones, **skips** the timing checks and says so
-rather than either failing or pretending to have run them. Point it at a server
-started with second-scale windows and it exercises the whole lifecycle:
+It reads the windows out of `/api/relay/health` and, against a deployment
+running the production ten- and fifteen-minute ones, **skips** the timing checks
+and says so rather than either failing or pretending to have run them. Point it
+at a server started with second-scale windows and it exercises the whole
+lifecycle:
 
 ```sh
 node tools/fake-redis.mjs &
 RELAY_IDLE_MS=3000 RELAY_PROMPT_MS=5000 RELAY_MEMBER_STALE_MS=8000 \
+RELAY_HOST_WAIT_MS=3000 RELAY_REJOIN_WAIT_MS=10000 \
 RELAY_POLL_WAIT_MS=1000 RELAY_POLL_INTERVAL_MS=300 \
 KV_REST_API_URL=http://127.0.0.1:6390 KV_REST_API_TOKEN=local npm run dev &
 node tools/relay-check.mjs
@@ -428,6 +475,16 @@ the watcher count in the header, the countdown. It attaches to browsers you
 started yourself, one per page on ports 9222/9223/9224, because a helper that
 spawns its own browsers has twice put an error dialog on somebody's screen. Its
 header comment has the commands.
+
+Its `panel` section covers the board panel's own changes, which nothing else can
+see because none of them cross the wire — the Hide Pokémon glow that stays until
+it is clicked, the clock in both directions, the Chat tab lit by a message that
+arrived while the log was showing, and both markers at once with the settings
+panel around them:
+
+```sh
+node tools/browser-check.mjs --only panel     # just that section
+```
 
 ### A room's story: `tools/room-log.mjs`
 

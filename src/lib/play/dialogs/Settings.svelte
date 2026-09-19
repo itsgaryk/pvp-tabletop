@@ -28,7 +28,8 @@
    const markers = [
       { value: 'none', label: 'Off' },
       { value: 'vstar', label: 'VStar' },
-      { value: 'gx', label: 'GX' }
+      { value: 'gx', label: 'GX' },
+      { value: 'both', label: 'Both' }
    ]
 
    /* the button in the corner toggles this menu, so it has to ask whether it is open */
@@ -45,19 +46,26 @@
    too many to do the same thing.
 -->
 <Popup bind:this={popup} anchored>
+   <!--
+      One block per setting, each with the same shape: a heading, then the
+      control, then what it does. Every block carries a heading of its own - a
+      checkbox with no title above it reads as a stray line rather than a
+      setting - and the first and last are rounded to close the panel.
+   -->
    <div class="p-4">
-      <div class="p-4 bg-[var(--bg-color-zero)] rounded-t-md">
+      <div class="setting first">
+         <div class="title">Mulligans</div>
          <label class="px-1">
             <input type="checkbox" bind:checked={$autoMulligan}>
             Automatically re-shuffle mulligans when starting a new game
          </label>
-         <p class="text-sm">
+         <p class="hint">
             Disable this option when using cards like Talonflame (STS-96) that break the normal rules of setup.
          </p>
       </div>
 
-      <div class="p-4 bg-[var(--bg-color-zero)]">
-         <div class="px-1 font-bold">VSTAR / GX marker</div>
+      <div class="setting">
+         <div class="title">VSTAR / GX marker</div>
          {#each markers as marker (marker.value)}
             <label class="px-1 block">
                <input
@@ -68,36 +76,40 @@
                {marker.label}
             </label>
          {/each}
-         <p class="text-sm">
+         <p class="hint">
             Shows a marker on your side of the board once you have used that power, and writes it to the game log.
+            Choose <strong>Both</strong> to show the VSTAR and GX marks together, for a deck that has one of each.
          </p>
          {#if $spectating}
-            <p class="text-sm italic">A spectator does not show a marker of their own.</p>
+            <p class="hint italic">A spectator does not show a marker of their own.</p>
          {/if}
       </div>
 
-      <div class="p-4 bg-[var(--bg-color-zero)]">
+      <div class="setting">
+         <div class="title">Card Size</div>
          <label class="px-1">
             <input type="range" bind:value={$scale} min="0.4" max="1" step="0.05">
-            Card Size
+            Scale
          </label>
-         <p class="text-sm">
+         <p class="hint">
             Scale down the size of card images if the field doesn't fit your screen.
          </p>
       </div>
 
-      <div class="p-4 bg-[var(--bg-color-zero)]">
+      <div class="setting">
+         <div class="title">Board zones</div>
          <label class="px-1">
             <input type="checkbox" bind:checked={$zoneBorders}>
             Show borders around the board zones
          </label>
-         <p class="text-sm">
+         <p class="hint">
             Outlines each area of the board - hand, deck, discard, lost zone, prizes, bench, active, stadium and play - for both players.
          </p>
       </div>
 
-      <div class="p-4 bg-[var(--bg-color-zero)]">
-         <p class="px-1 text-sm">
+      <div class="setting">
+         <div class="title">Appearance</div>
+         <p class="hint">
             The board is always shown in dark mode.
          </p>
       </div>
@@ -111,11 +123,12 @@
          the app and rebuilds the board, which is exactly the thing you are trying
          to look at while it is still wrong.
       -->
-      <div class="p-4 bg-[var(--bg-color-zero)] rounded-b-md">
+      <div class="setting last">
+         <div class="title">Diagnostics</div>
          <button class="diagnostics-link" on:click|stopPropagation={() => diagnostics.open()}>
-            Diagnostics
+            Open the diagnostics panel
          </button>
-         <p class="text-sm">
+         <p class="hint">
             Relay health, the current room, the seat order and the events this browser has received -
             for telling a broken board apart from a broken client.
          </p>
@@ -126,6 +139,33 @@
 <Diagnostics bind:this={diagnostics} />
 
 <style>
+   /*
+      The panel's blocks, which used to be written out at each one. The spacing,
+      the background and the rounding are the same for all of them, so a setting
+      cannot end up looking unlike its neighbours.
+   */
+   .setting {
+      @apply p-4 bg-[var(--bg-color-zero)];
+   }
+
+   .setting.first {
+      @apply rounded-t-md;
+   }
+
+   .setting.last {
+      @apply rounded-b-md;
+   }
+
+   /* the heading every setting has, in the one style */
+   .setting .title {
+      @apply px-1 font-bold;
+   }
+
+   /* the one line under a control that says what it does */
+   .setting .hint {
+      @apply text-sm;
+   }
+
    /*
       A button, not a link: it opens a panel over the board instead of going to
       another page. Styled to still read as the link it looks like.

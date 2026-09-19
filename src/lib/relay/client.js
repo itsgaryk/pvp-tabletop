@@ -182,6 +182,18 @@ export class HttpSocket {
       this.lastActivity = Date.now()
       this.isIdle = false
 
+      /* the wait a room is under, so the same one is not announced twice */
+      this.waitKey = 0
+
+      /*
+         This browser is on its way out of its room by its own choice. A room
+         that a player leaves now ends for the people still in it - which means
+         the leaver's own poll can come back "gone" while the leave is in flight,
+         and their client would show itself the dialog about a game it just
+         walked out of. They already know.
+      */
+      this.leaving = false
+
       /* this browser's clock against the relay's, for events that arrive late */
       this.skew = 0
 
@@ -545,6 +557,7 @@ export class HttpSocket {
 
    async leaveRoom (roomId) {
       const id = roomId || this.roomId
+      this.leaving = true
       this.abortPoll()
       try {
          await this.request('/api/relay/room', {
@@ -564,11 +577,20 @@ export class HttpSocket {
 
       sendBeacon is the only request a browser promises to finish while a page is
       unloading - a normal fetch is cancelled with the page. It is a plain POST of
-      the same body the leave call sends, so the relay needs no special case for
-      it. A text/plain content type is used deliberately: it is a CORS-simple
+      the same body the leave call sends, plus one field that says which of the
+      two this was, so the relay needs no special case for the request itself. A
+      text/plain content type is used deliberately: it is a CORS-simple
       request, so a beacon to a relay on another origin is not turned into a
       preflight the browser will not wait for. The server parses the JSON body
       either way.
+
+      `agentOffline` is what tells the relay that nobody chose this: the tab was
+      closed, refreshed, or lost its network. A player who clicks Leave Room uses
+      the normal call and does not send it, and the two mean opposite things - so
+      the relay ends the game for one and holds the seat for the other. Without
+      the flag a beacon and a button press would be indistinguishable, and an
+      opponent who deliberately walked out would be waited for instead of told
+      about.
 
       What this is for: a spectator closing the tab is a leave that no button
       ever sees, and without it their member record lingers - and so does the
@@ -581,7 +603,8 @@ export class HttpSocket {
       const body = JSON.stringify({
          action: 'leave',
          roomId: this.roomId,
-         memberId: this.id
+         memberId: this.id,
+         agentOffline: true
       })
 
       /*
@@ -618,6 +641,8 @@ export class HttpSocket {
       this.players = []
       this.seats = []
       this.opponentPresent = null
+      this.waitKey = 0
+      this.leaving = false
       this.deliver('leftRoom', {})
    }
 
@@ -683,6 +708,13 @@ export class HttpSocket {
       */
       if (this.spectating) this.deliver('spectatingRoom', { roomId: res.roomId, role: this.role })
       else this.deliver(action === 'create' ? 'createdRoom' : 'joinedRoom', { roomId: res.roomId, role: this.role })
+
+      /*
+         How long this room will wait for a second player. Only a creator is
+         told, and only once: it arrives with the room they just made, not on
+         every poll.
+      */
+      this.deliver('roomWait', { hostWait: res.hostWait || null, rejoin: res.rejoin || null })
 
       /* who holds the two playing seats - a spectator seats them on screen */
       this.deliver('seated', { players: this.players })
@@ -852,9 +884,16 @@ export class HttpSocket {
             The room has been closed or expired. Say why before letting go of it:
             the app decides whether that is a dialog, and it cannot decide after
             the room id is gone.
+
+            Two replies are deliberately not passed on. One carries the last word
+            of a room this browser has since walked out of - `forget()` has
+            already cleared the id, and the leaver is the reason it ended, so
+            there is nothing to tell them. The other is a leave of our own that
+            is still in flight (`leaving`). Both would otherwise put a dialog
+            about somebody else's game in front of the person who closed it.
          */
          const reason = payload.reason || 'expired'
-         this.raiseGone(reason)
+         if (this.roomId && !this.leaving) this.raiseGone(reason)
          this.forget()
          return
       }
@@ -862,6 +901,7 @@ export class HttpSocket {
       this.setConnected(true)
       this.trackPresence(payload.opponent)
       this.trackSeats(payload.players)
+      this.trackWait(payload)
 
       for (const event of payload.events || []) {
          this.cursor = Math.max(this.cursor, event.seq)
@@ -929,6 +969,26 @@ export class HttpSocket {
 
       this.seats = ids
       this.deliver('seated', { players })
+   }
+
+   /*
+      The waits a room can be under: for a second player to arrive, and for one
+      who vanished to come back. Both are carried on every poll but only raised
+      when they change, because the poll is the only thing that runs often
+      enough to notice - and a countdown that was re-announced several times a
+      minute would restart a render every time for no new information.
+
+      `deadlineAt` is on the relay's clock, like the game timer's `at`, so the
+      component counts down against `serverNow()` and two browsers with
+      different clocks agree on what is left.
+   */
+   trackWait (payload) {
+      const rejoin = payload?.rejoin || null
+      const key = rejoin ? Number(rejoin.deadlineAt) || 0 : 0
+      if (key === this.waitKey) return
+
+      this.waitKey = key
+      this.deliver('roomWait', { hostWait: null, rejoin })
    }
 
    setConnected (value) {
