@@ -436,7 +436,11 @@ the same cell. The table and the Stadium each accept *their own* half's cards:
   player's table is drawn over the far half's while anything is being dragged, so
   the player's card lands on the player's table; the far half's Stadium lies under
   the player's and takes the far half's cards when the player's is empty, which is
-  the mirror of the near one.
+  the mirror of the near one. **And the near one stands aside for a card of the far
+  half's** (`.play.far-drag`, and the same class on the Stadium): the two shared cells
+  are the only place it matters, because a half's own table or Stadium lies under the
+  other's in the one cell, and a drop that stopped at the wrong one was the far half
+  unable to play into its own while the player had anything in theirs.
 - Nor can either half take the other's card out of a shared zone: a card on the
   player's table stays there when the opponent's table is the drop target, and the
   other way round.

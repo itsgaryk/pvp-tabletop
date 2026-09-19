@@ -1,12 +1,13 @@
 <script>
    import { setContext, onMount } from 'svelte'
    import { dragging } from '$lib/dnd/pointer.js'
+   import { source as dragSource } from '$lib/dnd/store.js'
    import { publishLog, spectating, seatedPlayers, myId } from '$lib/stores/connection.js'
    import { pick, shuffle, pokemonHidden, handRevealed } from '$lib/stores/player.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import { isTyping } from '$lib/util/typing.js'
    import { defaultOpponent, spectatorOpponents, spectatorFlipped, handRevealed as oppHandRevealed } from '$lib/stores/opponent.js'
-   import { solo, onOpponentSelection, soloSelectedTo } from '$lib/stores/solo.js'
+   import { solo, onOpponentSelection, onOpponentHalf, soloSelectedTo } from '$lib/stores/solo.js'
    import { playerName, zoneBorders } from '$lib/stores/settings.js'
    import { message } from '$lib/stores/message.js'
 
@@ -72,6 +73,16 @@
       Same control, same store as a spectator's flip.
    */
    $: soloSwapped = $solo && $spectatorFlipped
+
+   /*
+      Whether the thing under the pointer belongs to the half played from the top of
+      the screen - the opponent, in solo. The two shared cells (the table and the
+      Stadium) are the only places it matters: each half plays into its own of the
+      two, so the near one stands aside while one of the far half's cards is being
+      carried and lets the drop reach the far one underneath.
+   */
+   $: farDrag = $solo && $dragging && onOpponentHalf($dragSource)
+
 
    $: topStore = $spectating
       ? ($spectatorFlipped ? spectatorOpponents.bottom : spectatorOpponents.top)
@@ -474,8 +485,13 @@
             half's. While it is empty and nothing is being dragged it takes no
             pointer events, which is what lets a click reach the other half's table
             lying underneath it.
+
+            In solo it also stands aside while a card of the far half's is being
+            carried: the table is shared, but each half plays onto *its own* table
+            in it, so the far half's cards belong on the far table underneath. The
+            same class does it for the Stadium's cell, in the Stadium itself.
          -->
-         <div class="play" class:empty={$solo && !$table.length && !$dragging}>
+         <div class="play" class:empty={$solo && !$table.length && !$dragging} class:far-drag={farDrag}>
             {#if $spectating}
             <OppTable store={bottomStore} />
          {:else}
@@ -1012,8 +1028,14 @@
       The two tables share one grid cell and the player's own is the one on top, so
       while it is empty and nothing is being dragged it stands aside and lets
       clicks through to the other half's table underneath it (see the .play div).
+
+      `pointer-events` is inherited, so standing aside here takes the whole table
+      with it and the drop lands on the far half's - which is where a card of that
+      half's belongs, and where the rule that a play clears the *other* player's
+      Stadium is applied the right way round.
    */
-   .play.empty {
+   .play.empty,
+   .play.far-drag {
       pointer-events: none;
    }
 
