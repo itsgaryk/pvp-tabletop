@@ -263,9 +263,11 @@ if (want('lobby')) {
    check('a room waiting for an opponent does not count down on screen',
       (await alice.evaluate(`document.body.innerText.includes('Waiting for an opponent')`)) === false)
 
+   /* a browser that has been somewhere else has to be back in the lobby first */
+   await lobby(bob, 'bob')
    await bob.clickText('Spectate Game', { settle: 800 })
    check('Spectate Game asks too', (await bob.evaluate(`document.querySelector('.prompt-dialog') !== null`)) === true)
-   await bob.answerRoomPrompt(room)
+   await bob.answerPrompt({ name: 'Bob', room })
    await sleep(2500)
    check('and it lands in the room as a watcher', (await bob.counts()).mode === 'spectating', (await bob.counts()).mode)
 
@@ -502,6 +504,39 @@ if (want('panel')) {
    check('and it stays lit rather than fading', (await hideButton())?.glow === true, JSON.stringify(await hideButton()))
    await alice.clickText('Show Pokémon', { settle: 2000, kinds: 'button' })
    check('clicking the button is what puts it out', (await hideButton())?.glow === false, JSON.stringify(await hideButton()))
+
+   /*
+      A shortcut is the board's, not the button's. Clicking Setup leaves that
+      button focused, and Ctrl+V used to do nothing at all until the player
+      clicked somewhere else first - because a focused button was treated as
+      somebody typing. Only the two keys that press a button belong to it.
+   */
+   const deckOpen = (page) => page.evaluate(`document.querySelector('.inspection') !== null`)
+   const keyOnFocused = (page, key, code, modifiersText = '') => page.evaluate(`(() => {
+      const el = document.activeElement || document.body
+      el.dispatchEvent(new KeyboardEvent('keydown', {
+         key: ${JSON.stringify(key)}, code: ${JSON.stringify(code)},
+         ctrlKey: ${modifiersText.includes('ctrl')}, metaKey: ${modifiersText.includes('meta')},
+         bubbles: true, cancelable: true
+      }))
+      return el.tagName
+   })()`)
+
+   await alice.evaluate(`[...document.querySelectorAll('.game-actions button')].find((b) => b.textContent.includes('Setup')).focus()`)
+   check('the Setup button is focused', /Setup/.test(await alice.evaluate(`(document.activeElement.textContent || '').trim()`)))
+   check('the deck is not open to begin with', (await deckOpen(alice)) === false)
+
+   await keyOnFocused(alice, 'v', 'KeyV', 'ctrl')
+   await sleep(900)
+   check('Ctrl+V opens the deck while that button has focus', (await deckOpen(alice)) === true)
+   if (await deckOpen(alice)) await alice.clickText('Close', { settle: 1200, kinds: 'button' })
+
+   /* and Space still presses the focused button rather than the board */
+   await alice.evaluate(`[...document.querySelectorAll('.game-actions button')].find((b) => b.textContent.includes('Setup')).focus()`)
+   await keyOnFocused(alice, ' ', 'Space')
+   await sleep(900)
+   check('space on a focused button is still the button\'s own', (await deckOpen(alice)) === false)
+   await alice.evaluate(`document.activeElement && document.activeElement.blur()`)
 
    /*
       The timer is set rather than nudged. A room's clock starts at fifty minutes,

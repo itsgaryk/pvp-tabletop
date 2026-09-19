@@ -246,7 +246,7 @@
          code or the timer's minutes and seconds would be drawn, discarded and
          moved about as they were typed.
       */
-      if (isTyping(e.target)) return
+      if (isTyping(e.target, e)) return
 
       const key = e.key.toLowerCase()
 
