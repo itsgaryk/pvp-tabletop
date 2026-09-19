@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit'
 import { getStore, getStoreSource, pingStore, roomEpoch } from '$lib/relay/store.js'
 import { WAIT_MS, POLL_INTERVAL_MS } from '$lib/relay/config.js'
-import { RELAY_IDLE_MS, RELAY_PROMPT_MS, RELAY_MEMBER_STALE_MS } from '$lib/relay/timing.js'
+import { RELAY_IDLE_MS, RELAY_PROMPT_MS, RELAY_MEMBER_STALE_MS, RELAY_HOST_WAIT_MS, RELAY_REJOIN_WAIT_MS } from '$lib/relay/timing.js'
 
 /*
    Health probe. The client uses this to tell "the relay is broken" apart from
@@ -33,6 +33,17 @@ const IDLE_SETTINGS = {
 }
 
 /*
+   How long a room waits for a second player, and how long a game waits for one
+   who vanished without leaving. Reported beside the idle windows for the same
+   reason: they are environment variables, so a test - or somebody asking why a
+   room closed - can only see what this deployment really runs with by asking it.
+*/
+const ROOM_SETTINGS = {
+   hostWaitMs: RELAY_HOST_WAIT_MS,
+   rejoinWaitMs: RELAY_REJOIN_WAIT_MS
+}
+
+/*
    Which deployment this is, as the relay stamps it on rooms. Reported because it
    is otherwise invisible, and it is the thing to check when asking "did this
    restart really close the old rooms?": two health reads that name the same
@@ -60,6 +71,7 @@ export async function GET ({ url }) {
             epoch: EPOCH,
             poll: POLL_SETTINGS,
             idle: IDLE_SETTINGS,
+            room: ROOM_SETTINGS,
             error: err.message,
             hint: 'Add a Redis/KV integration in the Vercel dashboard, then redeploy.'
          },
@@ -68,12 +80,32 @@ export async function GET ({ url }) {
    }
 
    if (!probe) {
-      return json({ ok: true, relay: true, store: store.kind, from, checked: false, epoch: EPOCH, poll: POLL_SETTINGS, idle: IDLE_SETTINGS })
+      return json({
+         ok: true,
+         relay: true,
+         store: store.kind,
+         from,
+         checked: false,
+         epoch: EPOCH,
+         poll: POLL_SETTINGS,
+         idle: IDLE_SETTINGS,
+         room: ROOM_SETTINGS
+      })
    }
 
    try {
       await pingStore()
-      return json({ ok: true, relay: true, store: store.kind, from, checked: true, epoch: EPOCH, poll: POLL_SETTINGS, idle: IDLE_SETTINGS })
+      return json({
+         ok: true,
+         relay: true,
+         store: store.kind,
+         from,
+         checked: true,
+         epoch: EPOCH,
+         poll: POLL_SETTINGS,
+         idle: IDLE_SETTINGS,
+         room: ROOM_SETTINGS
+      })
    } catch (err) {
       return json(
          {
@@ -85,6 +117,7 @@ export async function GET ({ url }) {
             epoch: EPOCH,
             poll: POLL_SETTINGS,
             idle: IDLE_SETTINGS,
+            room: ROOM_SETTINGS,
             error: err.message,
             hint: 'The database is configured but not answering - check its quota and status in Vercel → Storage.'
          },

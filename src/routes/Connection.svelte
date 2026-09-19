@@ -10,7 +10,7 @@
    import {
       connected, room, spectating, spectators, chat,
       createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary, roomError,
-      idle, resume, socket
+      idle, resume, socket, hostWait, waiting
    } from '$lib/stores/connection.js'
    import { solo, startSolo, exitSolo } from '$lib/stores/solo.js'
 
@@ -130,6 +130,31 @@
    /* solo's own log: the game lines, with chat left out - there is no chat */
    $: logLines = $chat.filter((entry) => entry.type !== 'chat')
 
+   /*
+      The clock on a waiting room. Two of them exist - waiting for a second
+      player at all, and waiting for one who vanished to come back - and both
+      are a deadline on the relay's clock, so the seconds are worked out against
+      `serverNow()` on a tick. Without the tick the number would sit still until
+      something else re-rendered the page.
+   */
+   let now = Date.now()
+   onMount(() => {
+      const ticker = setInterval(() => { now = Date.now() }, 250)
+      return () => clearInterval(ticker)
+   })
+
+   const pad = (value) => String(value).padStart(2, '0')
+
+   function countdown (deadlineAt) {
+      const left = Math.max(0, Number(deadlineAt || 0) - socket.serverNow())
+      const seconds = Math.ceil(left / 1000)
+      return `${pad(Math.floor(seconds / 60))}:${pad(seconds % 60)}`
+   }
+
+   /* `now` is read so the two below are recomputed on every tick of the clock */
+   $: hostLeft = $hostWait && now >= 0 ? countdown($hostWait.deadlineAt) : null
+   $: rejoinLeft = $waiting && now >= 0 ? countdown($waiting.deadlineAt) : null
+
    function chatTime (time) {
       const format = { hour: '2-digit', minute: '2-digit', second: '2-digit' }
       return (new Date(time)).toLocaleTimeString([], format)
@@ -242,6 +267,30 @@
       {/if}
 
       <!--
+         Waiting for a second player. A room made and not yet joined is on a
+         clock, and the person sitting in it is the one who needs to know that -
+         the alternative is being returned to the lobby with no warning.
+      -->
+      {#if hostLeft && !$solo}
+         <div class="notice">
+            <span class="flex-1">Waiting for an opponent to join - this room closes in</span>
+            <span class="tabular-nums font-bold">{hostLeft}</span>
+         </div>
+      {/if}
+
+      <!--
+         Waiting for a player who vanished. The room is being held for them, so
+         this is a pause rather than an ending - and the ending, if it comes, says
+         so in the dialog.
+      -->
+      {#if rejoinLeft && !$solo}
+         <div class="notice">
+            <span class="flex-1">A player left without leaving - waiting for them to rejoin</span>
+            <span class="tabular-nums font-bold">{rejoinLeft}</span>
+         </div>
+      {/if}
+
+      <!--
          The log, and only the log: there is nobody to chat to and nothing to
          catch up on when both sides are yours, but what happened on the board is
          worth keeping. It is written here rather than through the chat window so
@@ -290,6 +339,11 @@
 
    button.connect:disabled {
       @apply opacity-50;
+   }
+
+   /* the notice a waiting room shows: the same shape as the idle one */
+   .notice {
+      @apply flex items-center gap-2 p-2 mb-2 rounded-md text-sm bg-[var(--bg-color-two)];
    }
 
    /* solo's log window, styled like the chat window's list */

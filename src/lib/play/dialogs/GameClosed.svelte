@@ -2,23 +2,42 @@
    /*
       A room that ended while somebody was still in it.
 
-      Two things close a room on purpose: a player leaving (the room is a game,
-      and a game with nobody sitting in a playing seat is over) and an idle
-      prompt nobody answered. Either way everyone else still in it is told, and
-      this is what they see: the game is closed, and they are back in the lobby
-      behind it, so the only thing to do is acknowledge that.
+      Several things close a room on purpose, and each is worth different words:
+      a player who left, a player who vanished and did not come back, a room
+      whose second player never arrived, a table nobody answered for, or a
+      deployment that replaced the code the game was being played on. The relay
+      says which, in the reason it left behind, so the wording here is a label on
+      its answer rather than a second opinion about what happened.
+
+      Either way everyone else still in it is told, and this is what they see:
+      the game is closed, and they are back in the lobby behind it, so the only
+      thing to do is acknowledge that.
 
       Centred, over the board, with nothing else to click: the board behind it is
       already empty, so the dialog is not hiding a decision - the OK button is
       the whole of it.
    */
-   import { gameClosed, dismissGameClosed } from '$lib/stores/connection.js'
+   import { gameClosedReason, dismissGameClosed } from '$lib/stores/connection.js'
+
+   /*
+      What each reason reads as. An unknown one still says the game is closed,
+      because that is the part that is certainly true.
+   */
+   const MESSAGES = {
+      playerLeft: 'Room closed: player left the room',
+      opponentTimeout: 'Room closed: opponent did not join',
+      rejoinTimeout: 'Room closed: player did not rejoin',
+      allPlayersLeft: 'Room closed: all players left the room',
+      idle: 'Room closed: nobody answered the idle prompt',
+      restart: 'Room closed: the game server was updated'
+   }
+   $: message = MESSAGES[$gameClosedReason] || 'Game closed. Returned to lobby'
 </script>
 
-{#if $gameClosed}
+{#if $gameClosedReason}
    <div class="closed-backdrop">
       <div class="closed-dialog" role="alertdialog" aria-modal="true" aria-labelledby="game-closed-text">
-         <p id="game-closed-text">Game closed. Returned to lobby</p>
+         <p id="game-closed-text">{message}</p>
          <button class="closed-ok" on:click|stopPropagation={dismissGameClosed}>OK</button>
       </div>
    </div>

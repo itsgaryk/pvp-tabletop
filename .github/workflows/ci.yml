@@ -3,8 +3,9 @@ name: CI
 # What this checks, and why these three things:
 #
 #   the relay's own rules  tools/relay-check.mjs, against a dev server pointed at
-#                          a stand-in store, with the idle windows turned down to
-#                          seconds so the whole lifecycle runs here
+#                          a stand-in store, with the idle, host-wait and rejoin
+#                          windows turned down to seconds so the whole lifecycle
+#                          runs here
 #   the app compiles       `npm run build`, the same command Vercel runs
 #   the tree is reviewable  nothing else; a browser check needs real browsers and
 #                          is run by hand (tools/browser-check.mjs)
@@ -45,6 +46,8 @@ jobs:
           RELAY_IDLE_MS: 3000
           RELAY_PROMPT_MS: 5000
           RELAY_MEMBER_STALE_MS: 8000
+          RELAY_HOST_WAIT_MS: 3000
+          RELAY_REJOIN_WAIT_MS: 10000
           RELAY_POLL_WAIT_MS: 1000
           RELAY_POLL_INTERVAL_MS: 300
         run: npm run dev &
