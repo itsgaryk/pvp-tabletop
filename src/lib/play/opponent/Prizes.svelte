@@ -69,26 +69,38 @@
       card by card, and its columns and rows share the zone between them.
    */
    .prizes {
+      /* content-sized cells, so two prizes in a row touch (see the near half) */
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      grid-auto-rows: minmax(0, 1fr);
-      place-items: center;
+      grid-template-columns: repeat(2, auto);
+      grid-auto-rows: auto;
+      place-content: center;
       width: 100%;
       height: 100%;
-      gap: var(--card-gap);
-      padding: var(--card-gap);
+      gap: 0;
+      padding: 0;
       box-sizing: border-box;
    }
 
    /*
-      And each prize is sized by its own cell of that block. The whole selector is
-      global because the card is drawn by Card.svelte, which does not carry this
-      component's scope - a scoped `img.card` would not reach it.
+      And each prize is sized by its own cell of that block, with the cards next to
+      each other: the transparent 2px border a card carries is not part of the block
+      (see the near half), and the selection is drawn inside the card instead. The
+      whole selector is global because the card is drawn by Card.svelte, which does
+      not carry this component's scope - a scoped `img.card` would not reach it.
    */
+   :global(.prizes > div) {
+      border-width: 0 !important;
+   }
+
+   :global(.prizes img.card.selected) {
+      outline: 2px solid var(--selection-color);
+      outline-offset: 0;
+   }
+
    :global(.prizes img.card) {
       width: min(
-         calc((100cqw - 5 * var(--card-gap)) / 2),
-         calc(((100cqh - 5 * var(--card-gap)) / 3) * var(--card-ratio))
+         calc(100cqw / 2),
+         calc((100cqh / 3) * var(--card-ratio))
       );
    }
 </style>

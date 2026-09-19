@@ -80,25 +80,50 @@
       *block* is what is centred in the zone, rather than each card being centred on
       its own. Filling the zone is what does both: the columns share its width and
       the rows share its height, so the block is the zone and it is centred in it.
+
+      No gap and no padding between them: a prize face down next to a prize face
+      down reads as one row of card backs, and the six of them are a block - the
+      spacing they had was a cell each, and what it bought was the look of a grid of
+      loose cards rather than a pile counted in two columns.
    */
    .prizes {
+      /*
+         The columns and rows are the cards' own size rather than a share of the
+         zone, so that the two in a row touch: a `1fr` cell is wider than a card
+         whose height is what limits it, and the difference came out as a gap
+         between them.
+      */
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      grid-auto-rows: minmax(0, 1fr);
-      place-items: center;
+      grid-template-columns: repeat(2, auto);
+      grid-auto-rows: auto;
+      place-content: center;
       width: 100%;
       height: 100%;
-      gap: var(--card-gap);
-      padding: var(--card-gap);
+      gap: 0;
+      padding: 0;
       box-sizing: border-box;
    }
 
    /*
+      The border a card is drawn inside (2px on each side, transparent until it is
+      selected) is not part of the block: it is what put 4px between two prizes in a
+      row, because a cell sized by a card that carries one is a cell 4px wider than
+      the card in it. The selection is the same 2px drawn inside the card instead.
+   */
+   :global(.prizes > div) {
+      border-width: 0 !important;
+   }
+
+   :global(.prizes img.card.selected) {
+      outline: 2px solid var(--selection-color);
+      outline-offset: 0;
+   }
+
+   /*
       A prize is as large as its own cell of that block allows - the lower of the
-      cell's width and the cell's height, less a few pixels - which is the
-      "collectively" in the rule (see the note over --card-ratio in global.css):
-      six prizes are sized by the block six of them make, not by the zone one of
-      them would have had.
+      cell's width and the cell's height - which is the "collectively" in the rule
+      (see the note over --card-ratio in global.css): six prizes are sized by the
+      block six of them make, not by the zone one of them would have had.
 
       The whole selector is global on purpose: the card is drawn by Card.svelte, so
       it does not carry this component's scope and a scoped `img.card` would not
@@ -106,8 +131,8 @@
    */
    :global(.prizes img.card) {
       width: min(
-         calc((100cqw - 5 * var(--card-gap)) / 2),
-         calc(((100cqh - 5 * var(--card-gap)) / 3) * var(--card-ratio))
+         calc(100cqw / 2),
+         calc((100cqh / 3) * var(--card-ratio))
       );
    }
 </style>

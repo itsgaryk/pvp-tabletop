@@ -4,6 +4,7 @@
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import { soloMoveCard, soloCardToPlay, soloCardAttach, soloCardToStadium } from '$lib/stores/solo.js'
+   import { publishToChat } from '$lib/stores/connection.js'
 
    const { openDetails } = getContext('boardActions')
 
@@ -44,6 +45,14 @@
    }
 
    function show () {
+      /*
+         The far half's face-down prize, looked at in solo: the same line the near
+         half's writes, in that half's name, because the log is a record of what
+         was done at the table and both halves are played at the same one.
+      */
+      if (pile === prizes && !defaultOpponent.prizesFlipped.get()) {
+         publishToChat('Viewed prize card', 'log', 'Player 2')
+      }
       openDetails(card)
       menu.close()
    }
