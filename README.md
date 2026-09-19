@@ -130,6 +130,22 @@ the TTL collected — only one of those is worth saying on screen. The note name
 *which* ending it was, and the poll hands that name to the client, so each
 ending gets its own words rather than one generic dialog.
 
+**Leaving takes the room's code and its lobby status with it.** The lobby watches
+the code you typed (`roomSummary`), and a room whose two seats are taken comes
+back `locked` — which disables **Join Room**. That status describes a room, not
+the menu, and it is fetched a moment *after* the code is submitted, so the join it
+belongs to has often filled the second seat by the time it lands: the player sees
+`locked` for their own room. Kept across leaving, it disabled the one control that
+opens the code prompt, and the menu became a dead end — for the player who joined,
+and equally for a spectator, who only ever watches full rooms. `leftRoom` — which
+every way out of a room raises, the button, the closing tab and the closed game
+alike — now forgets both the code and its status.
+
+The buttons that do these things are disabled while a request is in flight, and
+that flag is released in a `finally`: `busy` stuck on is the same dead end reached
+another way, and it also stranded the code prompt, whose OK, Cancel and Escape all
+refuse while it is set.
+
 ### Waiting: for an opponent, and for one who vanished
 
 Two waits are part of a room's life, and both are counted by the players' own

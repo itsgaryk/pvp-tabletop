@@ -182,6 +182,41 @@ async function dialogCleared (page, { timeout = 20000 } = {}) {
    }
 }
 
+/*
+   The main menu's buttons, and whether each can be pressed.
+
+   A menu button that stays disabled is the whole of an action being unreachable,
+   and Join Room is worse than that: it is also the only way to type another room
+   code, so a `locked` lobby status latched from the room just left took the
+   join route off the menu for good. Read from the DOM, because disabled is what
+   the player meets - clicking a disabled button does nothing at all.
+*/
+const menuButtons = (page) => page.evaluate(`(() => {
+   const box = document.querySelector('.menu-actions')
+   if (!box) return null
+   return [...box.querySelectorAll('button')].map((b) => ({ text: b.textContent.trim(), disabled: b.disabled }))
+})()`)
+
+const usable = (buttons, text) => {
+   const hit = (buttons || []).find((b) => b.text === text)
+   return Boolean(hit && !hit.disabled)
+}
+
+/* can this page get as far as the join prompt, which is what Join Room is for */
+async function canOpenJoin (page) {
+   const pressed = await page.evaluate(`(() => {
+      const box = document.querySelector('.menu-actions')
+      const btn = box && [...box.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Join Room')
+      if (!btn || btn.disabled) return false
+      btn.click()
+      return true
+   })()`)
+   await sleep(600)
+   const open = await page.evaluate(`Boolean(document.querySelector('.prompt-dialog'))`)
+   if (open) await page.clickText('Cancel', { settle: 400, kinds: 'button' })
+   return pressed && open
+}
+
 /* a game with two seated players who have both set up */
 async function seatGame (label, { withWatcher = false } = {}) {
    console.log(`\n${label}`)
@@ -464,6 +499,15 @@ if (want('leave')) {
    check('and the spectator session is voided', (await watcher.relayEvents()) === null)
    check('the spectator is back in the lobby', (await watcher.counts()).mode === 'lobby')
 
+   /*
+      A spectator watched a room whose two seats were taken - that is the only
+      room anybody spectates - so the lobby status it read on the way in said
+      "locked". Kept, it disabled Join Room for the rest of the page's life.
+   */
+   check('and can still press Join Room', usable(await menuButtons(watcher), 'Join Room'),
+      JSON.stringify(await menuButtons(watcher)))
+   check('which opens the room code prompt', await canOpenJoin(watcher))
+
    await watcher.spectate(room, 'Watcher2')
    await sleep(3000)
    check('a second spectator is counted', /1 spectator/.test(String(await bob.waitForWatchers(1))), JSON.stringify(await header(bob)))
@@ -504,6 +548,17 @@ if (want('leave')) {
    await bob.clickText('OK', { settle: 1500, kinds: 'button' })
    await sleep(1000)
    check('the last player out is the one who left, so nothing else closes', (await bob.dialog()) === null, JSON.stringify(await bob.dialog()))
+
+   /*
+      The player who joined typed a room code, and filling the second seat made
+      the summary fetched a moment later read "locked". That status was kept
+      across leaving, so the menu's Join Room - the one control that opens the
+      code prompt - was disabled with no way back. The code belongs to the room
+      that was left, so both go with it.
+   */
+   check('the player who joined can press Join Room again', usable(await menuButtons(bob), 'Join Room'),
+      JSON.stringify(await menuButtons(bob)))
+   check('and it opens the room code prompt', await canOpenJoin(bob))
 }
 
 /* ------------------------------------------------- 2. the closed dialog --- */
