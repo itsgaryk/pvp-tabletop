@@ -441,6 +441,31 @@
 
       <div class="gameboard min-h-0 relative flex-1" class:zone-borders={$zoneBorders}>
 
+         <!--
+            The zones' names, from Settings: they are drawn with the zone borders
+            and only then, in the middle of each zone. A label is not a part of the
+            board - a zone is what a card is dropped on and clicked in - so it
+            takes no pointer events at all and cannot be selected, the way the
+            outline itself cannot.
+
+            They come first in the board, before the zones they name, and that is
+            what puts them *under* the cards: whatever a zone draws comes after
+            them, so a card in the middle of a zone covers the name of the zone
+            rather than the other way round. A name is a caption on the board, not
+            something to be read through the cards.
+
+            They are placed by the name of the grid area they belong to, and each
+            one is a direct child of the board rather than of the half it names:
+            a label inside a rotated half would be drawn upside down. That is also
+            what lets the table and the stadium have one label between two halves
+            (see zoneLabels).
+         -->
+         {#if $zoneBorders}
+            {#each zoneLabels as label (label.area)}
+               <div class="zone-label" style:grid-area={label.area}>{label.text}</div>
+            {/each}
+         {/if}
+
           <!--
             A player sees this half rotated, which is what puts its bar under the
             hand, its counts above the bar, and the right spacing around both. A
@@ -515,6 +540,19 @@
          </div>
 
          <div class="active">
+            <!--
+               This cell is the one that holds two zones, so it carries two names:
+               its own grid splits into the two players' active spots, and each
+               label is centred in the row it names rather than in the cell. They
+               come before the two zones, the way the board's own labels come
+               before the board's: a name is under the Pokemon in the spot, not
+               over it.
+            -->
+            {#if $zoneBorders}
+               <div class="zone-label active-label active-label-top">{activeLabel}</div>
+               <div class="zone-label active-label active-label-bottom">{activeLabel}</div>
+            {/if}
+
             <div class="active2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
                {#if soloSwapped}<Active />{:else}<OppActive store={topStore} />{/if}
             </div>
@@ -527,16 +565,6 @@
             <Active />
          {/if}
             </div>
-
-            <!--
-               This cell is the one that holds two zones, so it carries two names:
-               its own grid splits into the two players' active spots, and each
-               label is centred in the row it names rather than in the cell.
-            -->
-            {#if $zoneBorders}
-               <div class="zone-label active-label active-label-top">{activeLabel}</div>
-               <div class="zone-label active-label active-label-bottom">{activeLabel}</div>
-            {/if}
          </div>
 
          <div class="bench">
@@ -610,25 +638,6 @@
             <Hand />
          {/if}
          </div>
-
-         <!--
-            The zones' names, from Settings: they are drawn with the zone borders
-            and only then, in the middle of each zone. A label is not a part of the
-            board - a zone is what a card is dropped on and clicked in - so it
-            takes no pointer events at all and cannot be selected, the way the
-            outline itself cannot.
-
-            They are placed by the name of the grid area they belong to, and each
-            one is a direct child of the board rather than of the half it names:
-            a label inside a rotated half would be drawn upside down. That is also
-            what lets the table and the stadium have one label between two halves
-            (see zoneLabels).
-         -->
-         {#if $zoneBorders}
-            {#each zoneLabels as label (label.area)}
-               <div class="zone-label" style:grid-area={label.area}>{label.text}</div>
-            {/each}
-         {/if}
       </div>
 
       <Message bind:this={messageAlert} />
@@ -738,14 +747,17 @@
       player, and the veil is only a shading over the whole board, so neither is
       outlined as one. Neither is a zone's name: a label sits inside a zone rather
       than being one.
+
+      A solid line at half strength, so the outline reads as a line drawn on the
+      board rather than as another dashed box competing with the cards.
    */
    .gameboard.zone-borders > :global(div:not(.veil):not(.zone-label)) {
-      outline: 1px dashed var(--zone-border-color);
+      outline: 1px solid var(--zone-border-color);
       outline-offset: -1px;
    }
 
    .gameboard.zone-borders .active > :global(div:not(.zone-label)) {
-      outline: 1px dashed var(--zone-border-color);
+      outline: 1px solid var(--zone-border-color);
       outline-offset: -1px;
    }
 
@@ -753,22 +765,20 @@
       The name of a zone, in the middle of it - drawn with the outlines above, so
       that a line says where a zone begins and a word says which zone it is.
 
-      Small and quiet, since the cards are what the player is looking at, and on a
-      translucent plate so that a card in the middle of the zone does not make it
-      unreadable. pre-line is what puts the words of a two-word name on separate
-      lines. Nothing here can be clicked, dragged or selected: the zone under it is
-      what the board reacts to, and a label that swallowed a click would be a hole
-      in the middle of every zone.
+      Half strength, with nothing behind it, and under the cards: the name is a
+      caption for the zone rather than a thing on the board, so a card in the
+      middle of the zone covers it. The half strength is the *colour's* rather
+      than the element's on purpose - `opacity` would make the name a layer of its
+      own, and it would then be drawn over the card in any zone whose own markup
+      is not positioned, which the stadium's is not. pre-line is what puts the
+      words of a two-word name on separate lines, and nothing here can be clicked,
+      dragged or selected: the zone under it is what the board reacts to, and a
+      label that swallowed a click would be a hole in the middle of every zone.
    */
    .zone-label {
       align-self: center;
       justify-self: center;
-      position: relative;
-      z-index: 6;
-      padding: 0.05rem 0.3rem;
-      border-radius: 0.25rem;
-      background-color: var(--overlay-color);
-      color: var(--text-color);
+      color: var(--zone-label-color);
       font-size: 0.7rem;
       font-weight: 700;
       line-height: 1.15;
