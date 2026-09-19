@@ -479,6 +479,7 @@ if (want('panel')) {
    const markers = (page) => page.evaluate(`[...document.querySelectorAll('.power-marker')].map((el) => ({
       marks: [...el.querySelectorAll('img.mark')].map((i) => i.getAttribute('alt')),
       used: [...el.querySelectorAll('img.mark.used')].map((i) => i.getAttribute('alt')),
+      widths: [...el.querySelectorAll('img.mark')].map((i) => Math.round(i.getBoundingClientRect().width)),
       mine: [...el.querySelectorAll('img.mark.mine')].length > 0,
       paired: el.classList.contains('pair'),
       gap: getComputedStyle(el).rowGap
@@ -661,6 +662,9 @@ if (want('panel')) {
    const mine = (await markers(alice)).find((m) => m.mine)
    check('Both shows the two marks together', JSON.stringify(mine?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(mine))
    check('paired, not one instead of the other', mine?.paired === true, JSON.stringify(mine))
+   check('and the two marks are the same width',
+      Array.isArray(mine?.widths) && mine.widths.length === 2 && mine.widths[0] === mine.widths[1],
+      JSON.stringify(mine?.widths))
    check('with a gap between them so they do not read as one mark', parseFloat(mine?.gap || '0') > 0, mine?.gap)
    check('and neither is dimmed to begin with', (mine?.used || []).length === 0, JSON.stringify(mine?.used))
 

@@ -616,19 +616,16 @@
    }
 
    /*
-      Both marks, in the space one used to take: VSTAR is the wider logo of the
-      two and is drawn smaller, and a gap keeps the pair from reading as a single
-      mark.
+      Both marks, in the space one used to take. They are the same width: the two
+      logos are drawn from images of different sizes, and a VSTAR shrunk to fit
+      beside a GX read as a smaller, lesser token rather than the other half of
+      the same pair. A gap keeps the two from reading as a single mark.
    */
    .power-marker.pair {
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: calc(var(--scaled-rem) * 0.5);
-   }
-
-   .power-marker.pair .mark:first-child {
-      width: 70%;
    }
 
    /* the top half is drawn upside down, so its pair is read bottom to top */
