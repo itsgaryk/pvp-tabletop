@@ -1,7 +1,7 @@
 /*
  * The relay's own behaviour, checked against a running deployment.
  *
- * Four things this project has got wrong, and that a change can get wrong
+ * Five things this project has got wrong, and that a change can get wrong
  * again without anything on screen to say so:
  *
  *   leaving    a game is the people playing it: a player who walks out ends the
@@ -14,6 +14,10 @@
  *              closes the old rooms rather than replaying them into new handlers
  *   idle       a room where nothing has been *done* is prompted, and a prompt
  *              nobody answers closes it; presence is not activity
+ *   the clock  the table clock is shared as a value, and the relay owns the
+ *              anchor it is measured from - so what every poll says the clock
+ *              reads has to be the same number, and has to count down, rather
+ *              than each client ageing an event of its own
  *   sweeping   a killed tab stops being counted, without any cron
  *
  * It is written to run against a server started with SHORT windows, so the whole
@@ -103,6 +107,19 @@ const emit = (roomId, memberId, event, data = {}) => post('/api/relay/events', {
 const summary = (roomId) => get(`/api/relay/room?roomId=${encodeURIComponent(roomId)}`)
 const poll = (roomId, memberId, since = 0, wait = 0) =>
    get(`/api/relay/poll?roomId=${encodeURIComponent(roomId)}&memberId=${encodeURIComponent(memberId || '')}&since=${since}&wait=${wait}`)
+
+/*
+   The table's clock, as a client sets it: a value and the moment it was set, in
+   the relay's clock. The relay stamps a moment of its own into the room, so what
+   is checked below is the room's own anchor - and `at` is only here because a
+   real client always sends one.
+
+   This machine's clock is the relay's here, since a local run puts both on the
+   same box, so `Date.now()` is that clock. Pointed at a deployment it would not
+   be, which is exactly why the relay does not trust it.
+*/
+const emitClock = (roomId, memberId, { running, remaining }) =>
+   emit(roomId, memberId, 'timerUpdated', { running, remaining, at: Date.now() })
 
 /* the store, spoken to directly - only used where the relay cannot help */
 async function redis (...args) {
@@ -352,7 +369,7 @@ if (!rejoinFast || !quick) {
    check('and the wait is called off', !reply.rejoin && reply.gone !== true, JSON.stringify(reply.rejoin || reply.reason || 'no reply'))
 }
 
-/* ------------------------------------------------------- 2. restart ------- */
+/* ------------------------------------------------------- 3. restart ------- */
 
 console.log('\nrestart')
 if (!health.epoch) {
@@ -373,7 +390,7 @@ if (!health.epoch) {
    check('and cannot be joined back into', (await join(a.roomId)).status === 404)
 }
 
-/* ---------------------------------------------------------- 3. idle ------- */
+/* ---------------------------------------------------------- 4. idle ------- */
 
 console.log('\nidle')
 if (!fast) {
@@ -437,7 +454,92 @@ if (!fast) {
    check('appended events count as activity, so no prompt is raised', !names2.includes('idlePrompt'), JSON.stringify(names2.slice(0, 6)))
 }
 
-/* -------------------------------------------------------- 4. sweeping ----- */
+/* -------------------------------------------------------- 5. the clock ----- */
+
+console.log('\nthe table clock')
+{
+   /*
+      The clock is shared as a value, so the relay has to be able to say what it
+      reads *now* rather than leaving every client to age an event of its own
+      age. That is the anchor in the room's metadata and the `timer` in every
+      poll reply, and these checks are what say the two agree.
+
+      Every read here is at least two round trips apart, so the assertions are
+      about the direction of the count and about the relay's own arithmetic -
+      never about a wall-clock millisecond, which no check over a network can
+      promise.
+   */
+   const rooms = []
+   const a = (await create()).body
+   const b = (await join(a.roomId)).body
+   const w = (await spectate(a.roomId)).body
+   rooms.push([a.roomId, a.memberId])
+
+   const opening = await poll(a.roomId, a.memberId)
+   check('a room with no clock set reports no clock', opening.body.timer === null, JSON.stringify(opening.body.timer))
+
+   const RUNNING_MS = 5 * 60 * 1000
+   await emitClock(a.roomId, a.memberId, { running: true, remaining: RUNNING_MS })
+
+   /* set, then read back at least one round trip later */
+   const set = (await poll(a.roomId, a.memberId)).body
+   await sleep(1200)
+   const later = (await poll(a.roomId, a.memberId)).body
+
+   check('the relay keeps the clock it was told', Boolean(set.timer), JSON.stringify(set.timer))
+   check('it says the clock is running', set.timer?.running === true, JSON.stringify(set.timer))
+   check('and a running clock has run down by the next poll', Number(later.timer?.remaining) < Number(set.timer?.remaining), `${set.timer?.remaining} -> ${later.timer?.remaining}`)
+
+   /*
+      The anchor is the relay's own moment, and it does not move while the clock
+      runs: what changes is the number derived from it. A client that saw it
+      change would be right to think somebody had set the clock again.
+   */
+   check('the anchor is a moment on the relay clock', Math.abs(Number(set.timer?.at) - Number(later.timer?.at)) === 0, `${set.timer?.at} -> ${later.timer?.at}`)
+
+   /*
+      And the number is the relay's own arithmetic: the moment it stamped, plus
+      what the client said was left, minus the relay clock in the same reply. If
+      those ever disagreed, a client re-anchoring to it would jump.
+   */
+   const drift = Math.round((Number(later.now) - Number(later.timer?.at)) - (RUNNING_MS - Number(later.timer?.remaining)))
+   check('what it reports left is measured from its own anchor', Math.abs(drift) <= 1, `${drift}ms out`)
+
+   /* the other player, and a watcher that arrived after the clock was set */
+   const guest = (await poll(a.roomId, b.memberId)).body
+   check('the other player is told the same clock', Math.abs(Number(guest.timer?.remaining) - Number(later.timer?.remaining)) < 2000, `${later.timer?.remaining} vs ${guest.timer?.remaining}`)
+
+   const watching = (await spectate(a.roomId)).body
+   rooms.push([a.roomId, watching.memberId])
+   check('a spectator arriving late is told it on joining', Boolean(watching.timer), JSON.stringify(watching.timer))
+   check('with the anchor the clock was actually set at', Number(watching.timer?.at) === Number(set.timer?.at), `${watching.timer?.at} vs ${set.timer?.at}`)
+   check('and the time really left on it', Math.abs(Number(watching.timer?.remaining) - (RUNNING_MS - (Date.now() - Number(set.timer?.at)))) < 2000, `${watching.timer?.remaining} left`)
+
+   /*
+      A paused clock is a value rather than a count, which is what makes it worth
+      saying twice: it must read the same at both ends of a delay.
+   */
+   await emitClock(a.roomId, b.memberId, { running: false, remaining: 90 * 1000 })
+   const paused = (await poll(a.roomId, a.memberId)).body
+   await sleep(1200)
+   const paused2 = (await poll(a.roomId, a.memberId)).body
+   check('a paused clock keeps its value', Number(paused2.timer?.remaining) === Number(paused.timer?.remaining), `${paused.timer?.remaining} -> ${paused2.timer?.remaining}`)
+   check('and no anchor arithmetic is applied to it', Math.round(Number(paused2.timer?.remaining)) === 90 * 1000, JSON.stringify(paused2.timer))
+
+   /*
+      A clock that runs out: the relay keeps counting past zero rather than going
+      negative, so nothing downstream has to clamp.
+   */
+   await emitClock(a.roomId, a.memberId, { running: true, remaining: 300 })
+   await sleep(1500)
+   const out = (await poll(a.roomId, a.memberId)).body
+   check('a clock that runs out reads zero, not a negative', Number(out.timer?.remaining) === 0, JSON.stringify(out.timer))
+
+   /* its own rooms, closed the way a game ends, so nothing is left open */
+   for (const [roomId, memberId] of rooms) await leave(roomId, memberId)
+}
+
+/* -------------------------------------------------------- 6. sweeping ----- */
 
 console.log('\nsweeping stale members')
 if (!quick) {

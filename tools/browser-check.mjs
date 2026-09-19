@@ -930,6 +930,166 @@ if (want('panel')) {
    check('turning it off clears them', (await markers(alice)).length === 0, JSON.stringify(await markers(alice)))
 }
 
+/*
+   The clock on screen, over time, on two machines at once.
+
+   The checks above say the clock can be set and that it starts and pauses. What
+   they cannot say is whether it stays *smooth* and stays *together*, which is
+   what a player notices: a countdown that sticks for two seconds and then jumps
+   is a clock nobody trusts, and two players reading a second apart is worse.
+
+   So this samples both boards for twelve seconds of a running clock and asserts
+   the shape of what was drawn: it never moves backwards, it never sticks, and the
+   two players do not drift apart. It ends by moving one browser's wall clock
+   under it in both directions, which is the one thing the countdown must not feel
+   at all.
+
+   It continues in the room the panel section left open, so it is not one to run
+   on its own.
+ */
+if (want('clock')) {
+console.log('\nlive clock, two browsers')
+{
+   const clockOf = (page) => page.evaluate(`(() => {
+      const el = document.querySelector('.timer-row .clock')
+      return el ? el.textContent.trim() : null
+   })()`)
+
+   const secs = (text) => {
+      const parts = String(text || '').split(':').map(Number)
+      if (parts.some((n) => !Number.isFinite(n))) return null
+      return parts.length === 3
+         ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+         : parts[0] * 60 + parts[1]
+   }
+
+   /* six minutes, running: long enough that the count is obvious, short enough to read */
+   await alice.clickText('12:34', { settle: 800, kinds: 'button' })
+   await alice.evaluate(`(() => {
+      const set = (name, value) => {
+         const el = document.querySelector('input[name="' + name + '"]')
+         el.value = value
+         el.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      set('timerMinutes', '6')
+      set('timerSeconds', '0')
+      return true
+   })()`)
+   await sleep(300)
+   await alice.clickText('OK', { settle: 1500, kinds: 'button' })
+   await alice.clickText('\u23EF\uFE0F', { settle: 1500, kinds: 'button' })
+   await sleep(2500)
+
+   const SAMPLE_MS = 700
+   const SAMPLES = 17
+   const mine = []
+   const theirs = []
+
+   for (let i = 0; i < SAMPLES; i++) {
+      mine.push(secs(await clockOf(alice)))
+      theirs.push(secs(await clockOf(bob)))
+      await sleep(SAMPLE_MS)
+   }
+
+   const known = (list) => list.filter((value) => value !== null)
+   const a = known(mine)
+   const b = known(theirs)
+
+   const backwards = (list) => list.reduce((worst, value, i) =>
+      i && value > list[i - 1] ? Math.max(worst, value - list[i - 1]) : worst, 0)
+
+   check('both boards drew the clock throughout',
+      a.length === SAMPLES && b.length === SAMPLES,
+      `alice ${a.length}/${SAMPLES}, bob ${b.length}/${SAMPLES}`)
+   check('the clock never counts up on the player who set it', backwards(a) === 0, `gained ${backwards(a)}s`)
+   check('nor on the other player', backwards(b) === 0, `gained ${backwards(b)}s`)
+
+   /*
+      Readings are taken every 700ms against a clock that ticks in whole seconds,
+      so a sample may show the same second twice and may skip one - but a *run* of
+      them is a clock that has stopped, and a three-second drop in 700ms is one
+      that stopped and then jumped. Both are the fault this is here to catch, and
+      neither is the sampling.
+   */
+   const gaps = (list) => list.slice(1).map((value, i) => list[i] - value)
+   const worstGap = (list) => gaps(list).reduce((worst, gap) => Math.max(worst, gap), 0)
+   const stuckFor = (list) => {
+      let longest = 1
+      let run = 1
+      for (let i = 1; i < list.length; i++) {
+         run = list[i] === list[i - 1] ? run + 1 : 1
+         longest = Math.max(longest, run)
+      }
+      return longest
+   }
+   check('no second is shown over and over while the clock runs',
+      stuckFor(a) < 3 && stuckFor(b) < 3,
+      `alice ${stuckFor(a)}, bob ${stuckFor(b)}`)
+   check('and it never drops several seconds at once',
+      worstGap(a) <= 3 && worstGap(b) <= 3,
+      `worst gap alice ${worstGap(a)}s, bob ${worstGap(b)}s`)
+
+   /*
+      And the two agree. They cannot read the same to the second - one of them set
+      the clock, and either may be shown a value a round trip later - so what is
+      checked is that neither has *drifted*: the gap between them at the end is
+      the gap at the start.
+   */
+   const gapAt = (i) => Math.abs(a[i] - b[i])
+   const gapStart = gapAt(0)
+   const gapEnd = gapAt(a.length - 1)
+   check('the two players read the same clock, not two of them',
+      gapStart <= 1 && gapEnd <= 1 && Math.abs(gapEnd - gapStart) <= 1,
+      `gap ${gapStart}s at the start, ${gapEnd}s at the end`)
+   check('and it really ran for the twelve seconds sampled',
+      a[0] - a[a.length - 1] >= 10 && a[0] - a[a.length - 1] <= 14, `${a[0]}s -> ${a[a.length - 1]}s`)
+
+   /*
+      The clock, on a browser whose wall clock has moved under it. This is the one
+      thing a countdown must not notice: the machine's clock being corrected - by
+      NTP, by the user, by waking from sleep - is not time passing on the table,
+      and a clock that jumps six seconds because the laptop did is a clock nobody
+      can trust.
+   */
+   const jump = (page, seconds) => page.evaluate(`(() => {
+      const real = Date.now
+      Date.now = () => real.call(Date) + ${seconds}
+      window.__restoreClock = () => { Date.now = real }
+      return true
+   })()`)
+
+   await jump(alice, 8000)
+   const before = secs(await clockOf(alice))
+   await sleep(6000)
+   const afterJump = await clockOf(alice)
+   const after = secs(afterJump)
+   await alice.evaluate(`window.__restoreClock && window.__restoreClock()`)
+
+   check('a wall clock that jumps forward does not move the clock on screen',
+      before - after >= 4 && before - after <= 7,
+      `${before} -> ${afterJump}`)
+
+   await jump(alice, -9000)
+   const beforeBack = secs(await clockOf(alice))
+   await sleep(4000)
+   const afterBack = secs(await clockOf(alice))
+   await alice.evaluate(`window.__restoreClock && window.__restoreClock()`)
+
+   check('and one that jumps backward does not freeze it either',
+      beforeBack - afterBack >= 2 && beforeBack - afterBack <= 5,
+      `${beforeBack} -> ${afterBack}`)
+
+   /* the other player never saw any of it */
+   const bobStill = await clockOf(bob)
+   check('neither player sees the other\'s machine clock',
+      secs(bobStill) !== null && Math.abs(secs(bobStill) - afterBack) <= 2,
+      `${bobStill} vs alice ${afterBack}`)
+
+   /* leave the board's clock stopped, as the checks above found it */
+   await alice.clickText('\u23EF\uFE0F', { settle: 1200, kinds: 'button' })
+}
+}
+
 await browser.detach()
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall checks passed')
 process.exitCode = failures ? 1 : 0

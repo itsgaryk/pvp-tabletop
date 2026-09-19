@@ -1,8 +1,9 @@
 import { get, post } from '$lib/util/fetch-web.js'
-import { board, DEFAULT_TIMER_MS } from './custom/board.js'
+import { board } from './custom/board.js'
 import { pile, slot } from './custom/cards.js'
 import { writable } from './custom/writable.js'
 import { share, react, publishLog, spectating, socket, onBoardCleanup, chat } from './connection.js'
+import { changeTimer, fromRelay, holdSync, resetTimer, syncTimer, timer } from './timer.js'
 import { fixOld } from './oldCards.js'
 import { s } from '$lib/util/strings.js'
 import { statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
@@ -14,12 +15,23 @@ import {
    logAttachment, logEvolve, logAbilityUsed
 } from './logger.js'
 
+/*
+   Re-exported because the clock is the table's rather than either board's, and
+   most of the app reads it from here - it is the store a board component is
+   already importing.
+*/
+export { timer }
+
+/*
+   The clock is not taken from the board: it is the table's, and it is owned by
+   ./timer.js, which is imported above. Everything else here is this player's own
+   half of the board.
+*/
 export const {
    cards, deck, hand, prizes, discard, lz,
    bench, active, stadium, table, pickup,
    powerMarker, powerMarkerUsed,
    turn,
-   timer,
    prizesFlipped, handRevealed, pokemonHidden,
    exportBoard, findSlot,
    reset: resetBoard
@@ -62,7 +74,7 @@ export function clearMyBoard () {
 onBoardCleanup(() => {
    clearMyBoard()
    chat.set([])
-   timer.set({ running: false, remaining: 0, at: 0 })
+   resetTimer()
 })
 
 export function importDeck (txt, cb, rd = false) {
@@ -617,37 +629,27 @@ react('turnChanged', ({ turn: value }) => {
 
 /*
    The game timer. It is shared as a value, not a tick: `remaining` milliseconds
-   as of `at` (the relay's clock), and whether it is running. Each client counts
-   down from that itself, so a running clock costs no traffic at all - starting,
-   pausing and adding time are the only events, and both players may send them.
+   as of `at`, plus whether it runs. Each client counts down from that itself, so
+   a running clock costs no traffic at all - starting, pausing and adding time
+   are the only events, and both players may send them.
 
-   On the wire `at` is the relay's clock, because the two players' own clocks may
-   not agree. Locally it is this browser's clock, because a countdown has to be
-   smooth: the relay's clock here is an estimate, re-measured on every poll, so a
-   second that shrinks or stretches by a round trip makes the display stutter. A
-   value is therefore converted once, on arrival, and everything after that is
-   plain local time.
+   The arithmetic lives in ./timer.js: one function converts a value from the
+   relay's clock into this browser's as it arrives, and one ages it afterwards.
+   What is here is the part that needs the relay - refusing a spectator, and
+   publishing the change - so the clock cannot be set in two different ways.
 */
-function localTimer ({ running, remaining, at }) {
-   const left = Math.max(0, Number(remaining) || 0)
-   const setAt = Number(at) || socket.serverNow()
-   const spent = running ? Math.max(0, socket.serverNow() - setAt) : 0
-
-   return { running: Boolean(running), remaining: Math.max(0, left - spent), at: Date.now() }
-}
-
-export function setTimer ({ running, remaining }, at = null) {
+export function setTimer ({ running, remaining }) {
    if (isSpectator()) return
 
-   const left = Math.max(0, Number(remaining) || 0)
+   const state = changeTimer({ running, remaining })
 
-   /* ours to keep locally, in this browser's clock */
-   timer.set({ running: Boolean(running), remaining: left, at: Date.now() })
+   /* ours until the relay has it: do not let a reply describe the clock we just changed */
+   holdSync()
 
    /* theirs to read, in the clock everyone shares */
-   share('timerUpdated', { running: Boolean(running), remaining: left, at: at ?? socket.serverNow() })
+   share('timerUpdated', state)
 
-   return { running: Boolean(running), remaining: left }
+   return { running: state.running, remaining: state.remaining }
 }
 
 
@@ -663,11 +665,11 @@ react('spectatorChanged', () => shareBoardstate())
 
 /* entering a room starts the clock, with a board that can be read */
 react('joinedRoom', () => {
-   timer.set({ running: false, remaining: DEFAULT_TIMER_MS, at: 0 })
+   resetTimer()
    pokemonHidden.set(false)
 })
 react('createdRoom', () => {
-   timer.set({ running: false, remaining: DEFAULT_TIMER_MS, at: 0 })
+   resetTimer()
    pokemonHidden.set(false)
 })
 
@@ -677,7 +679,18 @@ react('createdRoom', () => {
    echo of an older value is how two clients ended up pausing and restarting the
    clock at each other.
 */
-react('timerUpdated', (state) => timer.set(localTimer(state)))
+react('timerUpdated', (state) => timer.set(fromRelay(state)))
+
+/*
+   The relay's own snapshot of the clock, which rides on every poll. It arrives
+   as its own event rather than as a board action because it is not one - nobody
+   did anything, the relay is simply saying what the table's clock reads.
+
+   It is what keeps the two players and any watcher together over a long round:
+   an event is converted once, when it lands, and from then on each browser is
+   counting with its own crystal, which is not quite the same as anybody else's.
+*/
+react('timerSynced', ({ timer: snapshot }) => syncTimer(snapshot))
 
 /* the same for the ability stripe, which either player can mark */
 react('abilityUpdated', ({ slotId, used }) => {

@@ -116,6 +116,16 @@ const HIDDEN_INTERVAL_MS = 20000
 const IDLE_AFTER_MS = 10 * 60 * 1000
 const IDLE_INTERVAL_MS = 30000
 
+/*
+   How long the clock offset measured against the relay stays good. Both clocks
+   tick at the same rate to within milliseconds an hour, so the quickest round
+   trip so far is worth keeping - re-measuring on every poll would only trade a
+   steady estimate for a noisy one. Past this, a fresh measurement is taken
+   instead, so a corrected clock, a replaced instance or a redeploy cannot leave
+   the client holding an offset that is no longer true.
+*/
+const OFFSET_MAX_AGE_MS = 5 * 60 * 1000
+
 /* where a room and a seat are remembered between page loads */
 const SESSION_KEY = 'pvp_session'
 
@@ -195,7 +205,9 @@ export class HttpSocket {
       this.leaving = false
 
       /* this browser's clock against the relay's, for events that arrive late */
-      this.skew = 0
+      this.offset = 0
+      this.bestRtt = Infinity
+      this.offsetAt = 0
 
       /*
          The last few faults, newest last, for the diagnostics screen and for a
@@ -314,13 +326,77 @@ export class HttpSocket {
    }
 
    /*
-      The relay's clock, as this browser understands it: polls carry the server's
-      own `now`, so a client can age a timer that was set elsewhere and count it
-      down in step with everyone else, whatever the two machines' clocks say. Only
-      the difference matters, and it is re-estimated on every poll.
+      The relay's clock, as this browser understands it: a poll carries the
+      server's own `now`, so a client can age a timer that was set elsewhere and
+      count down in step with everyone else, whatever the two machines' clocks
+      say.
+
+      How far apart the two clocks are is measured rather than assumed. A reply
+      carries a moment on the relay's clock, but by the time it is read that
+      moment is already half a round trip old, and the round trip is not the same
+      on every poll - so a client that subtracted at the moment of reading got a
+      different answer each time, and a clock converted through it could gain or
+      lose a second between two polls. That is what a stuttering countdown is.
+
+      Instead the delay is subtracted: the reply was sent one round trip before
+      it was read, so this browser's clock at the moment the relay stamped its own
+      is `Date.now() - rtt`. Of the samples taken, the quickest round trip wins:
+      it is the one whose two legs are most nearly equal, which is the assumption
+      the estimate rests on. Ties are not averaged, because averaging pulls in the
+      slower samples that were rejected for being slower.
+
+      The winning sample is kept until it is old (see OFFSET_MAX_AGE_MS): the
+      relay's clock and this one drift apart by milliseconds an hour, so a good
+      measurement stays good, and re-measuring it every two seconds on a WiFi
+      round trip would only add noise - and a room that has been replaced, or a
+      deployment that has, is where a fresh measurement is actually wanted.
    */
    serverNow () {
-      return Date.now() + this.skew
+      return Date.now() + this.offset
+   }
+
+   /* how far the relay's clock reads ahead of this browser's, for diagnostics */
+   get skew () {
+      return this.offset
+   }
+
+   /*
+      Take one sample of the relay's clock. `serverNow` is a moment the relay
+      stamped, and `rtt` is how long the whole reply took to arrive here - the
+      round trip the sample is only as good as.
+
+      The moments are only useful if they are compared as what they are: a reading
+      taken at each end of a request. The relay's is half a round trip older than
+      the moment it was read, so this browser's reading at *that* moment is
+      `Date.now() - rtt` - not `Date.now()`, which would date the relay's clock by
+      the part of the round trip that happened after it was taken.
+   */
+   measureOffset (serverNow, rtt) {
+      const server = Number(serverNow)
+      if (!Number.isFinite(server)) return this.offset
+
+      const elapsed = Math.max(0, Number(rtt) || 0)
+
+      /*
+         A sample older than this is not a second opinion about the same relay,
+         it is the same relay's clock re-read after something may have changed -
+         a redeploy, a different instance, a machine's own clock corrected. Then
+         the quickest round trip so far is stale news and has to be forgotten, or
+         a clock offset that is now wrong would be held until the page reloads.
+      */
+      if (this.offsetAt && Date.now() - this.offsetAt > OFFSET_MAX_AGE_MS) {
+         this.bestRtt = Infinity
+      }
+
+      const at = Date.now()
+      this.offsetAt = at
+
+      if (elapsed <= this.bestRtt) {
+         this.bestRtt = elapsed
+         this.offset = server - (at - elapsed)
+      }
+
+      return this.offset
    }
 
    /* somebody is here: back to the normal rhythm, and catch up at once */
@@ -678,6 +754,8 @@ export class HttpSocket {
    async room (action, extra = {}) {
       this.connect()
 
+      /* the round trip this reply takes, which is what dates the relay's clock in it */
+      const startedAt = Date.now()
       const res = await this.request('/api/relay/room', {
          method: 'POST',
          body: {
@@ -688,7 +766,7 @@ export class HttpSocket {
       })
       if (res.error) throw new Error(res.error)
 
-      if (typeof res.now === 'number') this.skew = res.now - Date.now()
+      if (typeof res.now === 'number') this.measureOffset(res.now, Date.now() - startedAt)
 
       this.id = res.memberId
       this.roomId = res.roomId
@@ -718,6 +796,15 @@ export class HttpSocket {
 
       /* who holds the two playing seats - a spectator seats them on screen */
       this.deliver('seated', { players: this.players })
+
+      /*
+         What the table's clock reads, before the room's events are replayed: a
+         clock set before this client arrived is in that log, and the event is
+         the newer word on it - the same order the poll keeps, for the same
+         reason. Delivered rather than applied here, so the clock itself stays
+         the timer store's business.
+      */
+      if (res.timer) this.deliver('timerSynced', { timer: res.timer, now: res.now })
 
       // Replay anything already in the room (the opponent's board state, their
       // deck, chat) through the same path polled events take. Our own events are
@@ -867,6 +954,8 @@ export class HttpSocket {
       }
 
       let res
+      /* the round trip, which is what dates the relay's clock in the reply */
+      const sentAt = Date.now()
       try {
          res = await this.fetch(`${this.base}/api/relay/poll?${params}`, { signal: controller.signal })
       } finally {
@@ -877,7 +966,7 @@ export class HttpSocket {
       const payload = await readJson(res)
       if (!res.ok) throw new Error(payload.error || `poll failed (${res.status})`)
 
-      if (typeof payload.now === 'number') this.skew = payload.now - Date.now()
+      if (typeof payload.now === 'number') this.measureOffset(payload.now, Date.now() - sentAt)
 
       if (payload.gone) {
          /*
@@ -902,6 +991,17 @@ export class HttpSocket {
       this.trackPresence(payload.opponent)
       this.trackSeats(payload.players)
       this.trackWait(payload)
+
+      /*
+         What the table's clock reads, on the relay's own clock, before the
+         events below: a clock set in this same reply is the newer word on it,
+         and an event's value is converted when it is applied.
+
+         This is the re-anchor. Every poll carries it, so a client that has been
+         counting down for half an hour is put back on the relay's reading rather
+         than being left to its own machine's idea of a second.
+      */
+      if (payload.timer) this.deliver('timerSynced', { timer: payload.timer, now: payload.now })
 
       for (const event of payload.events || []) {
          this.cursor = Math.max(this.cursor, event.seq)

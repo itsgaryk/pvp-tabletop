@@ -114,6 +114,9 @@
             players: socket.players || [],
             opponentPresent: socket.opponentPresent,
             skewMs: Math.round(socket.skew),
+            /* how that skew was arrived at, since it is what the clock is read through */
+            offsetRttMs: Number.isFinite(socket.bestRtt) ? Math.round(socket.bestRtt) : null,
+            offsetAgeMs: socket.offsetAt ? Date.now() - socket.offsetAt : null,
             idleForMs: socket.idleFor(),
             markedIdle: socket.isIdle,
             documentHidden: socket.hidden(),
@@ -239,7 +242,12 @@
             <div class="row"><span>other side present</span><span>
                {snapshot.transport.opponentPresent === null ? 'not yet known' : (snapshot.transport.opponentPresent ? 'yes' : 'no')}
             </span></div>
-            <div class="row"><span>clock skew</span><span>{snapshot.transport.skewMs} ms (relay minus this browser)</span></div>
+            <div class="row"><span>clock skew</span><span>
+               {snapshot.transport.skewMs} ms (relay minus this browser)
+               {#if Number.isFinite(snapshot.transport.offsetRttMs)}
+                  , measured {age(snapshot.transport.offsetAgeMs)} ago over a {snapshot.transport.offsetRttMs} ms round trip
+               {/if}
+            </span></div>
             <div class="row"><span>idle</span><span>
                {snapshot.transport.markedIdle ? 'yes - checked lazily' : 'no'}, quiet for {age(snapshot.transport.idleForMs)}
                {snapshot.transport.documentHidden ? ' (tab hidden)' : ''}

@@ -9,7 +9,8 @@ import {
    isPlayer,
    joinRoom,
    removeMember,
-   roomSummary
+   roomSummary,
+   timerSnapshot
 } from '$lib/relay/store.js'
 import { startRejoinWait } from '$lib/relay/maintain.js'
 import { RELAY_HOST_WAIT_MS, RELAY_REJOIN_WAIT_MS } from '$lib/relay/timing.js'
@@ -70,6 +71,14 @@ export async function POST ({ request }) {
             seq: 0,
             events: [],
             /*
+               The relay's clock, and the table's, exactly as a join answers
+               them. A room starts with no clock set, so this is null - but it is
+               the same shape as every later poll, so a client has one thing to
+               read rather than two.
+            */
+            now: Date.now(),
+            timer: timerSnapshot(room),
+            /*
                When this room stops waiting for a second player. Sent so the
                creator can watch the clock they are on rather than being
                returned to the lobby with no warning at all.
@@ -128,6 +137,12 @@ export async function POST ({ request }) {
             events: room.events,
             /* the relay's clock, so a client can age the events it just replayed */
             now: Date.now(),
+            /*
+               And what the table's clock reads, for the same reason: a board
+               arriving halfway through a round gets the time actually left on it
+               rather than having to age an event whose age it does not know.
+            */
+            timer: timerSnapshot(room),
             summary: summary || await roomSummary(roomId)
          })
       }

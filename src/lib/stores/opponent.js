@@ -3,6 +3,7 @@ import { writable } from 'svelte/store'
 import { board } from './custom/board.js'
 import { slot } from './custom/cards.js'
 import { socket } from './connection.js'
+import { fromRelay } from './timer.js'
 import { discardStadium } from './player.js'
 import { normalizeStatus } from '$lib/util/status.js'
 import { normalizeMarkerUsed } from '$lib/util/markers.js'
@@ -245,8 +246,13 @@ export function createOpponent () {
          const s = findSlot(slotId)
          if (s) s.abilityUsed.set(Boolean(used))
       },
-      /* the clock they set, with the relay time it was set at */
-      timerUpdated: ({ running, remaining, at }) => timer.set({ running: Boolean(running), remaining: Math.max(0, Number(remaining) || 0), at: Number(at) || 0 }),
+      /*
+         The clock they set. It is converted through the same function the shared
+         clock uses: `at` arrives on the relay's clock, so a mirror that kept it
+         raw would be holding a value in a different clock from the rest of the
+         app, and would read as hours out.
+      */
+      timerUpdated: (state) => timer.set(fromRelay(state)),
       slotDiscarded: ({ slotId }) => {
          const s = findSlot(slotId)
          if (s) removeSlot(s)

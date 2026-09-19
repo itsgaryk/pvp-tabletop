@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit'
-import { closedReason, getRoom, getRoomSeq, getStore, playersOf, SEAT_HELD, touchMember } from '$lib/relay/store.js'
+import { closedReason, getRoom, getRoomSeq, getStore, playersOf, SEAT_HELD, timerSnapshot, touchMember } from '$lib/relay/store.js'
 import { maintainRoom, pruneStaleMembers, startRejoinWait } from '$lib/relay/maintain.js'
 import { WAIT_MS, POLL_INTERVAL_MS, MAX_REQUESTED_INTERVAL_MS } from '$lib/relay/config.js'
 
@@ -163,6 +163,18 @@ export async function GET ({ url }) {
          /* the relay's clock, so a client can work out how stale a replayed
             event is (the game timer counts down from one) */
          now,
+         /*
+            What the table's clock reads, on that same clock.
+
+            The relay owns the anchor (see timerFields in store.js), so it can
+            answer this exactly, and every client - player or spectator, on its
+            first poll or its hundredth - re-anchors to one number instead of
+            each converting an event of its own age. It rides in a reply the poll
+            was going to assemble anyway, so it costs nothing, and it is what
+            keeps two browsers together over a long round rather than for the
+            first minute of one.
+         */
+         timer: timerSnapshot(room, now),
          /* an outstanding idle prompt, with the relay clock it was raised at:
             the client counts down from `deadlineAt` against this same clock, so
             a board that arrives late sees the time actually left on it. Carried

@@ -1,7 +1,8 @@
 <script>
    import { onMount, onDestroy } from 'svelte'
    import { timer, setTimer } from '$lib/stores/player.js'
-   import { spectating, seatedPlayers, myId, publishLog, socket } from '$lib/stores/connection.js'
+   import { remainingAt } from '$lib/stores/timer.js'
+   import { spectating, seatedPlayers, myId, publishLog } from '$lib/stores/connection.js'
    import TimerPrompt from './dialogs/TimerPrompt.svelte'
 
    /*
@@ -9,10 +10,17 @@
       shared as a value - "this many milliseconds left as of this time" - so every
       client counts down from the same number without any traffic between them.
 
-      The store holds that value in this browser's own clock (the store converts
-      it as it arrives), so the countdown below is plain local time and cannot
-      stutter as the relay's clock is re-estimated. It is the table's clock rather
-      than a board's, so a spectator reads the same copy a player does.
+      The store holds that value in this browser's own reading (see
+      $lib/stores/timer.js, which converts it as it arrives and is the only place
+      the arithmetic lives), so the countdown below cannot stutter as the relay's
+      clock is re-estimated. It is the table's clock rather than a board's, so a
+      spectator reads the same copy a player does.
+
+      Nothing here asks the relay what time it is. The clock is aged against this
+      browser's own reading, which is taken every tick rather than held from the
+      last one, so a tick that the browser was late with - a backgrounded tab is
+      checked about once a second, not four times - is corrected on the next one
+      instead of being lost.
    */
    $: timerStore = timer
 
@@ -20,8 +28,6 @@
    const GLOW_AT_MS = 15 * MINUTE
    const TICK_MS = 250
 
-   /* the relay's clock, which is what `at` is measured in */
-   let now = Date.now()
    let ticker
 
    let glowing = false
@@ -29,6 +35,9 @@
 
    /* what the clock read last tick, so passing a mark can be noticed */
    let lastRemaining = null
+
+   /* whether it was running last tick, so running out can be told from being at zero */
+   let wasRunning = $timerStore.running
 
    /*
       Set while somebody has just put a time on the clock by hand. Being *set* to
@@ -43,12 +52,9 @@
    let flyTimer
    let expired = false
 
-   function remainingAt (state, at) {
-      if (!state?.running) return Math.max(0, state?.remaining || 0)
-      return Math.max(0, (state.remaining || 0) - (at - (state.at || at)))
-   }
+   /* what the clock reads, re-taken every tick so a late tick catches up */
+   let remaining = remainingAt($timerStore)
 
-   $: remaining = remainingAt($timerStore, now)
    $: totalSeconds = Math.ceil(remaining / 1000)
    $: hours = Math.floor(totalSeconds / 3600)
    $: minutes = Math.floor((totalSeconds % 3600) / 60)
@@ -71,8 +77,8 @@
    }
 
    function tick () {
-      now = Date.now()
-      const left = remainingAt($timerStore, now)
+      const left = remainingAt($timerStore)
+      remaining = left
 
       /*
          The glow is for passing the mark, not for being past it: a clock set to
@@ -87,20 +93,22 @@
 
       /* our own countdown has run out: stop the table's clock */
       if ($timerStore.running && left <= 0) {
-         setTimer({ running: false, remaining: 0 }, socket.serverNow())
+         setTimer({ running: false, remaining: 0 })
       }
 
       /*
          Everyone plays the words, and the host writes the log line - but only
-         for a clock that stopped moments ago. A board joining a room whose timer
-         finished an hour back must not set them off, which is what the `at`
-         timestamp is for.
+         for a clock that has *just* run out on this screen. Not for one that was
+         already at zero when this board arrived: a spectator joining a room
+         whose clock finished an hour ago must not be told time is up now.
+
+         That is a change of state rather than a timestamp, and it has to be
+         judged here because it is this client's own ticks that notice it. The
+         clock is not running *and* was running a moment ago, and has no time
+         left.
       */
-      const justStopped = !$timerStore.running &&
-         $timerStore.remaining <= 0 &&
-         $timerStore.at > 0 &&
-         !justSet &&
-         now - $timerStore.at < 5000
+      const justStopped = !$timerStore.running && wasRunning && $timerStore.remaining <= 0 && !justSet
+      wasRunning = $timerStore.running
 
       if (justStopped) announceTime()
    }
@@ -127,10 +135,10 @@
    $: if ($timerStore.running) expired = false
 
    function toggle () {
-      const left = remainingAt($timerStore, Date.now())
+      const left = remainingAt($timerStore)
       if (left <= 0) return
 
-      setTimer({ running: !$timerStore.running, remaining: left }, socket.serverNow())
+      setTimer({ running: !$timerStore.running, remaining: left })
    }
 
    /*
