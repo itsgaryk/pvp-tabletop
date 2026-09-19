@@ -11,7 +11,7 @@
    import {
       connected, room, spectating, spectators, chat,
       createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary, roomError,
-      idle, resume, socket, hostWait, waiting
+      idle, resume, socket, waiting
    } from '$lib/stores/connection.js'
    import { solo, startSolo, exitSolo } from '$lib/stores/solo.js'
 
@@ -155,11 +155,15 @@
    $: logLines = $chat.filter((entry) => entry.type !== 'chat')
 
    /*
-      The clock on a waiting room. Two of them exist - waiting for a second
-      player at all, and waiting for one who vanished to come back - and both
-      are a deadline on the relay's clock, so the seconds are worked out against
-      `serverNow()` on a tick. Without the tick the number would sit still until
-      something else re-rendered the page.
+      The clock on a waiting room: a player who vanished and has not come back.
+      It is a deadline on the relay's clock, so the seconds are worked out
+      against `serverNow()` on a tick. Without the tick the number would sit
+      still until something else re-rendered the page.
+
+      The other wait a room can be under - for a second player to arrive at all -
+      is deliberately not shown. A room on that clock is one player sitting alone
+      in it, and a countdown to being thrown back to the lobby is not something
+      they need on screen while they wait; the ending, if it comes, says so.
    */
    let now = Date.now()
    onMount(() => {
@@ -175,8 +179,7 @@
       return `${pad(Math.floor(seconds / 60))}:${pad(seconds % 60)}`
    }
 
-   /* `now` is read so the two below are recomputed on every tick of the clock */
-   $: hostLeft = $hostWait && now >= 0 ? countdown($hostWait.deadlineAt) : null
+   /* `now` is read so the countdown is recomputed on every tick of the clock */
    $: rejoinLeft = $waiting && now >= 0 ? countdown($waiting.deadlineAt) : null
 
    function chatTime (time) {
@@ -283,18 +286,6 @@
          <div class="flex items-center gap-2 p-2 mb-2 rounded-md text-sm bg-[var(--bg-color-two)]">
             <span class="flex-1">Idle for 10 minutes - updates may be delayed.</span>
             <button class="px-2 py-1 font-bold rounded-md text-white bg-[var(--primary-color)]" on:click={resume}>Reconnect</button>
-         </div>
-      {/if}
-
-      <!--
-         Waiting for a second player. A room made and not yet joined is on a
-         clock, and the person sitting in it is the one who needs to know that -
-         the alternative is being returned to the lobby with no warning.
-      -->
-      {#if hostLeft && !$solo}
-         <div class="notice">
-            <span class="flex-1">Waiting for an opponent to join - this room closes in</span>
-            <span class="tabular-nums font-bold">{hostLeft}</span>
          </div>
       {/if}
 
