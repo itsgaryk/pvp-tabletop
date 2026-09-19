@@ -285,10 +285,27 @@ class Page {
       return this.roomCode()
    }
 
+   /*
+      Joining and spectating ask for the room code in a prompt rather than taking
+      it from a field in the lobby, so both walk the same three steps: press the
+      button, answer the prompt, wait for the room.
+   */
    async joinRoom (room, name = 'Player') {
       await this.setInput('playerName', name)
+      await this.clickText('Join Room', { settle: 800 })
+      await this.answerRoomPrompt(room)
+   }
+
+   async spectate (room, name = 'Watcher') {
+      await this.setInput('playerName', name)
+      await this.clickText('Spectate Game', { settle: 800 })
+      await this.answerRoomPrompt(room)
+   }
+
+   /* type the code into the prompt and confirm it, as a player would */
+   async answerRoomPrompt (room) {
       await this.setInput('roomId', room)
-      await this.clickText('Join Room', { settle: 4000 })
+      await this.clickText('OK', { settle: 4000, kinds: 'button' })
    }
 
    /*
@@ -299,12 +316,6 @@ class Page {
    */
    async forgetSession () {
       await this.evaluate(`(() => { localStorage.removeItem('pvp_session'); return true })()`)
-   }
-
-   async spectate (room, name = 'Watcher') {
-      await this.setInput('playerName', name)
-      await this.setInput('roomId', room)
-      await this.clickText('Spectate Game', { settle: 4000 })
    }
 
    async roomCode () {
