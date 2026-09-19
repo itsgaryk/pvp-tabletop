@@ -647,10 +647,11 @@ The half being flipped is also the one piece of rendering that turns:
 
 **Spectate Game** on the main menu joins a room without taking a seat. A spectator is
 read-only, and the enforcement is not in the UI: every state change in the app funnels
-through `share()`, which refuses to act while `spectating`, and the relay rejects
-writes from a member who is not sitting in a seat. So the board's menus and shortcuts
-cannot touch the game however they are reached. Chat is the one thing a spectator may
-send, which is why it does not go through `share()`.
+through `share()`, which refuses to act while `spectating`, and the relay answers any
+event but `chatMessage` from a spectator member with *"spectators cannot change the
+game"*. So the board's menus and shortcuts cannot touch the game however they are
+reached. Chat is the one thing a spectator may send, which is why it does not go
+through `share()`.
 
 On screen a spectator gets the whole board and none of the play:
 
@@ -683,7 +684,7 @@ The board's own shortcuts, from `Board.svelte`:
 | Key | Does |
 | --- | --- |
 | `1`–`9` | draw that many cards |
-| `Alt`+`1`–`9` | look at that many from the top and take some |
+| `Alt`+`1`–`9` | look at that many from the top of the deck (the deck menu's *View Top X*) |
 | `D` `H` `L` `P` | the selection to discard / hand / lost zone / prizes |
 | `B` `A` | the selected Pokémon to the bench / the active spot |
 | `G` | the selection to the stadium, or log the stadium already in play |
