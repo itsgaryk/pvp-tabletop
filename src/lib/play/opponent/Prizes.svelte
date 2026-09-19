@@ -17,15 +17,16 @@
    $: ({ prizes, prizesFlipped } = store)
 
    /*
-      The same cascade as the near half's: two columns, and each row overlapping the
-      one above it, with the rows sharing the zone's height (see the near half for
-      the arithmetic).
+      The same as the near half's: two columns, next to one another for the six a game
+      is dealt, and cascading once there are more (see the near half).
    */
    const COLUMNS = 2
+   const CASCADE_AFTER = 3
    const OVERLAP = 0.3
 
    $: rows = Math.max(1, Math.ceil($prizes.length / COLUMNS))
-   $: layout = { '--rows': rows, '--overlap': OVERLAP, '--columns': COLUMNS }
+   $: overlap = rows > CASCADE_AFTER ? OVERLAP : 0
+   $: layout = { '--rows': rows, '--overlap': overlap, '--columns': COLUMNS }
 
    let menu
 

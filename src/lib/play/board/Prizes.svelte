@@ -8,24 +8,25 @@
    import { prizes, deck, prizesFlipped } from '$lib/stores/player.js'
 
    /*
-      The prizes cascade: two columns, and each row overlapping the one above it.
+      The prizes cascade only once there are more than the six a game is dealt.
 
-      Two columns is the table a game is played with - six prizes are three rows of
-      two - and a pile that grows past that overlaps downwards rather than sideways,
-      so ten prizes still read as the two columns they were dealt as. The rows are
-      the zone's whole height between them, with the last one's cards ending exactly
-      at the bottom of it: the card is one row tall plus the overlap, and the step
-      between rows is one row, which is what puts the overlap under the card below
-      rather than past the zone.
+      Six is three rows of two, and they sit *next* to one another: that is the table
+      a game starts with, and it is read at a glance. A seventh is a card put into the
+      prizes, and from there the rows overlap - the pile grows downwards in the two
+      columns it was dealt as rather than sideways, because a pile of ten should not
+      be a wider table.
 
-      `rows` is counted here rather than in CSS because the arithmetic needs it, and
-      a stylesheet cannot count its own children.
+      `rows` is counted here rather than in CSS because the arithmetic needs it, and a
+      stylesheet cannot count its own children. With no overlap the same formula below
+      is the plain "the rows share the height" case, so one covers both.
    */
    const COLUMNS = 2
+   const CASCADE_AFTER = 3   /* rows: the six prizes a game is dealt */
    const OVERLAP = 0.3
 
    $: rows = Math.max(1, Math.ceil($prizes.length / COLUMNS))
-   $: layout = { '--rows': rows, '--overlap': OVERLAP, '--columns': COLUMNS }
+   $: overlap = rows > CASCADE_AFTER ? OVERLAP : 0
+   $: layout = { '--rows': rows, '--overlap': overlap, '--columns': COLUMNS }
 
    let menu
 
