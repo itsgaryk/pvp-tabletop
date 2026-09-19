@@ -47,7 +47,12 @@
 <!--
    The bench's Pokemon sit against the near edge, the way they always have: the
    bench fills up from the left as it is played into, rather than growing outwards
-   from the middle.
+   from the middle. Up and down they are centred in the zone, which is where a card
+   in every other zone of the board sits: the row is placed by the zone it fills
+   (see .bench-zone) rather than laid against the zone's top, which is where it sat
+   while a bench zone happened to be about the height of a card and so read as
+   centred. A bench zone is not that height, and a card across the top of one is a
+   card sitting in the corner of it.
 
    It keeps its own card size while it does. A bench with more on it than the zone
    holds is *navigated* rather than shrunk - the row scrolls sideways, as the hand's
@@ -56,7 +61,7 @@
    game's bench is five, which fits without scrolling; solo can put any number on
    one, which is where the scrollbar comes in.
 -->
-<div class="p-1 focus:outline-none" use:dnd={dndConfig} tabindex="0" use:ctrlA on:ctrlA={selectAll}>
+<div class="bench-zone p-1 focus:outline-none" use:dnd={dndConfig} tabindex="0" use:ctrlA on:ctrlA={selectAll}>
    <Horizontal>
       <div class="bench-row">
          {#each $bench as slot (slot.id)}
@@ -67,6 +72,21 @@
 </div>
 
 <style>
+   /*
+      The zone places the row, and centres it between the top of the zone and the
+      bottom of it - where a card in every other zone of the board sits. A grid item
+      is what does it here rather than a flex one, for two reasons that were measured:
+      a bench card is a fixed size rather than the zone's, so at an ordinary window the
+      row is taller than the zone and a column flex item would be shrunk to fit,
+      clipping the card inside the row's own scroll container; and a half-empty bench's
+      row is narrower than the zone, which a row flex item would narrow further, to its
+      own contents, taking the row off the width of the drop target (see .bench-row).
+   */
+   .bench-zone {
+      display: grid;
+      align-items: center;
+   }
+
    .bench-row {
       display: flex;
       align-items: center;
@@ -75,6 +95,10 @@
          The row is as wide as its cards, so the scroll container has something to
          scroll: `max-content` lets it grow past the zone, and `min-width: 100%`
          keeps a half-empty bench filling its zone's width for the drop target.
+
+         Its height is its cards' rather than the zone's - the zone is what places
+         the row, and centres it (see .bench-zone) - so a bench whose cards are
+         taller than the zone overflows it evenly instead of downwards only.
       */
       width: max-content;
       min-width: 100%;

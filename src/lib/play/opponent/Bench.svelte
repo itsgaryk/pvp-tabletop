@@ -53,10 +53,12 @@
 
 <!--
    The bench fills up from its near edge, as it always has, and keeps its card size:
-   a bench with more on it than the zone holds scrolls sideways rather than shrinking
-   (see the near half).
+   a bench with more on it than the zone holds scrolls sideways rather than shrinking.
+   Across the zone it is centred up and down, the same way the near half's bench is -
+   the two are one row of cards that differ in whose they are, and in which half of
+   the board they sit on, rather than in how they are laid out.
 -->
-<div class="p-1 focus:outline-none" tabindex="0"
+<div class="bench-zone p-1 focus:outline-none" tabindex="0"
    use:dnd={dndConfig}
    use:ctrlA on:ctrlA={selectAll}>
    <Horizontal>
@@ -69,6 +71,12 @@
 </div>
 
 <style>
+   /* the near half's zone, and the reasons for it, in full: board/Bench.svelte */
+   .bench-zone {
+      display: grid;
+      align-items: center;
+   }
+
    .bench-row {
       display: flex;
       align-items: center;
