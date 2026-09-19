@@ -185,6 +185,15 @@ export class HttpSocket {
       /* the wait a room is under, so the same one is not announced twice */
       this.waitKey = 0
 
+      /*
+         This browser is on its way out of its room by its own choice. A room
+         that a player leaves now ends for the people still in it - which means
+         the leaver's own poll can come back "gone" while the leave is in flight,
+         and their client would show itself the dialog about a game it just
+         walked out of. They already know.
+      */
+      this.leaving = false
+
       /* this browser's clock against the relay's, for events that arrive late */
       this.skew = 0
 
@@ -548,6 +557,7 @@ export class HttpSocket {
 
    async leaveRoom (roomId) {
       const id = roomId || this.roomId
+      this.leaving = true
       this.abortPoll()
       try {
          await this.request('/api/relay/room', {
@@ -632,6 +642,7 @@ export class HttpSocket {
       this.seats = []
       this.opponentPresent = null
       this.waitKey = 0
+      this.leaving = false
       this.deliver('leftRoom', {})
    }
 
@@ -873,9 +884,16 @@ export class HttpSocket {
             The room has been closed or expired. Say why before letting go of it:
             the app decides whether that is a dialog, and it cannot decide after
             the room id is gone.
+
+            Two replies are deliberately not passed on. One carries the last word
+            of a room this browser has since walked out of - `forget()` has
+            already cleared the id, and the leaver is the reason it ended, so
+            there is nothing to tell them. The other is a leave of our own that
+            is still in flight (`leaving`). Both would otherwise put a dialog
+            about somebody else's game in front of the person who closed it.
          */
          const reason = payload.reason || 'expired'
-         this.raiseGone(reason)
+         if (this.roomId && !this.leaving) this.raiseGone(reason)
          this.forget()
          return
       }

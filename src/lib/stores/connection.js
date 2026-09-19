@@ -122,6 +122,13 @@ export function spectateRoom (roomId) {
 }
 
 export function leaveRoom () {
+   /*
+      Leaving on purpose puts the last ending away before the request goes out: a
+      room a player leaves now ends for whoever is left, so a poll already in
+      flight can come back gone - and the leaver, who is the reason it ended,
+      must not be shown the dialog about it.
+   */
+   forgetGameClosed()
    return socket.leaveRoom(room.get()).catch((err) => {
       console.error('[pvp-tabletop] could not leave the room', err)
       return null
@@ -178,6 +185,17 @@ export let gameClosedReason = writable(null)
 
 export function dismissGameClosed () {
    gameClosedReason.set(null)
+}
+
+/*
+   Forgetting the last room's ending. The dialog is about a room, so entering a
+   new one or leaving on purpose has to put it away: otherwise a player who has
+   just closed a game themselves is shown the words for the game before it, which
+   is exactly what happened the first time a player's own leave ended a room.
+*/
+function forgetGameClosed () {
+   gameClosedReason.set(null)
+   idlePromptAt.set(null)
 }
 
 socket.onGone((reason) => {
@@ -243,6 +261,9 @@ async function refreshSummary (roomId) {
 }
 
 socket.on('createdRoom', ({ roomId, role }) => {
+   forgetGameClosed()
+   hostWait.set(null)
+   waiting.set(null)
    spectating.set(role === 'spectator')
    myId.set(socket.id)
    room.set(roomId)
@@ -271,6 +292,9 @@ socket.on('roomWait', ({ hostWait: host, rejoin }) => {
 })
 
 socket.on('joinedRoom', ({ roomId, role }) => {
+   forgetGameClosed()
+   hostWait.set(null)
+   waiting.set(null)
    spectating.set(role === 'spectator')
    myId.set(socket.id)
    room.set(roomId)
@@ -278,6 +302,9 @@ socket.on('joinedRoom', ({ roomId, role }) => {
 })
 
 socket.on('spectatingRoom', ({ roomId }) => {
+   forgetGameClosed()
+   hostWait.set(null)
+   waiting.set(null)
    spectating.set(true)
    myId.set(socket.id)
    room.set(roomId)
@@ -295,8 +322,8 @@ socket.on('leftRoom', () => {
    spectators.set(0)
    seatedPlayers.set([])
    myId.set(null)
-   waiting.set(null)
    hostWait.set(null)
+   waiting.set(null)
    /*
       An idle prompt belongs to the room, so it goes with it - and so does the
       ability to answer one: the relay will not take an event from a member who
