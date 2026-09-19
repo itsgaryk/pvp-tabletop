@@ -1,6 +1,5 @@
 <script>
-   import { browser } from '$app/environment'
-   import { autoMulligan, scale, zoneBorders } from '$lib/stores/settings.js'
+   import { autoMulligan, zoneBorders } from '$lib/stores/settings.js'
    import { powerMarker, setPowerMarker } from '$lib/stores/player.js'
    import { spectating } from '$lib/stores/connection.js'
    import Popup from './Popup.svelte'
@@ -15,14 +14,6 @@
       opens, so the settings menu gets out of the way by itself.
    */
    let diagnostics
-
-   const setScale = (scale) => {
-      if (browser) {
-         document.documentElement.style.setProperty('--card-scale', scale)
-      }
-   }
-
-   $: setScale($scale)
 
    /* the marker shows on the player's own side of the board, and in the log */
    const markers = [
@@ -80,14 +71,6 @@
          {#if $spectating}
             <p class="hint">A spectator does not show a marker of their own.</p>
          {/if}
-      </div>
-
-      <div class="setting">
-         <div class="title">Card Size</div>
-         <label class="px-1">
-            <input type="range" bind:value={$scale} min="0.4" max="1" step="0.05">
-            Scale
-         </label>
       </div>
 
       <div class="setting">

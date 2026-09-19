@@ -793,24 +793,18 @@
    }
 
    /*
-      Two gaps that the rotated half leaves tighter than they read, opened up in
-      both views so a player and a spectator see the same board. The whole pile
-      moves, not just its card, so its count badge stays on the corner of the
-      card.
+      Three piles used to be nudged off the middle of their zones - the top
+      player's discard up, and the bottom player's deck and lost zone down - to
+      open up two gaps the rotated half leaves tighter than it reads, and to keep
+      the bottom player's cards off the top player's prizes.
 
-      - the top player's discard sat against the hand's bar. That half is
-        mirrored, so its nudge goes the other way round on screen.
-      - the bottom player's deck and lost zone sat against the top player's
-        prizes, which run down to the middle of the board.
+      There is nothing left to nudge. A card is centred in its zone now (see the
+      note over `--card-ratio` in global.css), so a 30px shift is a card sitting
+      30px below the middle of the zone it belongs to: the deck's card hung over
+      the discard's row, and the discard's sat half out of its own. The zones are
+      the spacing now, and the grid's own tracks are what the nudges were making up
+      for.
    */
-   .discard2 > :global(div) {
-      translate: 0 -30px;
-   }
-
-   .deck > :global(div),
-   .lz > :global(div) {
-      translate: 0 30px;
-   }
 
    /*
       minmax(0, …) keeps every zone exactly its share of the grid: `fr` on its own

@@ -22,8 +22,14 @@
 
    --card-width: 136px;
    --card-height: 139px;
-   --card-scale: 1;
-   --scaled-rem: calc(1rem * var(--card-scale))
+   /*
+      The board's own spacing: the gap between the columns of its grid, which is
+      what a bench's slots and a Stadium's cards keep between them. It used to be
+      Settings' card size multiplied out - `--card-scale` - and a card on the board
+      is the size of its zone now (see the note over `--card-ratio` below), so the
+      setting is gone and this is simply a rem.
+   */
+   --scaled-rem: 1rem
 }
 
 :root.dark {
@@ -56,12 +62,12 @@ input[type="text"], textarea {
 
 /*
    A card outside the board - in an inspection, in the deck list, in a dialog - is
-   the size Settings' card size says. A card *on the board* is the size of the zone
-   it is in instead, and each zone says so in its own component: see the note over
-   `--card-ratio` below for the rule they all follow.
+   this wide. A card *on the board* is the size of the zone it is in instead, and
+   each zone says so in its own component: see the note over `--card-ratio` below
+   for the rule they all follow.
 */
 img.card {
-   width: calc(var(--card-width) * var(--card-scale));
+   width: var(--card-width);
    height: auto;
 }
 
@@ -80,7 +86,7 @@ img.card {
    */
    --card-ratio: 0.7241;
    /* the space a card keeps from the cards around it and from its zone's edge */
-   --card-gap: calc(4px * var(--card-scale));
+   --card-gap: 4px;
 }
 
 .primary {
