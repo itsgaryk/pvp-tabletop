@@ -197,14 +197,24 @@ const want = (name) => !only || only === name
 /* --------------------------------------------------------- 0. the lobby --- */
 
 if (want('lobby')) {
-   console.log('\nthe lobby asks for the room code')
+   console.log('\nthe lobby asks in a prompt, for a name and a room')
 
+   /*
+      The name is remembered in localStorage, which survives a page reset - so a
+      check about an empty name has to clear it as well. `reset` does that here,
+      and the rest of the suite keeps the remembered name it would have anyway.
+   */
+   const forgetName = (page) => page.evaluate(`(() => { localStorage.removeItem('player_name'); return true })()`)
+
+   await lobby(alice, 'alice')
+   await forgetName(alice)
    await lobby(alice, 'alice')
 
    const fields = () => alice.evaluate(`[...document.querySelectorAll('input[name]')].map((i) => i.name)`)
    check('the lobby has no Room ID field', !(await fields()).includes('roomId'), JSON.stringify(await fields()))
+   check('and no name field either', !(await fields()).includes('playerName'), JSON.stringify(await fields()))
 
-   /* every lobby button the same size, which is the point of dropping the field */
+   /* every lobby button the same size, which is the point of dropping the fields */
    const boxes = await alice.evaluate(`(() => {
       const box = (text) => {
          const el = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === text)
@@ -224,34 +234,74 @@ if (want('lobby')) {
    check('there is no OK button before a prompt is opened',
       (await alice.evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'OK')`)) === false)
 
-   await alice.clickText('Join Room', { settle: 800 })
-   const prompt = await alice.evaluate(`(() => {
-      const box = document.querySelector('.prompt-dialog')
-      if (!box) return null
-      const r = box.getBoundingClientRect()
-      return {
-         text: box.innerText.replace(/\\s+/g, ' ').trim(),
-         field: Boolean(box.querySelector('input[name="roomId"]')),
-         ok: box.querySelector('.prompt-ok') ? box.querySelector('.prompt-ok').textContent.trim() : null,
-         cancel: box.querySelector('.prompt-cancel') ? box.querySelector('.prompt-cancel').textContent.trim() : null,
-         okDisabled: box.querySelector('.prompt-ok') ? box.querySelector('.prompt-ok').disabled : null,
-         centred: Math.abs((r.left + r.right) / 2 - window.innerWidth / 2) < 4 &&
-            Math.abs((r.top + r.bottom) / 2 - window.innerHeight / 2) < 4
+   /*
+      What the prompt is showing, in the order it is showing it. It waits for the
+      prompt to be up rather than reading at a fixed moment: opening it is a click
+      handler and a Svelte update, and how long that takes depends on everything
+      else the page is doing.
+   */
+   const promptNow = async (page = alice) => {
+      for (let i = 0; i < 20; i++) {
+         const found = await page.evaluate(`(() => {
+            const box = document.querySelector('.prompt-dialog')
+            if (!box) return null
+            const r = box.getBoundingClientRect()
+            const labels = [...box.querySelectorAll('input[name]')].map((i) => i.name)
+            return {
+               text: box.innerText.replace(/\\s+/g, ' ').trim(),
+               fields: labels,
+               nameFirst: labels[0] === 'playerName',
+               ok: box.querySelector('.prompt-ok') ? box.querySelector('.prompt-ok').textContent.trim() : null,
+               cancel: box.querySelector('.prompt-cancel') ? box.querySelector('.prompt-cancel').textContent.trim() : null,
+               okDisabled: box.querySelector('.prompt-ok') ? box.querySelector('.prompt-ok').disabled : null,
+               required: [...box.querySelectorAll('input[name]')].every((i) => i.required),
+               centred: Math.abs((r.left + r.right) / 2 - window.innerWidth / 2) < 4 &&
+                  Math.abs((r.top + r.bottom) / 2 - window.innerHeight / 2) < 4
+            }
+         })()`)
+         if (found) return found
+         await sleep(250)
       }
-   })()`)
+      return null
+   }
 
-   check('Join Room opens a prompt asking for the code', /room/i.test(prompt?.text || ''), prompt?.text)
+   /*
+      Create Room asks for a name and nothing else. `lobby()` clears the
+      remembered name with the session, so this is a browser that has not typed
+      one yet - which is what makes the disabled OK below meaningful.
+   */
+   await alice.clickText('Create Room', { settle: 800 })
+   const createPrompt = await promptNow()
+   check('Create Room opens a prompt for the name', /create a room/i.test(createPrompt?.text || ''), createPrompt?.text)
+   check('with only a name field', JSON.stringify(createPrompt?.fields) === JSON.stringify(['playerName']), JSON.stringify(createPrompt?.fields))
+   check('which is required', createPrompt?.required === true, JSON.stringify(createPrompt))
+   check('and OK is disabled until it has something in it', createPrompt?.okDisabled === true, JSON.stringify(createPrompt))
+   await alice.clickText('Cancel', { settle: 800, kinds: 'button' })
+   check('Cancel closes it', (await alice.evaluate(`document.querySelector('.prompt-dialog') === null`)) === true)
+
+   /* Join Room asks for the name first, then the code */
+   await alice.clickText('Join Room', { settle: 800 })
+   const prompt = await promptNow()
+
+   check('Join Room opens a prompt asking for a room', /room/i.test(prompt?.text || ''), prompt?.text)
    check('it is centred on the screen', prompt?.centred === true, JSON.stringify(prompt))
-   check('with a Room ID field', prompt?.field === true, JSON.stringify(prompt))
+   check('with a name field and a Room ID field',
+      JSON.stringify(prompt?.fields) === JSON.stringify(['playerName', 'roomId']), JSON.stringify(prompt?.fields))
+   check('the name sits above the room code', prompt?.nameFirst === true, JSON.stringify(prompt?.fields))
+   check('both are required', prompt?.required === true, JSON.stringify(prompt))
    check('an OK and a Cancel', prompt?.ok === 'OK' && prompt?.cancel === 'Cancel', JSON.stringify(prompt))
-   check('and OK is disabled until something is typed', prompt?.okDisabled === true, JSON.stringify(prompt))
+   check('and OK is disabled until both have something in them', prompt?.okDisabled === true, JSON.stringify(prompt))
+
+   /* a name alone is not enough for a join */
+   await alice.setInput('playerName', 'Alice')
+   await sleep(300)
+   check('filling in only the name leaves OK disabled', (await promptNow())?.okDisabled === true, JSON.stringify(await promptNow()))
 
    /* Cancel leaves the lobby alone */
    await alice.clickText('Cancel', { settle: 800, kinds: 'button' })
    check('Cancel closes it', (await alice.evaluate(`document.querySelector('.prompt-dialog') === null`)) === true)
    check('and the lobby is still the lobby', (await alice.counts()).mode === 'lobby', (await alice.counts()).mode)
 
-   /* spectating goes through the same prompt, and does watch a real room */
    const room = await alice.createRoom('Alice')
    console.log(`  room ${room}`)
 
@@ -266,14 +316,21 @@ if (want('lobby')) {
    /* a browser that has been somewhere else has to be back in the lobby first */
    await lobby(bob, 'bob')
    await bob.clickText('Spectate Game', { settle: 800 })
-   check('Spectate Game asks too', (await bob.evaluate(`document.querySelector('.prompt-dialog') !== null`)) === true)
+   const spectatePrompt = await promptNow(bob)
+   check('Spectate Game asks for a name and a code too',
+      JSON.stringify(spectatePrompt?.fields) === JSON.stringify(['playerName', 'roomId']),
+      JSON.stringify(spectatePrompt))
+   check('and the name it remembers is filled in, not typed again',
+      (await bob.evaluate(`document.querySelector('input[name="playerName"]').value.length > 0`)) === true)
    await bob.answerPrompt({ name: 'Bob', room })
    await sleep(2500)
    check('and it lands in the room as a watcher', (await bob.counts()).mode === 'spectating', (await bob.counts()).mode)
 
+   /* Alice's name was kept, so her next prompt opens with it filled in */
    await bob.forgetSession()
    await lobby(bob, 'bob')
-   check('the field is gone again once back in the lobby', !(await fields()).includes('roomId'), JSON.stringify(await fields()))
+   check('the fields are gone again once back in the lobby',
+      !(await fields()).includes('roomId') && !(await fields()).includes('playerName'), JSON.stringify(await fields()))
 }
 
 /* ---------------------------------------------------------- 1. leaving --- */

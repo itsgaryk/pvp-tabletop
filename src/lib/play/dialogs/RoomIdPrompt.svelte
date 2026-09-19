@@ -1,56 +1,70 @@
 <script>
    /*
-      The room code, asked for when it is needed rather than held in a box in the
-      lobby.
+      The lobby's one prompt: who you are, and (for joining or watching) which
+      room.
 
-      A code is one short string used once, and a text field sitting in the lobby
-      is a field the rest of the lobby has to be arranged around - which is what
-      this replaces: joining and spectating are buttons the same size as every
-      other button, and the code is asked for by the prompt that actually needs it.
+      It asks for what the action actually needs rather than having the lobby hold
+      it in a box. A name is typed once and remembered, so it opens prefilled on
+      every visit after the first; a room code is one short string used once, so
+      it opens empty every time.
 
       Centred over the screen, like the room's own dialogs, with OK and Cancel.
-      OK is disabled until something is typed, so an empty confirmation cannot
-      send the lobby looking for a room called "".
+      OK is disabled until what it needs has been typed - an empty name would show
+      as nobody in chat and on the other half's nameplate, and an empty code would
+      send the lobby looking for a room with no name.
 
-      The code is upper-cased as it is typed: the relay normalizes room ids, so a
-      code typed in lower case works either way, but showing it back the way the
-      lobby does everywhere else means a mistyped code is visible while it is
-      being typed rather than only after the join fails.
+      The name field is first, and it is the one that is always there: create,
+      join and spectate all need it, and only the last two need a code.
    */
    import { tick, createEventDispatcher } from 'svelte'
+   import { playerName } from '$lib/stores/settings.js'
 
    const dispatch = createEventDispatcher()
 
-   let open = false
-   let code = ''
-   let field
-   let what = 'join'
-
-   export function ask (kind = 'join') {
-      what = kind
-      code = ''
-      open = true
-      /* the field is the only thing here worth focusing, and it is not there yet */
-      tick().then(() => field?.focus())
+   const TITLES = {
+      create: 'Create a room',
+      join: 'Which room do you want to join?',
+      spectate: 'Which room do you want to watch?',
+      rejoin: 'Rejoin your room?'
    }
 
+   let open = false
+   let kind = 'join'
+   let name = ''
+   let code = ''
+   let nameField
+   let codeField
+
+   export function ask (what = 'join') {
+      kind = TITLES[what] ? what : 'join'
+      name = playerName.get() || ''
+      code = ''
+      open = true
+      /* the first thing this action needs, whether or not it already has it */
+      tick().then(() => (name.trim() ? codeField : nameField)?.focus())
+   }
+
+   $: needsCode = kind === 'join' || kind === 'spectate'
+   $: ready = Boolean(name.trim()) && (!needsCode || Boolean(code.trim()))
+
    function confirm () {
+      const who = name.trim().slice(0, 24)
       const roomId = code.trim().toUpperCase()
-      if (!roomId) return
+      if (!who || (needsCode && !roomId)) return
+
+      /* remembered, so the next prompt opens on it */
+      playerName.set(who)
       open = false
-      dispatch('confirmed', { roomId, what })
+      dispatch('confirmed', { name: who, roomId, what: kind })
    }
 
    function cancel () {
       open = false
-      dispatch('cancelled', { what })
+      dispatch('cancelled', { what: kind })
    }
 
    function onKeydown (e) {
-      if (e.key === 'Enter') {
-         e.preventDefault()
-         confirm()
-      } else if (e.key === 'Escape') {
+      if (e.key === 'Escape') {
          e.preventDefault()
          cancel()
       }
@@ -67,32 +81,48 @@
          class="prompt-dialog"
          role="dialog"
          aria-modal="true"
-         aria-labelledby="room-id-text"
+         aria-labelledby="prompt-title"
          on:click|stopPropagation
       >
-         <p id="room-id-text" class="prompt-title">
-            {what === 'spectate' ? 'Which room do you want to watch?' : 'Which room do you want to join?'}
-         </p>
+         <p id="prompt-title" class="prompt-title">{TITLES[kind]}</p>
 
-         <label class="prompt-field">
-            <span>Room ID</span>
-            <input
-               bind:this={field}
-               bind:value={code}
-               on:keydown={onKeydown}
-               type="text"
-               name="roomId"
-               placeholder="Room ID"
-               maxlength="8"
-               autocomplete="off"
-               spellcheck="false"
-            >
-         </label>
+         <form class="prompt-form" on:submit|preventDefault={confirm} on:keydown={onKeydown}>
+            <label class="prompt-field">
+               <span>Your Name</span>
+               <input
+                  bind:this={nameField}
+                  bind:value={name}
+                  type="text"
+                  name="playerName"
+                  placeholder="Your Name"
+                  maxlength="24"
+                  autocomplete="off"
+                  required
+               >
+            </label>
 
-         <div class="prompt-buttons">
-            <button class="prompt-ok" disabled={!code.trim()} on:click={confirm}>OK</button>
-            <button class="prompt-cancel" on:click={cancel}>Cancel</button>
-         </div>
+            {#if needsCode}
+               <label class="prompt-field">
+                  <span>Room ID</span>
+                  <input
+                     bind:this={codeField}
+                     bind:value={code}
+                     type="text"
+                     name="roomId"
+                     placeholder="Room ID"
+                     maxlength="8"
+                     autocomplete="off"
+                     spellcheck="false"
+                     required
+                  >
+               </label>
+            {/if}
+
+            <div class="prompt-buttons">
+               <button type="submit" class="prompt-ok" disabled={!ready}>OK</button>
+               <button type="button" class="prompt-cancel" on:click={cancel}>Cancel</button>
+            </div>
+         </form>
       </div>
    </div>
 {/if}
@@ -121,6 +151,10 @@
       @apply text-lg font-bold;
    }
 
+   .prompt-form {
+      @apply flex flex-col items-center gap-3 w-full;
+   }
+
    .prompt-field {
       @apply flex flex-col items-center gap-1 w-full;
    }
@@ -131,15 +165,20 @@
    }
 
    .prompt-field input {
-      @apply w-full p-2 text-center rounded-lg uppercase;
+      @apply w-full p-2 text-center rounded-lg;
       border: 1px solid var(--bg-color-three);
       background: var(--input-color);
       color: var(--text-color);
+   }
+
+   /* a room code reads as a code: spaced out and upper case */
+   .prompt-field input[name="roomId"] {
+      @apply uppercase;
       letter-spacing: 0.15em;
    }
 
    .prompt-buttons {
-      @apply flex gap-2;
+      @apply flex gap-2 mt-1;
    }
 
    .prompt-ok {
