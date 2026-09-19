@@ -87,6 +87,17 @@ img.card {
    --card-ratio: 0.7241;
    /* the space a card keeps from the cards around it and from its zone's edge */
    --card-gap: 4px;
+
+   /*
+      A card attached to a Pokemon in play is fanned out to the right of the card it
+      is under and lifted off that card's bottom edge by one of these. The two cards
+      are the same size, so the lift is also how far the attached card reaches *above*
+      the top of the card it is under - which is why a zone that scrolls has to spend
+      it as room above the slot: `overflow-x: auto` makes the other axis `auto` too,
+      and the overhang was drawn with its top cut off (see the bench).
+   */
+   --attach-lift-energy: 17px;
+   --attach-lift-tool: 34px;
 }
 
 .primary {

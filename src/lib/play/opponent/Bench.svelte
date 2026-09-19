@@ -79,9 +79,15 @@
 
    .bench-row {
       display: flex;
-      align-items: center;
+      /* the near half's row, and the reasons for both of these, in full:
+         board/Bench.svelte */
+      align-items: flex-end;
       gap: var(--scaled-rem);
       width: max-content;
       min-width: 100%;
+   }
+
+   .bench-row > :global(.slot) {
+      margin-top: var(--attach-lift, 0px);
    }
 </style>
