@@ -183,11 +183,12 @@
       if ($spectating) return
       /*
          A shortcut must not fire while somebody is typing, or Enter in the chat
-         box would end the turn, and not while a button has focus, or Enter would
-         do both what the button does and what the shortcut does. The same guard
+         box would end the turn, and not on the two keys that press a focused
+         button, or Enter would do both what the button does and what the shortcut
+         does. The rest of the keyboard still belongs to the player: the same guard
          is on the board's own shortcuts (see $lib/util/typing.js).
       */
-      if (isTyping(e.target)) return
+      if (isTyping(e.target, e)) return
 
       const key = e.key.toLowerCase()
 

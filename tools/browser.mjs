@@ -279,32 +279,31 @@ class Page {
    }
 
    /* the app's own flows, so a check reads like a game rather than like DOM work */
+   /*
+      The lobby's one prompt asks for the player's name, and for a room code when
+      the action needs one - so all three of these are the same three steps:
+      press the button, fill in what it asks for, confirm.
+   */
    async createRoom (name = 'Player') {
-      await this.setInput('playerName', name)
-      await this.clickText('Create Room', { settle: 4000 })
+      await this.clickText('Create Room', { settle: 800 })
+      await this.answerPrompt({ name })
       return this.roomCode()
    }
 
-   /*
-      Joining and spectating ask for the room code in a prompt rather than taking
-      it from a field in the lobby, so both walk the same three steps: press the
-      button, answer the prompt, wait for the room.
-   */
    async joinRoom (room, name = 'Player') {
-      await this.setInput('playerName', name)
       await this.clickText('Join Room', { settle: 800 })
-      await this.answerRoomPrompt(room)
+      await this.answerPrompt({ name, room })
    }
 
    async spectate (room, name = 'Watcher') {
-      await this.setInput('playerName', name)
       await this.clickText('Spectate Game', { settle: 800 })
-      await this.answerRoomPrompt(room)
+      await this.answerPrompt({ name, room })
    }
 
-   /* type the code into the prompt and confirm it, as a player would */
-   async answerRoomPrompt (room) {
-      await this.setInput('roomId', room)
+   /* fill in what the prompt is asking for, then confirm it */
+   async answerPrompt ({ name = null, room = null } = {}) {
+      if (name !== null) await this.setInput('playerName', name)
+      if (room !== null) await this.setInput('roomId', room)
       await this.clickText('OK', { settle: 4000, kinds: 'button' })
    }
 

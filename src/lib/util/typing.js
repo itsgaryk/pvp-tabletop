@@ -7,14 +7,32 @@
    page has a text field in it: a room code, or the timer's minutes and seconds,
    where the digit keys are the whole point of the field.
 
-   A button counts as typing here because Enter activates it, and without that a
-   focused "End Turn" would both end the turn and trigger whatever shortcut Enter
-   carries.
+   A button is a narrower case than a field, and it used to be treated as the same
+   thing - which swallowed a modifier shortcut wherever a button happened to have
+   focus. Clicking Setup leaves it focused, so Ctrl+V did nothing at all until the
+   player clicked somewhere else first. On a button, only the two keys that press
+   it belong to the button: everything else is still the board's, so Ctrl+V opens
+   the deck whether or not a button is focused.
 */
-export function isTyping (target) {
+export function isTyping (target, e = null) {
    if (!target || !target.tagName) return false
 
    const tag = String(target.tagName).toLowerCase()
-   return tag === 'input' || tag === 'textarea' || tag === 'select' ||
-      tag === 'button' || target.isContentEditable === true
+
+   if (tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable === true) {
+      return true
+   }
+
+   /*
+      Enter and Space are how a focused button is pressed, so a shortcut on either
+      would do both what the button does and what the shortcut does. Without the
+      event there is nothing to judge, so it is treated as the button's - the
+      quieter of the two mistakes.
+   */
+   if (tag === 'button') {
+      if (!e) return true
+      return e.key === 'Enter' || e.key === ' ' || e.code === 'Space'
+   }
+
+   return false
 }
