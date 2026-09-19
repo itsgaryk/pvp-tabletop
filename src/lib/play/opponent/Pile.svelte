@@ -3,7 +3,7 @@
    import { ctrlA } from '$lib/actions/customEvents.js'
    import { dnd } from '$lib/dnd/actions.js'
    import { source, draggedCard } from '$lib/dnd/store.js'
-   import { cardSelection, moveSelection, resetSelection, selectPile } from '$lib/stores/player.js'
+   import { cardSelection, resetSelection, selectPile } from '$lib/stores/player.js'
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import {
       solo, soloMoveCard, soloCardToPlay,
@@ -55,11 +55,8 @@
       over the same way the other piles accept it.
    */
    /* only the far half's own cards land here: nothing crosses between halves */
-   /* the far half's own cards land here - and, on the table, yours too: it is a shared zone */
-   const shared = () => pile === defaultOpponent.table
    const allowDrop = () => $solo && $source && $source !== pile && (
       onOpponentHalf($source) ||
-      shared() ||
       ($source === 'slot' && onOpponentSlot($draggedCard))
    )
 
@@ -80,12 +77,7 @@
       const cards = [ ...$cardSelection ]
       if (!cards.length) return
 
-      /* a card of yours dropped on their table: it goes there, since the table is shared */
-      if (!onOpponentHalf($source)) {
-         moveSelection(pile)
-         cardSelection.clear()
-         return
-      }
+      if (!onOpponentHalf($source)) return
 
       for (const card of cards) {
          if (pile === defaultOpponent.bench) soloCardToPlay($source, card, 'bench')

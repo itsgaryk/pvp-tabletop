@@ -15,16 +15,28 @@
 
    import { dnd } from '$lib/dnd/actions.js'
    import { source, draggedCard } from '$lib/dnd/store.js'
-   import { solo, onOpponentSlot } from '$lib/stores/solo.js'
+   import { solo, onOpponentSlot, onOpponentHalf } from '$lib/stores/solo.js'
 
    /*
-      A card of the player's own, or - on the table, which both halves share - one
-      of the far half's. A Pokemon in play on the far half is not: moving one of
-      those is that half's own business (its piles accept the drop), and dropping
-      it here would leave the far half still holding what it carries.
+      Only a card of this player's own lands in one of this player's piles.
+
+      In a room that is not a question: the far half belongs to somebody else and
+      nothing of theirs is draggable here. In solo both halves are played by the
+      same person, and every one of the far half's zones is draggable - so without
+      this a card dragged out of the opponent's hand went into the player's own
+      hand, discard, deck or prizes, which is a card crossing the table.
+
+      A Pokemon in play on the far half is refused too, and by a different check:
+      moving one of those is that half's own business, and dropping it here would
+      leave the far half still holding what it carries.
+
+      The two shared zones are the exception, and they are not this pile's: the
+      table and the stadium each accept their own half's cards, so a card played
+      into a shared cell lands on the half that played it (see opponent/Pile.svelte
+      and the two Stadiums).
    */
    const allowDrop = () => $source && $source !== pile &&
-      !($solo && $source === 'slot' && onOpponentSlot($draggedCard))
+      !($solo && (onOpponentHalf($source) || ($source === 'slot' && onOpponentSlot($draggedCard))))
 
    function onDragDrop () {
       moveSelection(pile)
