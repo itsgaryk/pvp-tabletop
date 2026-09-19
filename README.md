@@ -536,8 +536,9 @@ header comment has the commands.
 Its `panel` section covers the board panel's own changes, which nothing else can
 see because none of them cross the wire — the Hide Pokémon glow that stays until
 it is clicked, the clock in both directions, the Chat tab lit by a message that
-arrived while the log was showing, and both markers at once, each with its own
-click, its own used state and its own log line:
+arrived while the log was showing, the zone names that come with the zone
+outlines, and both markers at once, each with its own click, its own used state
+and its own log line:
 
 ```sh
 node tools/browser-check.mjs --only panel     # just that section
