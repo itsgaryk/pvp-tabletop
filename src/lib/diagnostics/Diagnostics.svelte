@@ -277,7 +277,7 @@
             <h2>App store</h2>
             <div class="row"><span>room</span><span>{snapshot.view.room || 'none'} {snapshot.view.roomError ? `· last room error: ${snapshot.view.roomError}` : ''}</span></div>
             <div class="row"><span>mode</span><span>
-               {snapshot.view.solo ? 'solo (no relay, no room)' : snapshot.view.spectating ? 'spectating' : snapshot.view.room ? 'playing' : 'lobby'}
+               {snapshot.view.solo ? 'solo (no relay, no room)' : snapshot.view.spectating ? 'spectating' : snapshot.view.room ? 'playing' : 'main menu'}
             </span></div>
             <div class="row"><span>spectators</span><span>{snapshot.view.spectators}</span></div>
             <div class="row"><span>connected / idle</span><span>{json(snapshot.view.connected)} / {json(snapshot.view.idle)}</span></div>

@@ -197,7 +197,7 @@ const want = (name) => !only || only === name
 /* --------------------------------------------------------- 0. the lobby --- */
 
 if (want('lobby')) {
-   console.log('\nthe lobby asks in a prompt, for a name and a room')
+   console.log('\nthe main menu: the logo, and the buttons beside it')
 
    /*
       The name is remembered in localStorage, which survives a page reset - so a
@@ -211,10 +211,114 @@ if (want('lobby')) {
    await lobby(alice, 'alice')
 
    const fields = () => alice.evaluate(`[...document.querySelectorAll('input[name]')].map((i) => i.name)`)
-   check('the lobby has no Room ID field', !(await fields()).includes('roomId'), JSON.stringify(await fields()))
+   check('the menu has no Room ID field', !(await fields()).includes('roomId'), JSON.stringify(await fields()))
    check('and no name field either', !(await fields()).includes('playerName'), JSON.stringify(await fields()))
 
-   /* every lobby button the same size, which is the point of dropping the fields */
+   /*
+      The menu is the logo and the buttons and nothing else: no relay health, no
+      "checking relay", no status line, no last-fault note, no divider rules.
+   */
+   const menuOnly = await alice.evaluate(`(() => {
+      const menu = document.querySelector('.menu')
+      if (!menu) return null
+      const logo = menu.querySelector('img.menu-logo')
+      return {
+         children: [...menu.children].map((el) => el.tagName.toLowerCase() + '.' + String(el.className).split(' ')[0]),
+         logo: logo ? logo.getAttribute('src') : null,
+         logoLoaded: logo ? logo.naturalWidth > 0 : false,
+         buttons: [...menu.querySelectorAll('button')].map((b) => b.textContent.trim()),
+         rules: menu.querySelectorAll('hr').length
+      }
+   })()`)
+
+   check('the menu is there', menuOnly !== null)
+   check('with the logo on it, and the logo actually loaded',
+      menuOnly?.logo === '/logo.webp' && menuOnly?.logoLoaded === true, JSON.stringify({ src: menuOnly?.logo, loaded: menuOnly?.logoLoaded }))
+   check('and the four buttons', JSON.stringify(menuOnly?.buttons) === JSON.stringify(['Play Solo', 'Create Room', 'Join Room', 'Spectate Game']), JSON.stringify(menuOnly?.buttons))
+   /*
+      And nothing else: no relay health, no "checking relay", no status line, no
+      last-fault note, no divider rules. Read off the element rather than its text
+      because the logo is an image and contributes no text at all.
+   */
+   check('and nothing else on the window',
+      JSON.stringify(menuOnly?.children) === JSON.stringify(['img.menu-logo', 'div.menu-actions']) && menuOnly?.rules === 0,
+      JSON.stringify(menuOnly?.children))
+
+   /*
+      The rest of the page stands aside too. The settings cog and Edit Deck belong
+      to a board, and there is no board behind the menu - so the window is the
+      logo, the buttons, and nothing else at all.
+   */
+   const elsewhere = await alice.evaluate(`(() => {
+      const text = document.body.innerText
+      return {
+         editDeck: /Edit Deck/.test(text),
+         cog: [...document.querySelectorAll('button[aria-label="Settings"]')].length,
+         board: document.querySelector('.gameboard') !== null,
+         buttons: [...document.querySelectorAll('button')].map((b) => b.textContent.trim()).filter(Boolean)
+      }
+   })()`)
+
+   check('with no Edit Deck, no settings cog and no board behind it',
+      elsewhere.editDeck === false && elsewhere.cog === 0 && elsewhere.board === false,
+      JSON.stringify(elsewhere))
+   check('so the only buttons on the window are the four',
+      JSON.stringify(elsewhere.buttons) === JSON.stringify(['Play Solo', 'Create Room', 'Join Room', 'Spectate Game']),
+      JSON.stringify(elsewhere.buttons))
+
+   /* the logo is to the left of the buttons, which sit in one column */
+   const layout = await alice.evaluate(`(() => {
+      /*
+         Measured on the elements themselves, not on boxes read earlier: a field
+         that took focus scrolled the panel, and a rectangle captured before that
+         is stale - which is what made this look off-centre when it was not.
+      */
+      const logo = document.querySelector('.menu-logo')
+      const actions = document.querySelector('.menu-actions')
+      if (!logo || !actions) return null
+      const l = logo.getBoundingClientRect()
+      const a = actions.getBoundingClientRect()
+      const buttons = [...actions.querySelectorAll('button')].map((b) => {
+         const r = b.getBoundingClientRect()
+         return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), height: Math.round(r.height) }
+      })
+      const left = Math.min(l.left, a.left)
+      const right = Math.max(l.right, a.right)
+      const top = Math.min(l.top, a.top)
+      const bottom = Math.max(l.bottom, a.bottom)
+      return {
+         logoRight: Math.round(l.right),
+         actionsLeft: Math.round(a.left),
+         buttons,
+         centreOffsetX: Math.abs((left + right) / 2 - window.innerWidth / 2),
+         /*
+            Vertically the *pair* is not what is centred - each item is centred on
+            the row, and the row on the window - so the combined box can sit a few
+            pixels off while both are exactly where they should be. The tolerance
+            is for that, not for the layout being loose.
+         */
+         centreOffsetY: Math.abs((top + bottom) / 2 - window.innerHeight / 2),
+         width: window.innerWidth,
+         height: window.innerHeight
+      }
+   })()`)
+
+   check('the logo is to the left of the buttons', layout !== null && layout.logoRight <= layout.actionsLeft, JSON.stringify(layout && { logoRight: layout.logoRight, actionsLeft: layout.actionsLeft }))
+   check('the pair is centred in the window', Boolean(layout) && layout.centreOffsetX < 3 && layout.centreOffsetY < 12, JSON.stringify(layout && { x: layout.centreOffsetX, y: layout.centreOffsetY }))
+
+   /* evenly spaced, and aligned with one another */
+   const tops = layout?.buttons.map((b) => b.top)
+   const heights = layout?.buttons.map((b) => b.height)
+   const gaps = []
+   for (let i = 1; i < (layout?.buttons.length || 0); i++) gaps.push(layout.buttons[i].top - layout.buttons[i - 1].top)
+
+   check('the buttons are evenly spaced down the column',
+      gaps.length === 3 && new Set(gaps).size === 1 && gaps[0] > 0, JSON.stringify(gaps))
+   check('and every one the same height in the same column',
+      new Set(heights || []).size === 1 && new Set((layout?.buttons || []).map((b) => b.left)).size === 1 && new Set((layout?.buttons || []).map((b) => b.right)).size === 1,
+      JSON.stringify(layout?.buttons))
+
+   /* every button the same size, which is the point of dropping the fields */
    const boxes = await alice.evaluate(`(() => {
       const box = (text) => {
          const el = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === text)
@@ -300,7 +404,7 @@ if (want('lobby')) {
    /* Cancel leaves the lobby alone */
    await alice.clickText('Cancel', { settle: 800, kinds: 'button' })
    check('Cancel closes it', (await alice.evaluate(`document.querySelector('.prompt-dialog') === null`)) === true)
-   check('and the lobby is still the lobby', (await alice.counts()).mode === 'lobby', (await alice.counts()).mode)
+   check('and the menu is still the menu', (await alice.counts()).mode === 'lobby', (await alice.counts()).mode)
 
    const room = await alice.createRoom('Alice')
    console.log(`  room ${room}`)
@@ -329,7 +433,7 @@ if (want('lobby')) {
    /* Alice's name was kept, so her next prompt opens with it filled in */
    await bob.forgetSession()
    await lobby(bob, 'bob')
-   check('the fields are gone again once back in the lobby',
+   check('the fields are gone again once back at the menu',
       !(await fields()).includes('roomId') && !(await fields()).includes('playerName'), JSON.stringify(await fields()))
 }
 

@@ -27,12 +27,14 @@
    let copied = false
    let copiedTimer = null
 
-   /* Is the game relay usable? This distinguishes "the server is not
-      configured" from "you have not joined a room yet", which is the
-      difference that matters on a fresh Vercel deploy with no database. */
+   /*
+      Is the game relay usable? Checked once when the window opens, because it is
+      the one thing that makes every button on the menu incapable of working - a
+      fresh Vercel deploy with no database attached. It is not shown on the menu;
+      it is what an action says when it fails, which is where it is any use.
+   */
    let relay = { state: 'checking', error: null }
    let busy = false
-   let failure = null
 
    /* Lobby status for the code being typed: once both seats are taken the
       lobby is locked and only spectating is offered. */
@@ -84,50 +86,55 @@
    /* the relay's own message is more use than "could not", so show it too */
    const why = (fallback) => ($roomError ? `${fallback} (${$roomError})` : fallback)
 
+   /*
+      What the menu's buttons do, and what they say when they cannot. Each answers
+      the prompt with true when it worked, or with the sentence to show on the
+      form when it did not - the prompt is where the values were typed, so it is
+      where a failure belongs.
+   */
    async function create () {
       busy = true
-      failure = null
       const res = await createRoom()
-      if (!res) failure = why('Could not create a room.')
       busy = false
+      if (res) return true
+      return relay.state === 'error'
+         ? `Could not create a room. (${relay.error})`
+         : why('Could not create a room.')
    }
 
    /*
-      All three of the lobby's actions start by asking: who you are, and for two
+      All three of the menu's actions start by asking: who you are, and for two
       of them which room. One prompt, and which button opened it is what decides
       what happens to what comes back.
    */
    function askForRoom (what) {
-      failure = null
       prompt.ask(what)
    }
 
-   async function onRoomChosen (event) {
-      roomId = event.detail.roomId
-
-      if (event.detail.what === 'create') await create()
-      else if (event.detail.what === 'spectate') await spectate()
-      else await join()
+   async function runRoomAction ({ name, roomId: id, what }) {
+      roomId = id
+      if (what === 'create') return create()
+      if (what === 'spectate') return spectate()
+      return join()
    }
 
    async function join () {
       busy = true
-      failure = null
       const res = await joinRoom(roomId)
-      if (!res) {
-         failure = status?.locked
-            ? 'That lobby is locked - both seats are taken. Spectate instead.'
-            : why(`Could not join ${roomId.toUpperCase()}.`)
-      }
       busy = false
+      if (res) return true
+
+      /* the room being full is the one failure worth its own sentence */
+      if (status?.locked) return 'That lobby is locked - both seats are taken. Spectate instead.'
+      return why(`Could not join ${roomId.toUpperCase()}.`)
    }
 
    async function spectate () {
       busy = true
-      failure = null
       const res = await spectateRoom(roomId)
-      if (!res) failure = why(`Could not spectate ${roomId.toUpperCase()}.`)
       busy = false
+      if (res) return true
+      return why(`Could not spectate ${roomId.toUpperCase()}.`)
    }
 
    /*
@@ -172,6 +179,15 @@
       return () => clearInterval(ticker)
    })
 
+   /*
+      The main menu is not a sidebar. The panel beside the board is a column, and
+      the menu is an arrangement across the window - so while it is up the panel
+      takes the room instead, and the board behind it stands aside. Nothing else
+      about the panel changes, and the moment there is a room or solo game it is
+      back to being the sidebar it always was.
+   */
+   $: onMenu = !$room && !$solo
+
    const pad = (value) => String(value).padStart(2, '0')
 
    function countdown (deadlineAt) {
@@ -189,52 +205,35 @@
    }
 </script>
 
-<div class="p-4 min-w-[350px] w-[min(20%,500px)] flex flex-col h-screen">
+<div class="panel" class:menu-open={onMenu}>
    {#if !$room && !$solo}
-      {#if relay.state === 'error'}
-         <div class="bg-red-500 text-white text-sm rounded-md p-3 mb-4">
-            <div class="font-bold mb-1">Game relay unavailable</div>
-            <div class="text-xs break-words">{relay.error}</div>
-            <div class="text-xs mt-2 opacity-90">
-               On Vercel, attach a Redis/KV integration to this project and redeploy.
-            </div>
+      <!--
+         The main menu is the logo and the buttons: nothing else is on the window.
+         The relay's own health, the lobby's status line and the last relay fault
+         are all deliberately not here - a menu is not the place to report on the
+         transport, and the two places that matter (joining a room, and the
+         diagnostics panel) still say when something is wrong.
+      -->
+      <div class="menu">
+         <img class="menu-logo" src="/logo.webp" alt="PVP Tabletop - Pokémon TCG multiplayer">
+
+         <div class="menu-actions">
+            <!--
+               Playing both sides yourself needs no room and no relay, so it comes
+               first: it is the shortest way onto a board.
+            -->
+            <button class="connect" on:click={startSolo}>Play Solo</button>
+
+            <!--
+               No name field and no Room ID field: the prompt each button opens
+               asks for what that button needs, so these are plain buttons and all
+               of them are the same size as each other.
+            -->
+            <button class="connect" on:click={() => askForRoom('create')} disabled={busy}>Create Room</button>
+            <button class="connect" on:click={() => askForRoom('join')} disabled={busy || status?.locked}>Join Room</button>
+            <button class="connect" on:click={() => askForRoom('spectate')} disabled={busy}>Spectate Game</button>
          </div>
-      {:else if relay.state === 'checking'}
-         <div class="flex gap-3 items-center justify-center text-sm mb-4">
-            checking relay <Spinner />
-         </div>
-      {/if}
-
-      <div class="flex flex-col justify-center gap-3">
-         <!--
-            Playing both sides yourself needs no room and no relay, so it comes
-            before the name: it is the shortest way onto a board.
-         -->
-         <button class="connect" on:click={startSolo}>Play Solo</button>
-         <hr>
-
-         <!--
-            No name field and no Room ID field: the prompt each button opens asks
-            for what that button needs, so these are plain buttons and all of them
-            are the same size as each other.
-         -->
-         <button class="connect" on:click={() => askForRoom('create')} disabled={busy}>Create Room</button>
-         <hr>
-         <button class="connect" on:click={() => askForRoom('join')} disabled={busy || status?.locked}>Join Room</button>
-         <button class="connect" on:click={() => askForRoom('spectate')} disabled={busy}>Spectate Game</button>
-
-         {#if status?.locked}
-            <div class="text-xs text-center text-[var(--text-color-two)]">
-               This lobby is full - {status.players}/{status.maxPlayers} players.
-               You can watch as a spectator.
-            </div>
-         {/if}
-
-         {#if failure}
-            <div class="text-sm text-red-500">{failure}</div>
-         {/if}
       </div>
-
    {:else}
       <div class="flex flex-col gap-1 mb-5">
          {#if !$connected && !$solo}
@@ -337,15 +336,71 @@
 </div>
 
 <!--
-   The room-code prompt, centred over the lobby. It is a sibling of the panel
-   rather than inside it, so the dialog is not laid out by the lobby's column.
+   The menu's prompt, centred over the window. It is a sibling of the panel rather
+   than inside it, so the dialog is not laid out by the panel's column.
 -->
-<RoomIdPrompt bind:this={prompt} on:confirmed={onRoomChosen} />
+<RoomIdPrompt bind:this={prompt} run={runRoomAction} />
 
 <style>
+   /*
+      The panel beside the board. It is a sidebar while a game is going, and the
+      whole window while the main menu is up - see `onMenu`.
+   */
+   .panel {
+      @apply p-4 min-w-[350px] w-[min(20%,500px)] flex flex-col h-screen;
+   }
+
+   /*
+      The main menu is not a sidebar. The panel beside the board is a column, and
+      the menu is an arrangement across the window - so while it is up the panel
+      takes the room instead, and the board behind it stands aside. Nothing else
+      about the panel changes, and the moment there is a room or solo game it is
+      back to being the sidebar it always was.
+
+      Its padding goes with it: the padding is the sidebar's, and a centred
+      arrangement laid out inside it lands off-centre by exactly that much.
+   */
+   .panel.menu-open {
+      @apply w-auto flex-1 p-0;
+   }
+
+   /*
+      The main menu: the logo, and the buttons to the right of it. Centred in the
+      window and the only thing on it, so the two are one arrangement rather than
+      something in the corner of a panel. It stacks - logo above buttons - when
+      there is not room for the two side by side.
+
+      `flex: 0 0 auto` on both is load-bearing: a flex item shrinks and wraps
+      before its sibling does, so without it the logo took the whole row and the
+      buttons ended up underneath - which put the buttons beside nothing rather
+      than beside the logo.
+   */
+   .menu {
+      @apply flex-1 flex flex-wrap items-center justify-center gap-8;
+   }
+
+   .menu-logo {
+      @apply h-auto;
+      flex: 0 0 auto;
+      width: min(20rem, 45vw);
+      max-height: 70vh;
+      object-fit: contain;
+      filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.5));
+   }
+
+   /*
+      The buttons are one column of equal widths with the same gap between each
+      pair, which is what lines them up and spaces them evenly.
+   */
+   .menu-actions {
+      @apply flex flex-col gap-3;
+      flex: 0 0 auto;
+      width: min(16rem, 45vw);
+   }
+
    button.connect {
       @apply py-2 px-3 font-bold text-white bg-[var(--primary-color)] rounded-lg;
-      /* every lobby button is the same size, the width of the panel it sits in */
+      /* every menu button is the same size, the width of the column they sit in */
       @apply w-full;
    }
 

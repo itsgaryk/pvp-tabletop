@@ -10,8 +10,8 @@
       its answer rather than a second opinion about what happened.
 
       Either way everyone else still in it is told, and this is what they see:
-      the game is closed, and they are back in the lobby behind it, so the only
-      thing to do is acknowledge that.
+      the game is closed, and they are back at the main menu behind it, so the
+      only thing to do is acknowledge that.
 
       Centred, over the board, with nothing else to click: the board behind it is
       already empty, so the dialog is not hiding a decision - the OK button is
@@ -31,7 +31,7 @@
       idle: 'Room closed: nobody answered the idle prompt',
       restart: 'Room closed: the game server was updated'
    }
-   $: message = MESSAGES[$gameClosedReason] || 'Game closed. Returned to lobby'
+   $: message = MESSAGES[$gameClosedReason] || 'Game closed. Returned to the main menu'
 </script>
 
 {#if $gameClosedReason}
