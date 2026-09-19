@@ -317,9 +317,9 @@ the game log.
 
 ### Solo mode
 
-**Play Solo** on the front panel starts a game against yourself: no room, no code
+**Play Solo** on the main menu starts a game against yourself: no room, no code
 and no relay, so it costs **no store commands at all** — the browser's socket is
-never connected. Leaving goes back to the front panel.
+never connected. Leaving goes back to the main menu.
 
 The game log stays, writing locally instead of relaying, and without the Game /
 Chat tabs or the message box above it — there is nobody to talk to. The timer and
@@ -492,10 +492,13 @@ click, its own used state and its own log line:
 node tools/browser-check.mjs --only panel     # just that section
 ```
 
-Its `lobby` section covers the way in: the lobby has no name field and no Room ID
-field, so all three buttons open a centred prompt for whatever that button needs
-— the name, and for joining or spectating the room code — and all three measure
-the same as each other.
+Its `lobby` section covers the way in — the **main menu**. The menu is the logo and
+the four buttons and nothing else on the window: the board, the settings cog and
+Edit Deck all stand aside while it is up. The logo sits to the left of the buttons,
+the buttons are a column of equal widths evenly spaced down it, and the pair is
+centred in the window. There is no name field and no Room ID field either, so every
+button opens a centred prompt for whatever that button needs — the name, and for
+joining or spectating the room code.
 
 ```sh
 node tools/browser-check.mjs --only lobby     # just that section

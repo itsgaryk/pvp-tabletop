@@ -35,10 +35,25 @@
    let nameField
    let codeField
 
+   /*
+      What the action is doing, once OK has been pressed. The prompt runs the
+      action itself rather than handing the values back and closing, because that
+      is where a failure has to be shown: the main menu is the logo and the
+      buttons and nothing else, so "could not join QK4M2P" belongs in the dialog
+      that asked for the code, on the form that just failed, not behind it.
+   */
+   let busy = false
+   let error = null
+
+   /* set by the caller: performs the action and answers whether it worked */
+   export let run = async () => true
+
    export function ask (what = 'join') {
       kind = TITLES[what] ? what : 'join'
       name = playerName.get() || ''
       code = ''
+      error = null
+      busy = false
       open = true
       /* the first thing this action needs, whether or not it already has it */
       tick().then(() => (name.trim() ? codeField : nameField)?.focus())
@@ -47,19 +62,27 @@
    $: needsCode = kind === 'join' || kind === 'spectate'
    $: ready = Boolean(name.trim()) && (!needsCode || Boolean(code.trim()))
 
-   function confirm () {
+   async function confirm () {
       const who = name.trim().slice(0, 24)
       const roomId = code.trim().toUpperCase()
-      if (!who || (needsCode && !roomId)) return
+      if (busy || !who || (needsCode && !roomId)) return
 
-      /* remembered, so the next prompt opens on it */
+      /* remembered, so the next prompt opens on it - even if the join fails */
       playerName.set(who)
-      open = false
-      dispatch('confirmed', { name: who, roomId, what: kind })
+
+      busy = true
+      error = null
+      const done = await run({ name: who, roomId, what: kind })
+      busy = false
+
+      if (done === true) open = false
+      else error = typeof done === 'string' ? done : 'Could not do that. Try again.'
    }
 
    function cancel () {
+      if (busy) return
       open = false
+      error = null
       dispatch('cancelled', { what: kind })
    }
 
@@ -72,6 +95,10 @@
 </script>
 
 {#if open}
+   <!--
+      A click outside closes it, but not while the action is in flight: the
+      request is already going and there would be nowhere to report it.
+   -->
    <div class="prompt-backdrop" on:click={cancel} role="presentation">
       <!--
          The click that lands on the dialog itself is not a click outside it: the
@@ -119,9 +146,15 @@
             {/if}
 
             <div class="prompt-buttons">
-               <button type="submit" class="prompt-ok" disabled={!ready}>OK</button>
-               <button type="button" class="prompt-cancel" on:click={cancel}>Cancel</button>
+               <button type="submit" class="prompt-ok" disabled={!ready || busy}>
+                  {busy ? 'Working…' : 'OK'}
+               </button>
+               <button type="button" class="prompt-cancel" on:click={cancel} disabled={busy}>Cancel</button>
             </div>
+
+            {#if error}
+               <p class="prompt-error" role="alert">{error}</p>
+            {/if}
          </form>
       </div>
    </div>
@@ -194,5 +227,19 @@
       @apply px-6 py-2 font-bold rounded-lg;
       background: var(--bg-color-zero);
       color: var(--text-color);
+   }
+
+   .prompt-cancel:disabled {
+      @apply opacity-50;
+   }
+
+   /*
+      What went wrong, on the form that just failed. The relay's own message is
+      included where there is one - "could not join QK4M2P (room QK4M2P is full
+      - only spectating is available)" is the sentence worth reading.
+   */
+   .prompt-error {
+      @apply text-sm px-1;
+      color: #f87171;
    }
 </style>
