@@ -69,10 +69,14 @@
       card by card, and its columns and rows share the zone between them.
    */
    .prizes {
-      /* content-sized cells, so two prizes in a row touch (see the near half) */
+      /*
+         The same table as the near half's: three rows, filled down each column, with
+         a new column when the three are full (see the near half).
+      */
       display: grid;
-      grid-template-columns: repeat(2, auto);
-      grid-auto-rows: auto;
+      grid-template-rows: repeat(3, auto);
+      grid-auto-flow: column;
+      grid-auto-columns: auto;
       place-content: center;
       width: 100%;
       height: 100%;
@@ -82,11 +86,11 @@
    }
 
    /*
-      And each prize is sized by its own cell of that block, with the cards next to
-      each other: the transparent 2px border a card carries is not part of the block
-      (see the near half), and the selection is drawn inside the card instead. The
-      whole selector is global because the card is drawn by Card.svelte, which does
-      not carry this component's scope - a scoped `img.card` would not reach it.
+      Each prize is sized by its own cell of that block, with the cards next to each
+      other: the transparent 2px border a card carries is not part of the block (see
+      the near half), and the selection is drawn inside the card instead. The whole
+      selector is global because the card is drawn by Card.svelte, which does not
+      carry this component's scope - a scoped `img.card` would not reach it.
    */
    :global(.prizes > div) {
       border-width: 0 !important;
@@ -98,9 +102,18 @@
    }
 
    :global(.prizes img.card) {
-      width: min(
-         calc(100cqw / 2),
-         calc((100cqh / 3) * var(--card-ratio))
-      );
+      width: min(calc(100cqw / 2), calc((100cqh / 3) * var(--card-ratio)));
+   }
+
+   .prizes:has(> :nth-child(7)) :global(img.card) {
+      width: min(calc(100cqw / 3), calc((100cqh / 3) * var(--card-ratio)));
+   }
+
+   .prizes:has(> :nth-child(10)) :global(img.card) {
+      width: min(calc(100cqw / 4), calc((100cqh / 3) * var(--card-ratio)));
+   }
+
+   .prizes:has(> :nth-child(13)) :global(img.card) {
+      width: min(calc(100cqw / 5), calc((100cqh / 3) * var(--card-ratio)));
    }
 </style>
