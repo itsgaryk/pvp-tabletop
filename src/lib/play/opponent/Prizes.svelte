@@ -1,6 +1,5 @@
 <script>
    import { getContext } from 'svelte'
-   import Vertical from '$lib/components/scroll/Vertical.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import Pile from './Pile.svelte'
    import Card from './Card.svelte'
@@ -47,13 +46,11 @@
 </script>
 
 <Pile pile={prizes} name="Prizes" showMenu={$solo} bind:menu={menu}>
-   <Vertical>
-      <div class="prizes p-1 grid grid-cols-2 gap-1 w-fit" on:click|stopPropagation={view}>
-         {#each $prizes as card (card._id)}
-            <Card {card} pile={prizes} revealed={$prizesFlipped || $spectating} />
-         {/each}
-      </div>
-   </Vertical>
+   <div class="prizes" on:click|stopPropagation={view}>
+      {#each $prizes as card (card._id)}
+         <Card {card} pile={prizes} revealed={$prizesFlipped || $spectating} />
+      {/each}
+   </div>
 
    <!-- in solo the other half's prizes are yours to manage, as your own are -->
    <svelte:fragment slot="menu">
@@ -66,8 +63,32 @@
 </Pile>
 
 <style>
+   /*
+      The same shape as the near half's: the prizes are a block of two columns that
+      fills the zone, so the block is centred in the zone as a whole rather than
+      card by card, and its columns and rows share the zone between them.
+   */
    .prizes {
-      --card-width: 95px;
-      --card-height: 132px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-auto-rows: minmax(0, 1fr);
+      place-items: center;
+      width: 100%;
+      height: 100%;
+      gap: var(--card-gap);
+      padding: var(--card-gap);
+      box-sizing: border-box;
+   }
+
+   /*
+      And each prize is sized by its own cell of that block. The whole selector is
+      global because the card is drawn by Card.svelte, which does not carry this
+      component's scope - a scoped `img.card` would not reach it.
+   */
+   :global(.prizes img.card) {
+      width: min(
+         calc((100cqw - 5 * var(--card-gap)) / 2),
+         calc(((100cqh - 5 * var(--card-gap)) / 3) * var(--card-ratio))
+      );
    }
 </style>

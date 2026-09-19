@@ -54,9 +54,33 @@ input[type="text"], textarea {
    background-color: var(--input-color);
 }
 
+/*
+   A card outside the board - in an inspection, in the deck list, in a dialog - is
+   the size Settings' card size says. A card *on the board* is the size of the zone
+   it is in instead, and each zone says so in its own component: see the note over
+   `--card-ratio` below for the rule they all follow.
+*/
 img.card {
    width: calc(var(--card-width) * var(--card-scale));
    height: auto;
+}
+
+:root {
+   /*
+      A card is as large as the zone it is in allows: it scales to whichever of the
+      zone's width and height is reached first, less a few pixels so that it does
+      not touch the cards beside it. Every zone of the board is a size container
+      (see Board.svelte), so what is in one can be sized in the zone's own units -
+      `100cqw` and `100cqh` are the zone's width and height - and a zone whose cards
+      are laid out as a block divides its own box by how many it holds.
+
+      `--card-ratio` is the shape of a card, width over height: a card that is as
+      tall as its zone allows is this much wide, which is what turns "the zone's
+      height" into a width the way `img.card` wants it.
+   */
+   --card-ratio: 0.7241;
+   /* the space a card keeps from the cards around it and from its zone's edge */
+   --card-gap: calc(4px * var(--card-scale));
 }
 
 .primary {

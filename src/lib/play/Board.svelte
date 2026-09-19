@@ -843,6 +843,28 @@
    }
 
    /*
+      Every zone is a size container, so a card in one can be sized by it: `100cqw`
+      and `100cqh` are the zone's own width and height, and each zone's component
+      asks for the lower of the two (see the note over `--card-ratio` in
+      global.css).
+
+      Two things a zone is not: a zone's *name*, which is sized by its own words,
+      and the veil, which is a shading over several zones. A size container is also
+      sized as if it had no contents, so either of those would collapse to nothing.
+
+      Two cells hold more than one zone per player, so their zones are a level down
+      and are the containers rather than the cell: the active area's two rows, and
+      the three bands of the Stadium's cell. A size container also means its
+      contents cannot change its size, which is what the grid's `minmax(0, …)`
+      tracks are already there for.
+   */
+   .gameboard > div:not(.zone-label):not(.veil),
+   .active > div:not(.zone-label),
+   .stadium-area > div:not(.zone-label) {
+      container-type: size;
+   }
+
+   /*
       A zone's component fills its zone. Not a zone's name, though, and that needs
       saying: the first of the active area's two names is the first child of that
       cell, so it was stretched to the whole zone - which put its words at the top

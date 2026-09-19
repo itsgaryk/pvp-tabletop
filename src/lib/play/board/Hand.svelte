@@ -66,7 +66,7 @@
 
 <Pile pile={hand} name="Hand" bind:menu={menu}>
    <Horizontal>
-      <div class="flex gap-2 p-2 m-auto w-max">
+      <div class="hand-cards">
          {#each $hand as card (card._id)}
             <Card {card} pile={hand} />
          {/each}
@@ -81,3 +81,29 @@
       <ContextMenuOption click={switchVisibility} text={$handRevealed ? 'Hide Hand' : 'Reveal Hand'} disabled={$spectating} />
    </svelte:fragment>
 </Pile>
+
+<style>
+   /*
+      The hand is the one zone whose cards lie *along* it rather than sharing it: a
+      hand of twenty has to stay readable, so a card is as tall as the row allows
+      and the row scrolls sideways past that. `min-width: 100%` is what centres the
+      cards while they fit - the row is at least the zone, so `justify-content`
+      has something to centre them in - and `max-content` lets it grow past the
+      zone and scroll once they do not.
+   */
+   .hand-cards {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--card-gap);
+      padding: var(--card-gap);
+      width: max-content;
+      min-width: 100%;
+      height: 100%;
+   }
+
+   /* a card is the height of the hand, less a few pixels so it does not touch the bar */
+   .hand-cards :global(img.card) {
+      width: calc((100cqh - 2 * var(--card-gap)) * var(--card-ratio));
+   }
+</style>

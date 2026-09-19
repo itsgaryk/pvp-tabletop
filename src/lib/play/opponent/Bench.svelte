@@ -50,6 +50,7 @@
    }
 </script>
 
+<!-- the bench fills up from its near edge, as it always has (see the near half) -->
 <div class="p-1 flex items-center focus:outline-none" tabindex="0"
    use:dnd={dndConfig}
    use:ctrlA on:ctrlA={selectAll}>

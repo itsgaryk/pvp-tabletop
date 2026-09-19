@@ -27,7 +27,7 @@
 
 <Pile pile={hand} name="Hand" showMenu={$solo} bind:menu={menu}>
    <Horizontal>
-      <div class="flex gap-2 p-2 m-auto w-max">
+      <div class="hand-cards">
          {#each $hand as card (card._id)}
             <Card {card} pile={hand} {revealed} />
          {/each}
@@ -43,3 +43,24 @@
       <ContextMenuOption click={soloShuffleHandIntoDeck} text="Shuffle Into Deck" />
    </svelte:fragment>
 </Pile>
+
+<style>
+   /*
+      The same shape as the near half's: a card is as tall as the row allows, the
+      row is centred while the hand fits and scrolls once it does not.
+   */
+   .hand-cards {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--card-gap);
+      padding: var(--card-gap);
+      width: max-content;
+      min-width: 100%;
+      height: 100%;
+   }
+
+   .hand-cards :global(img.card) {
+      width: calc((100cqh - 2 * var(--card-gap)) * var(--card-ratio));
+   }
+</style>

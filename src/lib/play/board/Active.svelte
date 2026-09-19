@@ -7,7 +7,7 @@
 
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
-   import { solo, onOpponentHalf } from '$lib/stores/solo.js'
+   import { solo, onOpponentHalf, onOpponentSlot } from '$lib/stores/solo.js'
 
    /*
       A card of the other half's never lands here. The two halves are separate
@@ -17,9 +17,17 @@
       move so much as attach itself to whatever was already up there. Online the
       far half is somebody else's and is not draggable at all, so this only ever
       applies in solo.
+
+      Both shapes a far drag comes in are refused, and they are not the same
+      check: a card carries the pile it came from as its source, while a Pokemon
+      in play carries the word 'slot' and is only ever identified by the slot
+      itself. Asking `onOpponentHalf` about 'slot' answers "not a pile of the far
+      half's" - so a far Pokemon in play was let through here whenever the drop
+      landed on the zone rather than on the Pokemon in it, and promoting it put
+      the far half's Pokemon - and everything under it - in this player's spot.
    */
    const allowDrop = () => $source && $source !== stadium && $draggedCard !== $active
-      && !($solo && onOpponentHalf($source))
+      && !($solo && (onOpponentHalf($source) || onOpponentSlot($draggedCard)))
       && ($slotSelection.length <= 1 && $cardSelection.length <= 1)
 
    function onDragDrop () {
