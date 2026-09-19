@@ -60,6 +60,17 @@
  * trip them first: 8s idle and 12s prompt is the arrangement these checks were
  * written against.
  *
+ * They are the *room's* clock, not any one section's, and that is the trap the
+ * panel section fell into. It is the slow section - opening the timer dialog and
+ * typing into it, waiting five seconds to see whether a glow fades, waiting for
+ * the other player's line to arrive - and none of that appends an event, so the
+ * relay asked "Still playing?" and, nobody answering, closed the room under it.
+ * Everything after that read the main menu: eighteen failures with one
+ * unanswered dialog behind them, and three that passed because an empty list
+ * satisfies "none of them do X". So a section slower than the window answers the
+ * prompt itself (see the panel section), and the idle section is the one that
+ * lets it close on purpose.
+ *
  * It leaves one room per section behind, all of them closed or left to expire.
  */
 import { attach, sleep } from './browser.mjs'
@@ -656,6 +667,51 @@ if (want('panel')) {
       gap: getComputedStyle(el).rowGap
    }))`)
 
+   /*
+      The board's own controls, read in one go.
+
+      The checks here that assert an *absence* - the deck is not open, nobody has
+      been told the time is up, no marks are left - are also satisfied by a page
+      with no board on it at all, and that is not hypothetical: the run that lost
+      its room to the idle prompt (see `stillPlaying` below) reported three of
+      them as passes while every query that wanted something found nothing. So an
+      absence is asserted about a board that is there, and read in one expression
+      so the two cannot disagree.
+   */
+   const controls = (page) => page.evaluate(`(() => ({
+      board: document.querySelector('.game-actions') !== null,
+      deck: document.querySelector('.inspection') !== null,
+      timeUp: document.querySelector('.time-up') !== null
+   }))()`)
+
+   /*
+      Answer the relay's "Still playing?" while this section works.
+
+      The idle windows are the room's clock rather than this section's, and they
+      are seconds long because the idle section has to reach them. This is the
+      slow section: opening the timer dialog and typing into it, waiting five
+      seconds to see whether a glow fades, waiting for the other player's line to
+      arrive. None of that appends an event, so the relay asks whether anybody is
+      still playing - and on an unmodified tree it asked 24s in and closed the
+      room at 48s, which is the whole of the eighteen failures below.
+
+      Answering is what a player at the board does, and it is deliberately not
+      what the panel is testing: letting the prompt run out is the idle section's
+      job, on purpose, in a room of its own. Both players answer here, for as long
+      as this section is reading the board - either may see the prompt first, and
+      an answer that arrives twice is the same answer.
+   */
+   const stillPlaying = (page) => page.evaluate(`(() => {
+      const go = document.querySelector('.idle-go')
+      if (!go) return false
+      go.click()
+      return true
+   })()`)
+
+   const answering = setInterval(() => {
+      for (const page of [alice, bob]) stillPlaying(page).catch(() => {})
+   }, 1000)
+
    /* Setup hides the board and says so; the glow used to fade on a timer */
    await alice.clickText('Show Pokémon', { settle: 1500, kinds: 'button' })
    await alice.clickText('Setup', { settle: 2500 })
@@ -672,7 +728,6 @@ if (want('panel')) {
       clicked somewhere else first - because a focused button was treated as
       somebody typing. Only the two keys that press a button belong to it.
    */
-   const deckOpen = (page) => page.evaluate(`document.querySelector('.inspection') !== null`)
    const keyOnFocused = (page, key, code, modifiersText = '') => page.evaluate(`(() => {
       const el = document.activeElement || document.body
       el.dispatchEvent(new KeyboardEvent('keydown', {
@@ -685,18 +740,21 @@ if (want('panel')) {
 
    await alice.evaluate(`[...document.querySelectorAll('.game-actions button')].find((b) => b.textContent.includes('Setup')).focus()`)
    check('the Setup button is focused', /Setup/.test(await alice.evaluate(`(document.activeElement.textContent || '').trim()`)))
-   check('the deck is not open to begin with', (await deckOpen(alice)) === false)
+   const shut = await controls(alice)
+   check('the deck is not open to begin with', shut.board && !shut.deck, JSON.stringify(shut))
 
    await keyOnFocused(alice, 'v', 'KeyV', 'ctrl')
    await sleep(900)
-   check('Ctrl+V opens the deck while that button has focus', (await deckOpen(alice)) === true)
-   if (await deckOpen(alice)) await alice.clickText('Close', { settle: 1200, kinds: 'button' })
+   const opened = await controls(alice)
+   check('Ctrl+V opens the deck while that button has focus', opened.board && opened.deck, JSON.stringify(opened))
+   if (opened.deck) await alice.clickText('Close', { settle: 1200, kinds: 'button' })
 
    /* and Space still presses the focused button rather than the board */
    await alice.evaluate(`[...document.querySelectorAll('.game-actions button')].find((b) => b.textContent.includes('Setup')).focus()`)
    await keyOnFocused(alice, ' ', 'Space')
    await sleep(900)
-   check('space on a focused button is still the button\'s own', (await deckOpen(alice)) === false)
+   const stayedShut = await controls(alice)
+   check('space on a focused button is still the button\'s own', stayedShut.board && !stayedShut.deck, JSON.stringify(stayedShut))
    await alice.evaluate(`document.activeElement && document.activeElement.blur()`)
 
    /*
@@ -800,8 +858,9 @@ if (want('panel')) {
    await alice.clickText('OK', { settle: 1000, kinds: 'button' })
    await sleep(800)
    check('a clock set to zero reads 00:00', (await timerRow())?.clock === '00:00', (await timerRow())?.clock)
+   const zeroed = await controls(alice)
    check('and nobody is told time is up for a clock that was set, not run out',
-      (await alice.evaluate(`document.querySelector('.time-up') === null`)) === true)
+      zeroed.board && !zeroed.timeUp, JSON.stringify(zeroed))
 
    /* back to a working clock for the play button */
    await alice.clickText('00:00', { settle: 800, kinds: 'button' })
@@ -871,21 +930,25 @@ if (want('panel')) {
 
    const described = await alice.evaluate(`[...document.querySelectorAll('.setting')].map((b) => b.innerText.replace(/\\s+/g, ' ').trim())`)
    check('with nothing restating what a control already says',
-      !described.some((t) => /Talonflame|once you have used that power|Outlines each area|events this browser has received|always shown in dark mode/.test(t)),
+      described.length > 0 && described.length === shape.length &&
+         !described.some((t) => /Talonflame|once you have used that power|Outlines each area|events this browser has received|always shown in dark mode/.test(t)),
       JSON.stringify(described))
 
    check('the marker list ends with Both', (await alice.evaluate(`[...document.querySelectorAll('input[name="powerMarker"]')].map((i) => i.parentElement.textContent.trim()).join(',')`)) === 'Off,VStar,GX,Both')
 
    await alice.clickText('Both', { settle: 1500, kinds: 'label' })
    await sleep(2500)
-   const mine = (await markers(alice)).find((m) => m.mine)
-   check('Both shows the two marks together', JSON.stringify(mine?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(mine))
-   check('paired, not one instead of the other', mine?.paired === true, JSON.stringify(mine))
+   /* the whole list is what a missing marker is reported as, so a board with no
+      marks on it reads as [] rather than as nothing at all */
+   const shown = await markers(alice)
+   const mine = shown.find((m) => m.mine)
+   check('Both shows the two marks together', JSON.stringify(mine?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(mine ?? shown))
+   check('paired, not one instead of the other', mine?.paired === true, JSON.stringify(mine ?? shown))
    check('and the two marks are the same width',
       Array.isArray(mine?.widths) && mine.widths.length === 2 && mine.widths[0] === mine.widths[1],
-      JSON.stringify(mine?.widths))
-   check('with a gap between them so they do not read as one mark', parseFloat(mine?.gap || '0') > 0, mine?.gap)
-   check('and neither is dimmed to begin with', (mine?.used || []).length === 0, JSON.stringify(mine?.used))
+      JSON.stringify(mine?.widths ?? shown))
+   check('with a gap between them so they do not read as one mark', parseFloat(mine?.gap || '0') > 0, mine?.gap ?? JSON.stringify(shown))
+   check('and neither is dimmed to begin with', Array.isArray(mine?.used) && mine.used.length === 0, JSON.stringify(mine ?? shown))
 
    /*
       Each mark is its own button. Clicking one says that power has been used and
@@ -900,34 +963,43 @@ if (want('panel')) {
 
    check('VSTAR is clickable on its own', await clickMark(alice, 'VSTAR'))
    await sleep(2000)
-   const afterVstar = (await markers(alice)).find((m) => m.mine)
-   check('using VSTAR dims only VSTAR', JSON.stringify(afterVstar?.used) === JSON.stringify(['VSTAR']), JSON.stringify(afterVstar?.used))
+   const vstarShown = await markers(alice)
+   const afterVstar = vstarShown.find((m) => m.mine)
+   check('using VSTAR dims only VSTAR', JSON.stringify(afterVstar?.used) === JSON.stringify(['VSTAR']), JSON.stringify(afterVstar?.used ?? vstarShown))
    check('and says so in the log', /Used VStar/.test(await alice.evaluate(`document.querySelector('.chat')?.innerText || ''`)), 'log')
 
    check('GX is clickable on its own too', await clickMark(alice, 'GX'))
    await sleep(2000)
-   const afterBoth = (await markers(alice)).find((m) => m.mine)
+   const bothShown = await markers(alice)
+   const afterBoth = bothShown.find((m) => m.mine)
    check('using GX dims GX as well, and leaves the two apart',
       JSON.stringify((afterBoth?.used || []).slice().sort()) === JSON.stringify(['GX', 'VSTAR']),
-      JSON.stringify(afterBoth?.used))
+      JSON.stringify(afterBoth?.used ?? bothShown))
    check('and the log names GX, not the pair', /Used GX/.test(await alice.evaluate(`document.querySelector('.chat')?.innerText || ''`)), 'log')
 
    /* clicking one again takes only that one back */
    await clickMark(alice, 'VSTAR')
    await sleep(1500)
-   const afterUndo = (await markers(alice)).find((m) => m.mine)
+   const undoShown = await markers(alice)
+   const afterUndo = undoShown.find((m) => m.mine)
    check('clicking a used mark takes just that one back',
       JSON.stringify(afterUndo?.used) === JSON.stringify(['GX']),
-      JSON.stringify(afterUndo?.used))
+      JSON.stringify(afterUndo?.used ?? undoShown))
 
    await sleep(3000)
-   const far = (await markers(bob)).find((m) => !m.mine)
-   check('and the opponent sees both as well', JSON.stringify(far?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(far))
-   check('with the used one dimmed on their side too', JSON.stringify(far?.used) === JSON.stringify(['GX']), JSON.stringify(far?.used))
+   const farShown = await markers(bob)
+   const far = farShown.find((m) => !m.mine)
+   check('and the opponent sees both as well', JSON.stringify(far?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(far ?? farShown))
+   check('with the used one dimmed on their side too', JSON.stringify(far?.used) === JSON.stringify(['GX']), JSON.stringify(far?.used ?? farShown))
 
-   await alice.clickText('Off', { settle: 1500, kinds: 'label' })
+   const turnedOff = await alice.clickText('Off', { settle: 1500, kinds: 'label' })
    await sleep(2000)
-   check('turning it off clears them', (await markers(alice)).length === 0, JSON.stringify(await markers(alice)))
+   const cleared = await controls(alice)
+   const left = await markers(alice)
+   check('turning it off clears them', turnedOff && cleared.board && left.length === 0,
+      JSON.stringify({ turnedOff, board: cleared.board, marks: left }))
+
+   clearInterval(answering)
 }
 
 await browser.detach()
