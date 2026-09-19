@@ -587,6 +587,39 @@ Deck, hand, prizes, discard and lost zone carry one; the stadium, the active spo
 the bench never did — the first because two cards are read by looking at them, the
 other two because they are slots.
 
+### A card on the board is the size of the zone it is in
+
+Not a setting: **every zone of the board is a size container**
+(`container-type: size` on the zone's cell in `Board.svelte`), so a card in one is
+sized in the zone's own units — `100cqw` and `100cqh` are the zone's width and its
+height — and scales to **whichever of the two is reached first**, less `--card-gap`
+so it never touches the card beside it or the zone's edge. `--card-ratio` (width over
+height, in `global.css`) is what turns "the zone's height" into a width, which is the
+form `img.card` wants.
+
+What each zone asks for follows from its own layout, and the one that matters is the
+new rule for a zone holding more than one card: **the cards are sized by the block they
+make together, not by the zone one of them would have had.** The prizes are the
+example the rule was written for — a block of two columns, as many rows as it takes,
+filling the zone, so six prizes are sized by six and three prizes by three. The hand is
+the other arrangement: its cards lie *along* it, so they are sized by the zone's height
+and the row scrolls sideways once twenty of them no longer fit.
+
+This is why `--card-width` is only what a card is *outside* a zone now — in an
+inspection, in the deck list, in a dialog — and why Settings' card size moves the
+board's spacing (`--scaled-rem`, `--card-gap`) rather than the cards themselves.
+
+Three things are not sized this way, and each is deliberate:
+
+- **A zone's name** is sized by its own words. Nor is it a container: a size container
+  is laid out as if it had no contents, which for a name whose whole size *is* its
+  contents is a name that collapses to nothing.
+- **The table's stack** — its cards keep their own size and are stacked with the steps
+  they always had. Its cards are read by looking at them rather than by fitting.
+- **The slots** (the active spot and the bench) lay a Pokémon out with whatever is
+  attached to it, in fixed steps around the card. Sizing those by the zone means
+  sizing those steps too, which is a change of its own.
+
 ### The Stadium holds two cards, and a play clears the other player's
 
 The Stadium is the one zone both players play into, and each of them may keep **two

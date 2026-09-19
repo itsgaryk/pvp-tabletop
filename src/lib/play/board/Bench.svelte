@@ -36,6 +36,11 @@
 
 </script>
 
+<!--
+   The bench's Pokemon sit against the near edge, the way they always have: the
+   bench fills up from the left as it is played into, rather than growing outwards
+   from the middle.
+-->
 <div class="p-1 flex items-center focus:outline-none" use:dnd={dndConfig} tabindex="0" use:ctrlA on:ctrlA={selectAll}>
    <div class="flex gap-[var(--scaled-rem)] min-w-0">
       {#each $bench as slot (slot.id)}

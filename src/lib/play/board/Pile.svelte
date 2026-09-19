@@ -60,7 +60,15 @@
       </div>
    {/if}
 
-   <slot menu={menu}></slot>
+   <!--
+      A pile is a zone, so what a zone puts in it is centred in the zone: the card
+      of a pile that draws one, the row of a hand, the block of prizes. The body
+      takes whatever room the pile's own markup leaves - the count badge is on top
+      of it rather than beside it - and centres what is in it both ways.
+   -->
+   <div class="pile-body">
+      <slot menu={menu}></slot>
+   </div>
 </div>
 
 <ContextMenu bind:this={menu} heading={name}>
@@ -68,6 +76,16 @@
 </ContextMenu>
 
 <style>
+   .pile-body {
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 0;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+   }
+
    .count {
       background-color: var(--overlay-color);
       @apply absolute z-10 top-1 left-1 font-bold p-1 cursor-pointer rounded-md;

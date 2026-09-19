@@ -110,7 +110,14 @@
       </div>
    {/if}
 
-   <slot></slot>
+   <!--
+      The same shape as the near half's: a zone centres what it holds, so the body
+      takes whatever room the pile's own markup leaves and centres it both ways.
+      The count badge is a layer over it, not a box beside it.
+   -->
+   <div class="pile-body">
+      <slot></slot>
+   </div>
 </div>
 
 {#if showMenu}
@@ -120,6 +127,16 @@
 {/if}
 
 <style>
+   .pile-body {
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 0;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+   }
+
    /*
       The count is rotated back by whoever flips this half (see .flip in
       Board.svelte), so it reads upright whether this pile is shown on a player's
