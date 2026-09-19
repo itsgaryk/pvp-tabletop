@@ -296,7 +296,10 @@ A board reset — setup, importing a deck, adopting an opponent's board state �
 not touch the clock. Entering a room sets it back to the default 50:00 instead.
 The clock's keyboard shortcuts are the board's own (`C` next turn and so on), so
 the board ignores keys typed into a field: the timer's minutes and seconds are
-digits, and one of those would otherwise draw that many cards as it was typed.
+digits, and one of those would otherwise draw that many cards as it was typed. A
+shortcut is a bare key as well: the deck's View All is `V`, and the paste chord —
+`Ctrl+V`, or `Cmd+V` on a Mac — stays with the browser, which is how a room code
+or a message gets pasted in.
 
 #### How the two clocks are kept together
 
