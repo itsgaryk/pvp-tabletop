@@ -19,8 +19,9 @@
  *   panel      the board panel's own changes: the glow that stays until it is
  *              clicked, the clock in both directions, the Chat tab lit by a
  *              message that arrived unseen, the zone names that come with the
- *              zone outlines, and both markers at once - each with its own
- *              click, its own used state and its own log line
+ *              outlines and the number the table does not carry, and both markers
+ *              at once - each with its own click, its own used state and its own
+ *              log line
  *
  *   node tools/browser-check.mjs --only panel      # just that section
  *
@@ -1030,6 +1031,30 @@ if (want('panel')) {
    await sleep(800)
    check('turning them off is what puts the names away',
       offAgain === false && (await zoneLabels()).length === 0, JSON.stringify(await zoneLabels()))
+
+   /*
+      The table is the one zone with no number on it. It is where cards are played
+      rather than a pile anybody counts, and both of its halves ask for no number -
+      but the far half's asked a component that had never declared the prop, so the
+      count was drawn there on every board. The piles that are counted still show
+      theirs, which is what says the number went rather than the badge.
+   */
+   const counted = () => alice.evaluate(`(() => {
+      const zoneOf = (el) => {
+         const cell = el.closest('.gameboard > div')
+         return cell ? cell.className.split(' ')[0] : null
+      }
+      const zones = [...document.querySelectorAll('.gameboard .count')].map(zoneOf)
+      return {
+         tables: zones.filter((zone) => zone === 'play' || zone === 'play2'),
+         missing: ['deck', 'deck2', 'discard', 'discard2', 'lz', 'lz2', 'prizes', 'prizes2', 'hand', 'hand2']
+            .filter((zone) => !zones.includes(zone))
+      }
+   })()`)
+
+   const badges = await counted()
+   check('neither table zone carries a number', badges.tables.length === 0, JSON.stringify(badges))
+   check('while every pile that is counted still shows its own', badges.missing.length === 0, JSON.stringify(badges))
 
    check('the marker list ends with Both', (await alice.evaluate(`[...document.querySelectorAll('input[name="powerMarker"]')].map((i) => i.parentElement.textContent.trim()).join(',')`)) === 'Off,VStar,GX,Both')
 
