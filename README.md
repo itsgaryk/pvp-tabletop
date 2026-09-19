@@ -680,6 +680,27 @@ stays the size it was played at. A card that shrinks as the bench fills up is a 
 that has to be looked at twice, and a second row would have shrunk the whole bench to
 make room for itself.
 
+The row fills from its near edge and is **centred up and down in its zone**, which is
+where a card in every other zone of the board sits. Keeping its own card size is what
+made that visible: the row used to be laid against the top of the zone, which reads as
+centred only while a bench zone happens to be about the height of a card — and a bench
+zone is not, so a card sat in the corner of one.
+
+Both benches are placed by their own box (`.bench-zone`, in the near half's component and
+in the far half's): `display: grid` with `align-items: center`. The row cannot centre
+*itself* inside its scroll container — that container is already the height of the row,
+so centring within it would move nothing — and of the two ways of having the zone do it,
+a grid item is the one that leaves the row what it was. `flex flex-col justify-center`
+makes the row the flex item, and a flex item is *shrunk* to its container: a bench card
+is a fixed size rather than the zone's, so it is taller than its zone at the 821px window
+the browser checks run at and at anything shorter, and a shrunk row is a card cut off
+inside the row's own scroll container. `flex items-center` gets the height right, by
+centring the row as a cross-axis item, but takes the row off the width of the zone: the
+scroll container becomes a fit-content flex item, so a half-empty bench's row is only as
+wide as the cards on it and an empty one has no width at all. Grid neither shrinks nor
+narrows it, so the row keeps the zone's full width and a card taller than the zone now
+overflows it evenly rather than downwards only.
+
 **A prize stays face down while it is moved, and looking at one is said out loud.** The
 card under the pointer in a drag is drawn from the card's face, so picking a face-down
 prize up used to turn it over — both a look at a card nobody has taken yet and a lie,
