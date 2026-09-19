@@ -7,6 +7,26 @@
 
    import { prizes, deck, prizesFlipped } from '$lib/stores/player.js'
 
+   /*
+      The prizes cascade: two columns, and each row overlapping the one above it.
+
+      Two columns is the table a game is played with - six prizes are three rows of
+      two - and a pile that grows past that overlaps downwards rather than sideways,
+      so ten prizes still read as the two columns they were dealt as. The rows are
+      the zone's whole height between them, with the last one's cards ending exactly
+      at the bottom of it: the card is one row tall plus the overlap, and the step
+      between rows is one row, which is what puts the overlap under the card below
+      rather than past the zone.
+
+      `rows` is counted here rather than in CSS because the arithmetic needs it, and
+      a stylesheet cannot count its own children.
+   */
+   const COLUMNS = 2
+   const OVERLAP = 0.3
+
+   $: rows = Math.max(1, Math.ceil($prizes.length / COLUMNS))
+   $: layout = { '--rows': rows, '--overlap': OVERLAP, '--columns': COLUMNS }
+
    let menu
 
    function switchVisibility () {
@@ -59,9 +79,12 @@
 </script>
 
 <Pile pile={prizes} name="Prizes" bind:menu={menu}>
-   <div class="prizes">
-      {#each $prizes as card (card._id)}
-         <Card {card} pile={prizes} revealed={$prizesFlipped} />
+   <div class="prizes" style={Object.entries(layout).map(([key, value]) => `${key}: ${value}`).join('; ')}>
+      {#each $prizes as card, i (card._id)}
+         <!-- one prize, placed by the row and column it fills -->
+         <div class="prize" style="--row: {Math.floor(i / COLUMNS)}; --col: {i % COLUMNS}">
+            <Card {card} pile={prizes} revealed={$prizesFlipped} />
+         </div>
       {/each}
    </div>
 
@@ -76,48 +99,67 @@
 
 <style>
    /*
-      The prizes form a block - two columns, and as many rows as it takes - and the
-      *block* is what is centred in the zone, rather than each card being centred on
-      its own. Filling the zone is what does both: the columns share its width and
-      the rows share its height, so the block is the zone and it is centred in it.
+      The prizes cascade: two columns, and each row overlapping the one above it.
 
-      No gap and no padding between them: a prize face down next to a prize face
-      down reads as one row of card backs, and the six of them are a block - the
-      spacing they had was a cell each, and what it bought was the look of a grid of
-      loose cards rather than a pile counted in two columns.
+      Every prize is placed by the row and column it fills (see the markup), which is
+      what a cascade needs and a grid cannot say: the columns share the zone's width,
+      the rows are a step apart, and the step is shorter than a card so that one row
+      lies over the one below it. The last row's cards end exactly at the bottom of the
+      zone, so nothing hangs out of it however many prizes there are.
    */
    .prizes {
-      /*
-         The prizes are a table three rows deep, filled down each column before the
-         next one starts: six prizes are the familiar two columns of three, and a
-         seventh - a card put into the prizes, which a player can do - begins a third
-         column rather than a fourth row. A prize taken off the table leaves its
-         blank spot, and the next card into the prizes fills it (see the note over
-         --card-ratio in global.css for how the cards are sized).
-
-         The columns are the cards' own width and the block is centred in the zone,
-         so two prizes in a row touch rather than each sitting in the middle of a
-         cell wider than it.
-      */
-      display: grid;
-      grid-template-rows: repeat(3, auto);
-      grid-auto-flow: column;
-      grid-auto-columns: auto;
-      place-content: center;
+      position: relative;
       width: 100%;
       height: 100%;
-      gap: 0;
-      padding: 0;
-      box-sizing: border-box;
+   }
+
+   /*
+      One prize's box. The arithmetic, in the zone's own units:
+
+         card   = (zone height - the pile's padding) x (1 + overlap) / (rows + overlap)
+         step   = card / (1 + overlap)     the row pitch, a card's overlap shorter
+         block  = (rows - 1) x step + card = what is inside the pile, exactly
+
+      and the columns are one card wide each, centred, so the two in a row touch. The
+      8px is the pile's own `p-1` padding, which `100cqh` knows nothing about: without
+      it the block is 8px too tall for the space it is laid out in and the last row
+      hangs over the zone's edge.
+   */
+   .prize {
+      --card-h: calc((100cqh - 8px) * (1 + var(--overlap)) / (var(--rows) + var(--overlap)));
+      --card-w: calc(var(--card-h) * var(--card-ratio));
+      --step: calc(var(--card-h) / (1 + var(--overlap)));
+
+      position: absolute;
+      top: calc(var(--row) * var(--step));
+      left: calc(50% + (var(--col) - var(--columns) / 2) * var(--card-w));
+      width: var(--card-w);
+      height: var(--card-h);
+   }
+
+   /* the card fills the box that was worked out for it, border and all */
+   :global(.prizes .prize > div),
+   :global(.prizes img.card) {
+      width: 100%;
+      height: 100%;
+   }
+
+   /*
+      The 2px a card carries (transparent until it is selected) is drawn inside its
+      box rather than added to it, or two prizes in a row would sit 4px apart.
+   */
+   :global(.prizes img.card.selected) {
+      outline: 2px solid var(--selection-color);
+      outline-offset: 0;
    }
 
    /*
       The border a card is drawn inside (2px on each side, transparent until it is
-      selected) is not part of the block: it is what put 4px between two prizes in a
-      row, because a cell sized by a card that carries one is a cell 4px wider than
-      the card in it. The selection is the same 2px drawn inside the card instead.
+      selected) is part of the box the arithmetic worked out, so it is drawn inside
+      that box rather than added to it - otherwise two prizes in a row would sit 4px
+      apart.
    */
-   :global(.prizes > div) {
+   :global(.prizes .prize > div) {
       border-width: 0 !important;
    }
 
@@ -138,18 +180,7 @@
       reach it at all - which is a size that silently falls back to the card's own.
    */
    :global(.prizes img.card) {
-      width: min(calc(100cqw / 2), calc((100cqh / 3) * var(--card-ratio)));
-   }
-
-   .prizes:has(> :nth-child(7)) :global(img.card) {
-      width: min(calc(100cqw / 3), calc((100cqh / 3) * var(--card-ratio)));
-   }
-
-   .prizes:has(> :nth-child(10)) :global(img.card) {
-      width: min(calc(100cqw / 4), calc((100cqh / 3) * var(--card-ratio)));
-   }
-
-   .prizes:has(> :nth-child(13)) :global(img.card) {
-      width: min(calc(100cqw / 5), calc((100cqh / 3) * var(--card-ratio)));
+      width: 100%;
+      height: 100%;
    }
 </style>
