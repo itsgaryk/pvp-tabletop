@@ -85,14 +85,22 @@ export function remainingAt (state, at = now()) {
 
    `at` is the relay's clock: the moment the sender set the clock, on the clock
    everyone shares. How much has been spent since then is therefore the same for
-   everyone, and adding it to the value here is exact - what differs between two
+   everyone, and taking it off the value here is exact - what differs between two
    clients is only when they apply it, which is their own latency and not an
    error that grows.
+
+   Only a clock that is *running* has spent anything. A paused one is a number
+   somebody chose, and it is the same number a second later: taking the trip off
+   that would make a clock set to 12:34 read 12:33 on the other board - and keep
+   reading it until the relay's own snapshot arrived on a later poll, which is up
+   to a whole long poll away. The snapshot does not age a paused clock (see
+   timerSnapshot in the relay), so this is the same rule, applied as the news
+   lands rather than up to twenty seconds after it.
 */
 export function fromRelay ({ running, remaining, at }, receivedAt = now()) {
    const left = Math.max(0, Number(remaining) || 0)
    const setAt = Number(at) || socket.serverNow()
-   const spent = Math.max(0, socket.serverNow() - setAt)
+   const spent = running ? Math.max(0, socket.serverNow() - setAt) : 0
 
    return {
       running: Boolean(running),
