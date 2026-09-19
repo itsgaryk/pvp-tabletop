@@ -255,6 +255,14 @@ if (want('lobby')) {
    const room = await alice.createRoom('Alice')
    console.log(`  room ${room}`)
 
+   /*
+      A room waiting for a second player does not say so. The wait is real - the
+      room closes itself - but a countdown to being thrown back to the lobby is
+      not something the player sitting alone needs on screen.
+   */
+   check('a room waiting for an opponent does not count down on screen',
+      (await alice.evaluate(`document.body.innerText.includes('Waiting for an opponent')`)) === false)
+
    await bob.clickText('Spectate Game', { settle: 800 })
    check('Spectate Game asks too', (await bob.evaluate(`document.querySelector('.prompt-dialog') !== null`)) === true)
    await bob.answerRoomPrompt(room)
