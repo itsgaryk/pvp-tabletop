@@ -35,9 +35,16 @@
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { dragging } from '$lib/dnd/pointer.js'
+   import { solo, onOpponentHalf } from '$lib/stores/solo.js'
 
-   /* neither a Pokemon in play nor a card in the Stadium is attached to anything */
+   /*
+      Neither a Pokemon in play nor a card in the Stadium is attached to anything -
+      and nor is anything of the far half's. A card out of the opponent's hand
+      dragged onto this Pokemon used to be attached to it, underneath a Pokemon
+      that is not its owner's.
+   */
    const allowDrop = () => $source && $source !== 'slot' && $source !== stadium
+      && !($solo && onOpponentHalf($source))
 
    /* the action hands the pointerdown over as { e } */
    function onDragStart ({ e }) {

@@ -8,14 +8,21 @@
 
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
+   import { solo, onOpponentHalf } from '$lib/stores/solo.js'
 
    /*
       A card of the player's own may land here from any pile but the Stadium
       itself, and the Stadium holds two of them (see STADIUM_LIMIT): a third is
       the stadium being replaced rather than a drop to refuse, so `toStadium`
       sends the oldest of the two to the discard.
+
+      A card of the far half's may not. The Stadium is shared - both players play
+      into the one cell - but each of them plays into *their own* Stadium in it,
+      so a card dragged off the opponent's Stadium lands back on theirs rather than
+      here, and one out of their hand is played from their own side.
    */
    const allowDrop = () => $source && $source !== 'slot' && $source !== stadium && $selection.length === 1
+      && !($solo && onOpponentHalf($source))
 
    function onDragDrop () {
       toStadium()

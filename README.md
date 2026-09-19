@@ -411,6 +411,43 @@ the first is:
 The opponent's half is laid out with the same `upright` class a spectator's top
 half uses — same bar and count placement, cards turned back up.
 
+#### The two halves are separate boards
+
+Both halves are played by one person, and everything on the far half is draggable
+there — which is why the rule that keeps them apart has to be said twice. **A card
+does not cross the table**: whatever the player cannot do to the opponent's half,
+the opponent cannot do to the player's, and the limitation is the same on both
+sides. A card dragged out of the opponent's hand used to go into the player's own
+hand, discard, deck, prizes or Stadium, and one of their Pokémon in play could be
+dropped onto the player's Active and be promoted into it with everything under it.
+
+Each half's own zones refuse the other half's cards, and the check has to be the
+right one for what is being dragged: a *card* carries the pile it came from as its
+source and is answered by `onOpponentHalf(source)`, while a *Pokémon in play*
+carries the word `'slot'` and is only ever identified by the slot itself, through
+`onOpponentSlot(draggedCard)`. Asking the first about `'slot'` answers "not a pile
+of the far half's", which is exactly how a far Pokémon got into the player's
+Active whenever the drop landed on the zone rather than on the Pokémon in it.
+
+**The two shared zones are where that needs care**, because both halves play into
+the same cell. The table and the Stadium each accept *their own* half's cards:
+
+- A card played into the shared cell lands on the half that played it. In solo the
+  player's table is drawn over the far half's while anything is being dragged, so
+  the player's card lands on the player's table; the far half's Stadium lies under
+  the player's and takes the far half's cards when the player's is empty, which is
+  the mirror of the near one.
+- Nor can either half take the other's card out of a shared zone: a card on the
+  player's table stays there when the opponent's table is the drop target, and the
+  other way round.
+- Each half still moves its own out — by dragging it, by its own menu, or by the
+  board's keys, which ask `farSelected()` before anything else.
+
+`node tools/solo-select-check.mjs` reads all of this: eighteen checks that drag a
+card of one half at every zone of the other and assert that nothing on either board
+moved, plus the shared-zone cases and a control that the far half can still move
+its own card out of the table.
+
 Rooms expire 6 hours after their last event, and each room keeps its most recent
 400 events.
 

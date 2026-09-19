@@ -500,6 +500,105 @@ check('a card dragged from the player\'s hand lands on the player\'s own table',
    (await count('.play img.card')) === 1 && (await count('.play2 img.card')) === farTable,
    `own table ${await count('.play img.card')}, far table ${await count('.play2 img.card')} (was ${farTable})`)
 
+/* ------------------------------------------ 9. nothing crosses the table --- */
+
+/*
+   Both halves are played by the same person in solo, which is exactly why this
+   needs saying: every zone of the far half is draggable there, and a card out of
+   the opponent's hand went into the player's own zones - the hand, the discard,
+   the bench - while the player's own cards were refused by the far half. The two
+   halves have to be limited the same way, so that whatever the player cannot do
+   to the opponent, the opponent cannot do to the player.
+*/
+
+console.log('\nbetween the halves')
+
+const zones = () => page.evaluate(`(() => {
+   const n = (sel) => document.querySelectorAll(sel + ' img.card').length
+   /*
+      Through the zone's own cell rather than by class: \`.prizes\` is the name of
+      both the cell and the grid drawn inside it - twice over, one per half - so a
+      bare class counts a prize three times and a card moved into the far half's
+      prizes reads as one moved into the player's.
+   */
+   return {
+      ownHand: n('.gameboard > .hand'), ownDiscard: n('.gameboard > .discard'),
+      ownBench: n('.gameboard > .bench img.card.pokemon'), ownActive: n('.active1 img.card'),
+      ownPrizes: n('.gameboard > .prizes'), ownDeck: n('.gameboard > .deck'),
+      ownStadium: n('.gameboard > .stadium'), ownTable: n('.gameboard > .play'),
+      farHand: n('.gameboard > .hand2'), farDiscard: n('.gameboard > .discard2'),
+      farBench: n('.gameboard > .bench2 img.card.pokemon'), farActive: n('.active2 img.card'),
+      farPrizes: n('.gameboard > .prizes2'), farDeck: n('.gameboard > .deck2'),
+      farStadium: n('.gameboard > .stadium2'), farTable: n('.gameboard > .play2')
+   }
+})()`)
+
+const OWN = ['ownHand', 'ownDiscard', 'ownBench', 'ownActive', 'ownPrizes', 'ownDeck', 'ownStadium', 'ownTable']
+const FAR = ['farHand', 'farDiscard', 'farBench', 'farActive', 'farPrizes', 'farDeck', 'farStadium', 'farTable']
+
+/* keep both hands stocked, so the drag under test always has a card to carry */
+async function ownHand () {
+   for (let i = 0; i < 20 && (await count('.hand img.card')) < 1; i++) {
+      await fire('.deck .count', 'contextmenu')
+      await page.clickText('Draw', { settle: 300 })
+      await closeMenus()
+   }
+}
+
+async function refused (label, from, to, keys) {
+   if (from.startsWith('.hand2')) await farHand(1)
+   else await ownHand()
+
+   const before = await zones()
+   await drag(from, to)
+   const after = await zones()
+   const changed = keys.filter((key) => before[key] !== after[key])
+   check(label, changed.length === 0, changed.map((key) => `${key} ${before[key]} -> ${after[key]}`).join(', '))
+}
+
+/* the far half's cards may not be put into any of the player's zones */
+await refused('a far card cannot be put into the player\'s hand', '.hand2 img.card', '.gameboard > .hand', [ ...OWN, 'farHand' ])
+await refused('nor into the player\'s discard', '.hand2 img.card', '.gameboard > .discard', [ ...OWN, 'farHand' ])
+await refused('nor onto the player\'s bench', '.hand2 img.card', '.gameboard > .bench', [ ...OWN, 'farHand' ])
+await refused('nor into the player\'s active spot', '.hand2 img.card', '.active1', [ ...OWN, 'farHand' ])
+await refused('nor into the player\'s prizes', '.hand2 img.card', '.gameboard > .prizes', [ ...OWN, 'farHand' ])
+await refused('nor onto the player\'s deck', '.hand2 img.card', '.gameboard > .deck', [ ...OWN, 'farHand' ])
+await refused('nor into the player\'s Stadium', '.hand2 img.card', '.gameboard > .stadium', [ ...OWN, 'farHand' ])
+
+/* and the player's cards may not be put into any of the far half's zones */
+await refused('a player card cannot be put into the far hand', '.hand img.card', '.gameboard > .hand2', [ ...FAR ])
+await refused('nor into the far discard', '.hand img.card', '.gameboard > .discard2', [ ...FAR ])
+await refused('nor onto the far bench', '.hand img.card', '.gameboard > .bench2', [ ...FAR ])
+await refused('nor into the far active spot', '.hand img.card', '.active2', [ ...FAR ])
+await refused('nor into the far prizes', '.hand img.card', '.gameboard > .prizes2', [ ...FAR ])
+await refused('nor onto the far deck', '.hand img.card', '.gameboard > .deck2', [ ...FAR ])
+await refused('nor into the far Stadium', '.hand img.card', '.gameboard > .stadium2', [ ...FAR ])
+
+/* the shared zones: neither half takes the other's card out of one */
+await refused('the far half cannot take the player\'s card off the table', '.play img.card', '.gameboard > .play2', [ ...OWN, ...FAR ])
+await refused('and the player cannot take the far half\'s off it', '.play2 img.card', '.gameboard > .play', [ ...OWN, ...FAR ])
+await refused('nor out of the shared Stadium and into the player\'s', '.stadium2 img.card', '.gameboard > .stadium', [ ...OWN, ...FAR ])
+
+/* but each of them can still move its own card out of a shared zone */
+const farTableBefore = await count('.play2 img.card')
+const farHandNow = await count('.hand2 img.card')
+/*
+   Selected with a dispatched click rather than a real one: the player's own table
+   is drawn over the far half's in the shared cell, so a real click at the far
+   card's middle lands on the player's card lying on top of it. The selection is
+   what this control is about - the move itself is the keyboard's, as it is for a
+   card played from the far half's hand.
+*/
+await fire('.play2 img.card', 'click')
+const selectedFar = await count('.play2 .selected')
+await press('h')
+await sleep(400)
+check('while the far half can still move its own card out of the shared table, to its own hand',
+   selectedFar === 1 &&
+   (await count('.play2 img.card')) === farTableBefore - 1 &&
+   (await count('.hand2 img.card')) === farHandNow + 1,
+   `selected ${selectedFar}, far table ${await count('.play2 img.card')} (was ${farTableBefore}), far hand ${await count('.hand2 img.card')} (was ${farHandNow})`)
+
 /*
    The same moves with the board flipped, which is the other half of this: the far
    half is the bottom one now, and a movement must still land on it rather than on
