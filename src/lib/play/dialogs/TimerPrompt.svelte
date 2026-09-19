@@ -19,7 +19,7 @@
    */
    import { tick, createEventDispatcher } from 'svelte'
    import { timer, setTimer } from '$lib/stores/player.js'
-   import { socket } from '$lib/stores/connection.js'
+   import { remainingAt } from '$lib/stores/timer.js'
 
    const dispatch = createEventDispatcher()
 
@@ -31,14 +31,13 @@
    let seconds = 0
    let minuteField
 
-   /* what the clock reads now, in whole seconds: rounded up, so 10:00.4 is not shown as 10:00 */
+   /*
+      What the clock reads now, in whole seconds: rounded up, so 10:00.4 is not
+      shown as 10:00. The reading comes from the timer store, so a running clock
+      is aged the same way here as it is on the clock itself.
+   */
    function currentSeconds () {
-      const state = timer.get()
-      const left = state.running
-         ? Math.max(0, (Number(state.remaining) || 0) - (socket.serverNow() - (Number(state.at) || socket.serverNow())))
-         : Math.max(0, Number(state.remaining) || 0)
-
-      return Math.ceil(left / 1000)
+      return Math.ceil(remainingAt(timer.get()) / 1000)
    }
 
    export function ask () {
@@ -64,12 +63,13 @@
       open = false
 
       /*
-         `remaining` is a value as of the relay's clock, and the running state is
-         carried through: a paused clock stays paused, and one that has run out
-         stays stopped until it is started again.
+         The running state is carried through: a paused clock stays paused, and
+         one that has run out stays stopped until it is started again. The value
+         is given to `setTimer` in the browser's own reading, and that is what
+         publishes it on the relay's.
       */
       const running = timer.get().running && total > 0
-      setTimer({ running, remaining: total }, socket.serverNow())
+      setTimer({ running, remaining: total })
       dispatch('set', { remaining: total })
    }
 

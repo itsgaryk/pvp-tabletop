@@ -1,13 +1,15 @@
 import { copy } from '$lib/util/object.js'
 import { writable } from './writable.js'
 import { pile, slots } from './cards.js'
+import { DEFAULT_TIMER_MS, timer } from '../timer.js'
 
 /*
-   The clock a room starts with: fifty minutes, paused. It is exported because
-   entering a room sets it back to this, and the timer's own prompt opens on it
-   when there is no time left to carry over.
+   The table's clock lives in ../timer.js, which is the one place it is
+   understood, and is re-exported here because the board is where components look
+   for it. Its default is re-exported too: entering a room sets the clock back to
+   it. See that module for why the countdown is not simply `remaining - elapsed`.
 */
-export const DEFAULT_TIMER_MS = 50 * 60 * 1000
+export { DEFAULT_TIMER_MS, timer }
 
 export function board () {
 
@@ -42,19 +44,6 @@ export function board () {
       any spectator) on the same number.
    */
    const turn = writable(0)
-
-   /*
-      The game timer, kept as a value rather than a tick: `remaining`
-      milliseconds as of `at` (a relay-clock timestamp), plus whether it runs.
-      Every client counts down from that itself, so a running clock costs nothing
-      to share - only starting, pausing and setting it are events.
-
-      A room's clock starts at fifty minutes, paused. A round of this game is
-      played to a time limit rather than to a stopwatch, so the useful default is
-      the limit itself - and because every client computes the same starting
-      value, an untouched clock never has to be sent.
-   */
-   const timer = writable({ running: false, remaining: DEFAULT_TIMER_MS, at: 0 })
 
    const prizesFlipped = writable(false)
    const handRevealed = writable(false)

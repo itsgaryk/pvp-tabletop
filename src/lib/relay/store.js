@@ -520,7 +520,15 @@ export async function createRoom (name = null) {
             declared never started.
          */
          guestJoined: false,
-         epoch: roomEpoch()
+         epoch: roomEpoch(),
+         /*
+            The table's clock, until somebody sets one: no anchor yet, so a poll
+            answers "no clock" rather than a clock that reads zero. See
+            timerFields below.
+         */
+         timerAt: 0,
+         timerRunning: false,
+         timerRemaining: 0
       }
       const created = await store.setMeta(id, meta, { nx: true })
       if (!created) continue
@@ -707,6 +715,57 @@ export async function roomExists (roomId) {
 }
 
 /*
+   The table's clock, as the relay owns it.
+
+   The clock is shared between clients as a value - "this much left as of this
+   moment" - which means the relay can say what it reads *now* rather than
+   leaving every client to work it out from an event that may be an hour old.
+   That matters because two browsers' clocks run at slightly different rates: a
+   client that only ever converted the event would drift away from the relay, and
+   from the other client, over the course of a fifty minute round.
+
+   So the anchor is stamped into the room's metadata as the event is appended,
+   and rides out on every poll (see the poll route). `at` is the relay's own
+   moment, because a client's is not trustworthy - and because it is the relay's
+   clock that `remaining` is then measured against.
+
+   Cost: a `timerUpdated` already costs the ten commands an append costs, and the
+   `SET` it pays for `lastActionAt` carries these fields in the same write. A
+   value that never moves - a paused clock - costs exactly nothing.
+*/
+function timerFields (name, data, at) {
+   if (name !== 'timerUpdated' || !data || typeof data !== 'object') return {}
+
+   const remaining = Number(data.remaining)
+   if (!Number.isFinite(remaining)) return {}
+
+   return {
+      timerRunning: Boolean(data.running),
+      timerRemaining: Math.max(0, remaining),
+      timerAt: at
+   }
+}
+
+/*
+   What that metadata says the clock reads at `now`, which is what a poll sends.
+   Null when the room has never had a clock set on it, so a client can tell "no
+   clock yet" from "a clock that happens to read zero".
+*/
+export function timerSnapshot (room, now = Date.now()) {
+   const stampedAt = Number(room?.timerAt)
+   if (!stampedAt) return null
+
+   const remaining = Math.max(0, Number(room.timerRemaining) || 0)
+   const running = Boolean(room.timerRunning)
+
+   return {
+      running,
+      remaining: running ? Math.max(0, remaining - (now - stampedAt)) : remaining,
+      at: stampedAt
+   }
+}
+
+/*
    Append one event. The sequence number comes from an atomic INCR, so two
    simultaneous sends get distinct numbers instead of overwriting each other.
 
@@ -734,7 +793,7 @@ export async function appendEvent (roomId, name, data, { from = null, meta = nul
    const event = { seq, ts: now, name, from, data: data ?? {} }
    await store.pushEvent(id, event)
 
-   await saveMeta(id, room, { lastActionAt: now })
+   await saveMeta(id, room, { lastActionAt: now, ...timerFields(name, event.data, now) })
    return event
 }
 
