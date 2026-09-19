@@ -2,14 +2,21 @@
    import Slot from './Slot.svelte'
    import { ctrlA } from '$lib/actions/customEvents.js'
 
-   import { active, bench, toBench, resetSelection, selectSlot } from '$lib/stores/player.js'
+   import { active, bench, toBench, resetSelection, selectSlot, stadium } from '$lib/stores/player.js'
 
    /* DnD */
 
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
 
-   const allowDrop = () => $source && $source !== 'stadium' && ($source !== 'slot' || $draggedCard === $active)
+   /*
+      A card in the Stadium is not dragged onto the bench: it is in play as a
+      Stadium, and its menu is where it is moved out of play. The comparison is
+      against the pile itself rather than its name, because a card dragged off the
+      Stadium carries the Stadium as its source the way every other pile's cards
+      carry theirs.
+   */
+   const allowDrop = () => $source && $source !== stadium && ($source !== 'slot' || $draggedCard === $active)
 
    function onDragDrop () {
       toBench()

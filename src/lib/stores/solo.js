@@ -3,10 +3,12 @@ import { writable } from './custom/writable.js'
 import { solo } from './soloState.js'
 import {
    resetBoard, timer,
-   cardSelection, slotSelection, resetSelection, selectionPile
+   cardSelection, slotSelection, resetSelection, selectionPile,
+   discardStadium, onStadiumPlay as registerStadiumAnswer
 } from './player.js'
 import { defaultOpponent, spectatorFlipped } from './opponent.js'
 import { slot } from './custom/cards.js'
+import { STADIUM_LIMIT } from './custom/board.js'
 import { fixOld } from './oldCards.js'
 import { publishToChat } from './connection.js'
 
@@ -117,30 +119,40 @@ export function onOpponentSelection () {
 
 /*
    Taking a card off one of the far half's zones, and putting one into another.
-   Every zone here is a list except the Stadium, which holds the single card that
-   is in play: that one is set and cleared rather than pushed and removed, and
-   playing a second card on it discards the first, the way it does on your own.
+   Every zone here is a list, the Stadium included - it holds up to two of that
+   half's own cards (see STADIUM_LIMIT).
 
    The Stadium is recognized by the store it is, not by its name: a card on the
    far half is dragged with its pile as the source, and that pile for the Stadium
-   is the store itself. Treating it as a list called `remove` on a store that has
-   no such method is why a card could not be taken off the far half's Stadium at
-   all - the throw left it there, and the log said nothing about it.
+   is the store itself. Treating it as something else is why a card could not be
+   taken off the far half's Stadium at all - the throw left it there, and the log
+   said nothing about it.
 */
 function isStadium (pile) {
    return Boolean(pile) && pile === defaultOpponent.stadium
 }
 
 function takeFrom (source, card) {
-   if (isStadium(source)) defaultOpponent.stadium.set(null)
-   else source.remove(card)
+   /* a pile's `remove` takes the last card when the one asked for is not in it */
+   if (!source.get().includes(card)) return
+   source.remove(card)
 }
 
 function putInto (target, card, bottom = false) {
    if (isStadium(target)) {
-      const current = defaultOpponent.stadium.get()
-      if (current) defaultOpponent.discard.push(current)
-      defaultOpponent.stadium.set(card)
+      /*
+         The far half's own two: a third replaces the oldest of theirs, the way
+         playing a Stadium replaces the one already in play. It does not clear the
+         near half's - a card played there is what does that, and it is played
+         from the other side of the table (see soloCardToStadium).
+      */
+      while (target.get().length >= STADIUM_LIMIT) {
+         const replaced = target.shift()
+         if (!replaced) break
+         defaultOpponent.discard.push(replaced)
+         logForOpponent(`Discarded ${replaced.name || 'a card'} from their Stadium`)
+      }
+      target.push(card)
    } else if (bottom) target.unshift(card)
    else target.push(card)
 }
@@ -195,15 +207,44 @@ export function soloCardAttach (pile, card) {
    logForOpponent(`Attached ${card.name} to ${active.name || 'their Active'}`)
 }
 
-/* a card off that half goes onto that half's Stadium, replacing what is there */
+/*
+   A card off that half goes onto that half's Stadium, and the near half's cards
+   in the Stadium go to the near half's discard.
+
+   That second half is the rule for the shared zone, and in a room it is not this
+   side's to make: the relay delivers `stadiumPlayed` to the player being cleared,
+   and their own client discards what they had in play there. Solo relays
+   nothing, so the answer is made here instead - and the mirror image of it, a
+   card played into the *near* half's Stadium clearing the far half's, is
+   registered with player.js (see onStadiumPlay there).
+*/
 export function soloCardToStadium (pile, card) {
    if (!pile || !card) return
 
    takeFrom(pile, card)
    putInto(defaultOpponent.stadium, card)
+   discardStadium()
 
    logForOpponent(`Played ${card.name || 'a card'} to the Stadium`)
 }
+
+/*
+   The far half being cleared out of the Stadium: every card it had in play there
+   goes to its own discard. This is what player.js asks for when a card is played
+   into the near half's Stadium, in solo, where the relay would otherwise have
+   asked the other half's owner.
+*/
+function discardOpponentStadium () {
+   const cards = [ ...defaultOpponent.stadium.get() ]
+   if (!cards.length) return
+
+   defaultOpponent.stadium.clear()
+   defaultOpponent.discard.merge(cards)
+
+   logForOpponent(`Discarded ${cards.length === 1 ? cards[0].name : `${cards.length} cards`} from their Stadium`)
+}
+
+registerStadiumAnswer(() => discardOpponentStadium())
 
 /*
    Attaching (or evolving) the selected cards onto one of that half's Pokemon:

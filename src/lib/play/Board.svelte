@@ -283,7 +283,12 @@
       else if (key === 'g') {
          if (farSelected()) soloSelectedTo('stadium')
          else if ($cardSelection.length) toStadium()
-         else if (stadium.val) publishLog(`Stadium: ${stadium.val.name}`)
+         /*
+            With nothing selected, G says what is in play there - which is now up
+            to two cards rather than the one, and was read off a store that has no
+            `.val`, so this line had never said anything at all.
+         */
+         else if ($stadium.length) publishLog(`Stadium: ${$stadium.map((card) => card.name).join(', ')}`)
       }
 
       else if (key === 's') {

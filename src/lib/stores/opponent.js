@@ -58,12 +58,6 @@ export function createOpponent () {
    const removeCard = (id, pile) => {
       if (!pile) return null
 
-      if (pile === stadium) {
-         const card = stadium.get()
-         stadium.set(null)
-         return card
-      }
-
       const card = pile.get().find(c => c._id === id)
       if (!card) return null
       pile.remove(card)
@@ -134,10 +128,15 @@ export function createOpponent () {
       for (const e of state.bench) bench.add(importSlot(e))
       if (state.active) active.set(importSlot(state.active))
 
-      if (state.stadium) {
-         const card = removeCard(state.stadium, deck)
-         stadium.set(card)
-      }
+      /*
+         The Stadium is a list of that player's own cards in play there. A board
+         state from before it held more than one carries a single id, so both
+         shapes are read - an older client's event must not throw on the way in.
+      */
+      const theirStadium = Array.isArray(state.stadium)
+         ? state.stadium
+         : (state.stadium ? [ state.stadium ] : [])
+      moveCards(theirStadium, deck, stadium)
 
       if (state.powerMarker) powerMarker.set(state.powerMarker)
       powerMarkerUsed.set(normalizeMarkerUsed(state.powerMarkerUsed))
@@ -257,11 +256,21 @@ export function createOpponent () {
          const s = findSlot(slotId)
          if (s) removeSlot(s)
       },
+      /*
+         A card the other player played into the Stadium.
+
+         It joins that player's own cards there - they may have two in play - and
+         then this client answers for its own player, whose cards in the Stadium
+         go to their discard: playing a card clears the *other* player's out of
+         it. That answer is made here rather than by whoever played, because this
+         board is the one that knows what its own player had in play - and in solo
+         the answer is registered instead, since nothing is relayed (see player.js
+         and solo.js).
+      */
       stadiumPlayed: ({ cardId, from }) => {
          const card = removeCard(cardId, getPile(from))
          if (!card) return
-         stadium.set(card)
-         // discard your own stadium (if applicable) as a response
+         stadium.push(card)
          discardStadium()
       },
       pokemonToggle: ({ hidden }) => pokemonHidden.set(hidden),

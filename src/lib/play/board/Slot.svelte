@@ -8,7 +8,7 @@
 
    import {
       discard, slotSelection as selection, selectSlot, removeSlot,
-      attaching, evolving, attachSelection, cardSelection, selectCard
+      attaching, evolving, attachSelection, cardSelection, selectCard, stadium
    } from '$lib/stores/player.js'
 
    const { openSlotDetails, openSlotMenu, openDetails, openCardMenu } = getContext('boardActions')
@@ -36,7 +36,8 @@
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { dragging } from '$lib/dnd/pointer.js'
 
-   const allowDrop = () => $source && $source !== 'slot' && $source !== 'stadium'
+   /* neither a Pokemon in play nor a card in the Stadium is attached to anything */
+   const allowDrop = () => $source && $source !== 'slot' && $source !== stadium
 
    /* the action hands the pointerdown over as { e } */
    function onDragStart ({ e }) {
