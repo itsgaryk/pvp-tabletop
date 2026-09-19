@@ -48,9 +48,13 @@
 <Popup bind:this={popup} anchored>
    <!--
       One block per setting, each with the same shape: a heading, then the
-      control, then what it does. Every block carries a heading of its own - a
-      checkbox with no title above it reads as a stray line rather than a
-      setting - and the first and last are rounded to close the panel.
+      control. Every block carries a heading of its own - a checkbox with no title
+      above it reads as a stray line rather than a setting - and the first and
+      last are rounded to close the panel.
+
+      The one line explaining what a setting does is only there where the control
+      does not already say it. A checkbox that reads "Show borders around the
+      board zones" does not need a paragraph naming the zones as well.
    -->
    <div class="p-4">
       <div class="setting first">
@@ -59,9 +63,6 @@
             <input type="checkbox" bind:checked={$autoMulligan}>
             Automatically re-shuffle mulligans when starting a new game
          </label>
-         <p class="hint">
-            Disable this option when using cards like Talonflame (STS-96) that break the normal rules of setup.
-         </p>
       </div>
 
       <div class="setting">
@@ -76,12 +77,8 @@
                {marker.label}
             </label>
          {/each}
-         <p class="hint">
-            Shows a marker on your side of the board once you have used that power, and writes it to the game log.
-            Choose <strong>Both</strong> to show the VSTAR and GX marks together, for a deck that has one of each.
-         </p>
          {#if $spectating}
-            <p class="hint italic">A spectator does not show a marker of their own.</p>
+            <p class="hint">A spectator does not show a marker of their own.</p>
          {/if}
       </div>
 
@@ -102,16 +99,6 @@
             <input type="checkbox" bind:checked={$zoneBorders}>
             Show borders around the board zones
          </label>
-         <p class="hint">
-            Outlines each area of the board - hand, deck, discard, lost zone, prizes, bench, active, stadium and play - for both players.
-         </p>
-      </div>
-
-      <div class="setting">
-         <div class="title">Appearance</div>
-         <p class="hint">
-            The board is always shown in dark mode.
-         </p>
       </div>
 
       <!--
@@ -128,10 +115,6 @@
          <button class="diagnostics-link" on:click|stopPropagation={() => diagnostics.open()}>
             Open the diagnostics panel
          </button>
-         <p class="hint">
-            Relay health, the current room, the seat order and the events this browser has received -
-            for telling a broken board apart from a broken client.
-         </p>
       </div>
    </div>
 </Popup>

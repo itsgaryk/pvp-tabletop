@@ -698,6 +698,21 @@ if (want('panel')) {
    }))`)
    check('every setting has a heading', shape.length > 0 && shape.every((s) => s.title), JSON.stringify(shape.map((s) => s.title)))
    check('and they share one look', new Set(shape.map((s) => s.tinted)).size === 1, JSON.stringify(shape.map((s) => s.tinted)))
+
+   /*
+      The panel is the settings that can be set, and nothing else. "Appearance"
+      held one line of prose about dark mode and no control at all, and the lines
+      that only restated what the control already says are gone with it.
+   */
+   check('and only settings that can be set are there',
+      JSON.stringify(shape.map((s) => s.title)) === JSON.stringify(['Mulligans', 'VSTAR / GX marker', 'Card Size', 'Board zones', 'Diagnostics']),
+      JSON.stringify(shape.map((s) => s.title)))
+
+   const described = await alice.evaluate(`[...document.querySelectorAll('.setting')].map((b) => b.innerText.replace(/\\s+/g, ' ').trim())`)
+   check('with nothing restating what a control already says',
+      !described.some((t) => /Talonflame|once you have used that power|Outlines each area|events this browser has received|always shown in dark mode/.test(t)),
+      JSON.stringify(described))
+
    check('the marker list ends with Both', (await alice.evaluate(`[...document.querySelectorAll('input[name="powerMarker"]')].map((i) => i.parentElement.textContent.trim()).join(',')`)) === 'Off,VStar,GX,Both')
 
    await alice.clickText('Both', { settle: 1500, kinds: 'label' })
