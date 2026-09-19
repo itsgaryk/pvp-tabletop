@@ -88,14 +88,21 @@
    */
    .prizes {
       /*
-         The columns and rows are the cards' own size rather than a share of the
-         zone, so that the two in a row touch: a `1fr` cell is wider than a card
-         whose height is what limits it, and the difference came out as a gap
-         between them.
+         The prizes are a table three rows deep, filled down each column before the
+         next one starts: six prizes are the familiar two columns of three, and a
+         seventh - a card put into the prizes, which a player can do - begins a third
+         column rather than a fourth row. A prize taken off the table leaves its
+         blank spot, and the next card into the prizes fills it (see the note over
+         --card-ratio in global.css for how the cards are sized).
+
+         The columns are the cards' own width and the block is centred in the zone,
+         so two prizes in a row touch rather than each sitting in the middle of a
+         cell wider than it.
       */
       display: grid;
-      grid-template-columns: repeat(2, auto);
-      grid-auto-rows: auto;
+      grid-template-rows: repeat(3, auto);
+      grid-auto-flow: column;
+      grid-auto-columns: auto;
       place-content: center;
       width: 100%;
       height: 100%;
@@ -120,19 +127,29 @@
    }
 
    /*
-      A prize is as large as its own cell of that block allows - the lower of the
-      cell's width and the cell's height - which is the "collectively" in the rule
-      (see the note over --card-ratio in global.css): six prizes are sized by the
-      block six of them make, not by the zone one of them would have had.
+      A prize is as large as its own cell of the block allows - the lower of the
+      cell's width and the cell's height - and the block is as many columns as the
+      prizes need. CSS is told the width of the block by the count rather than
+      counting the cards itself: three rows is the table, so the seventh prize is
+      what makes a third column, the tenth a fourth, and so on.
 
       The whole selector is global on purpose: the card is drawn by Card.svelte, so
       it does not carry this component's scope and a scoped `img.card` would not
       reach it at all - which is a size that silently falls back to the card's own.
    */
    :global(.prizes img.card) {
-      width: min(
-         calc(100cqw / 2),
-         calc((100cqh / 3) * var(--card-ratio))
-      );
+      width: min(calc(100cqw / 2), calc((100cqh / 3) * var(--card-ratio)));
+   }
+
+   .prizes:has(> :nth-child(7)) :global(img.card) {
+      width: min(calc(100cqw / 3), calc((100cqh / 3) * var(--card-ratio)));
+   }
+
+   .prizes:has(> :nth-child(10)) :global(img.card) {
+      width: min(calc(100cqw / 4), calc((100cqh / 3) * var(--card-ratio)));
+   }
+
+   .prizes:has(> :nth-child(13)) :global(img.card) {
+      width: min(calc(100cqw / 5), calc((100cqh / 3) * var(--card-ratio)));
    }
 </style>
