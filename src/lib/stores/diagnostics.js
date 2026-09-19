@@ -79,7 +79,8 @@ export function boardZones (board = {}) {
 
    zones.active = slotSize(board?.active)
    zones.bench = (board?.bench || []).reduce((sum, slot) => sum + slotSize(slot), 0)
-   zones.stadium = board?.stadium ? 1 : 0
+   /* the Stadium holds a list: up to two of that player's own cards in play */
+   zones.stadium = (board?.stadium || []).length
    zones.total = PILES.reduce((sum, pile) => sum + zones[pile], 0)
       + zones.active + zones.bench + zones.stadium
 

@@ -1,5 +1,5 @@
 import { get, post } from '$lib/util/fetch-web.js'
-import { board } from './custom/board.js'
+import { board, STADIUM_LIMIT } from './custom/board.js'
 import { pile, slot } from './custom/cards.js'
 import { writable } from './custom/writable.js'
 import { share, react, publishLog, spectating, socket, onBoardCleanup, chat } from './connection.js'
@@ -196,7 +196,12 @@ export function moveSelection (pile, options = {}) {
       const ids = []
       const swapIds = []
 
-      const from = selectionPile === 'stadium' ? 'stadium' : selectionPile.name
+      /*
+         Where the selection came from. The Stadium answers with its own name, the
+         way every other pile does: it is a list of the cards this player has in
+         play there, so taking one off it is the same `remove` any pile takes.
+      */
+      const from = selectionPile.name
 
       let swap = []
       if (options.switch) {
@@ -216,13 +221,8 @@ export function moveSelection (pile, options = {}) {
             if (replacement) swapIds.push(replacement._id)
          }
 
-         if (from === 'stadium') {
-            if (replacement) stadium.set(replacement)
-            else stadium.set(null)
-         } else {
-            if (replacement) selectionPile.swap(card, replacement)
-            else selectionPile.remove(card)
-         }
+         if (replacement) selectionPile.swap(card, replacement)
+         else selectionPile.remove(card)
 
          if (options.bottom) pile.unshift(card)
          else pile.push(card)
@@ -230,8 +230,13 @@ export function moveSelection (pile, options = {}) {
 
       share('cardsMoved', { cards: ids, from, to: pile.name })
       if (swapIds.length) {
-         if (from === 'stadium') share('stadiumPlayed', { cardId: swapIds[0], from: pile.name })
-         else share('cardsMoved', { cards: swapIds, from: pile.name, to: from })
+         if (from === 'stadium') {
+            /* the card swapped in is a card just played into the Stadium */
+            share('stadiumPlayed', { cardId: swapIds[0], from: pile.name })
+            answerStadiumPlay()
+         } else {
+            share('cardsMoved', { cards: swapIds, from: pile.name, to: from })
+         }
       }
 
       logMove(cardSelection.get(), from, pile.name, options)
@@ -268,11 +273,10 @@ export function toBench () {
 
       const ids = []
 
-      const from = selectionPile === 'stadium' ? 'stadium' : selectionPile.name
+      const from = selectionPile.name
 
       for (const card of cardSelection.get()) {
-         if (from === 'stadium') stadium.set(null)
-         else selectionPile.remove(card)
+         selectionPile.remove(card)
 
          const s = slot(card)
          bench.add(s)
@@ -305,10 +309,9 @@ export function toActive () {
 
       const card = cs[0]
 
-      const from = selectionPile === 'stadium' ? 'stadium' : selectionPile.name
+      const from = selectionPile.name
 
-      if (from === 'stadium') stadium.set(null)
-      else selectionPile.remove(card)
+      selectionPile.remove(card)
 
       if (active.get()) {
          // move the current active out of the way
@@ -339,29 +342,71 @@ export function toActive () {
 }
 
 export function discardStadium () {
-   if (isSpectator()) return
+   if (isSpectator()) return 0
 
-   const st = stadium.get()
-   if (st) {
-      discard.push(st)
-      stadium.set(null)
-      share('cardsMoved', { cards: [ st._id ], from: 'stadium', to: 'discard' })
-   }
+   const cards = stadium.get()
+   if (!cards.length) return 0
+
+   /*
+      All of them, not the top one: the Stadium holds up to two of a player's own
+      cards, and a card the other player plays clears the whole of what this
+      player had in play there.
+   */
+   const ids = cards.map(card => card._id)
+   discard.merge(cards)
+   stadium.clear()
+
+   share('cardsMoved', { cards: ids, from: 'stadium', to: 'discard' })
+   return ids.length
+}
+
+/*
+   Playing a card into this player's Stadium.
+
+   A card of the other half's is never what this plays: a player may have two of
+   their own in play there, and playing a third replaces the oldest of their own
+   two - the way playing a Stadium replaces the one already in play. The *other*
+   player's cards go to their discard, which is answered on their own client: the
+   relay delivers `stadiumPlayed` to them, and the mirror there clears what its
+   own player had in play (see opponent.js). In solo both halves are this board
+   and nothing is relayed, so that answer is made here instead - solo.js
+   registers it, rather than this module importing a board that imports it back.
+*/
+const stadiumAnswers = new Set()
+
+export function onStadiumPlay (answer) {
+   stadiumAnswers.add(answer)
+   return () => stadiumAnswers.delete(answer)
+}
+
+function answerStadiumPlay () {
+   for (const answer of [ ...stadiumAnswers ]) answer()
 }
 
 export function toStadium () {
    if (isSpectator()) return
 
-   if (cardSelection.get().length !== 1 || selectionPile === 'stadium' || !selectionPile.get().length) return
+   if (cardSelection.get().length !== 1 || selectionPile === stadium || !selectionPile.get().length) return
    const card = cardSelection.get()[0]
 
    selectionPile.remove(card)
 
-   discardStadium()
-   stadium.set(card)
+   /* a third card is the stadium being replaced, so the oldest of our own goes */
+   while (stadium.get().length >= STADIUM_LIMIT) {
+      const replaced = stadium.shift()
+      if (!replaced) break
+      discard.push(replaced)
+      share('cardsMoved', { cards: [ replaced._id ], from: 'stadium', to: 'discard' })
+      logMove([ replaced ], 'stadium', 'discard')
+   }
+
+   stadium.push(card)
 
    share('stadiumPlayed', { cardId: card._id, from: selectionPile.name })
    logStadium(card, selectionPile.name)
+
+   /* the other half of the table answers a card played here */
+   answerStadiumPlay()
 
    resetSelection()
 }
@@ -388,11 +433,10 @@ export function attachSelection (slot) {
    if (!cardSelection.get().length) return
 
    const ids = []
-   const from = selectionPile === 'stadium' ? 'stadium' : selectionPile.name
+   const from = selectionPile.name
 
    for (const card of cardSelection.get()) {
-      if (from === 'stadium') stadium.set(null)
-      else selectionPile.remove(card)
+      selectionPile.remove(card)
 
       ids.push(card._id)
 

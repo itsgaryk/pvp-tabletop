@@ -514,10 +514,10 @@ zones drawn for a half that is rotated, so their cards face the player on that s
 
 A zone is a place a card can be dropped on and clicked in. It is a cell of the
 board's grid — and it is not the same thing as the name written inside it (see
-below), nor as what it holds: the deck, hand, prizes, discard, lost zone and table
-are piles, while the active spot and the bench are *slots*. A slot holds up to three
-lists (Pokémon, energy, trainer) plus the state that belongs to them — damage,
-status, ability used.
+below), nor as what it holds: the deck, hand, prizes, discard, lost zone, stadium
+and table are piles, while the active spot and the bench are *slots*. A slot holds
+up to three lists (Pokémon, energy, trainer) plus the state that belongs to them —
+damage, status, ability used.
 
 | Zone | Grid area | Near half | Far half | Board field |
 | --- | --- | --- | --- | --- |
@@ -529,7 +529,7 @@ status, ability used.
 | Bench | `bench` / `bench2` | `board/Bench.svelte` | `opponent/Bench.svelte` | `bench` (slots) |
 | Active | `active` (`active1`, `active2`) | `board/Active.svelte` | `opponent/Active.svelte` | `active` (one slot) |
 | Table | `play` / `play2` | `board/Temp.svelte` | `opponent/Temp.svelte` | `table` |
-| Stadium | `stadium` / `stadium2` | `board/Stadium.svelte` | `opponent/Stadium.svelte` | `stadium` |
+| Stadium | `stadium` / `stadium2` | `board/Stadium.svelte` | `opponent/Stadium.svelte` | `stadium` (up to two cards) |
 | Pokemon Power | `power` / `power2` | `PowerZone.svelte` | `PowerZone.svelte` | `powerMarker` |
 
 The board fields are the ones `src/lib/stores/custom/board.js` creates and
@@ -555,7 +555,8 @@ Four cells are not one zone to one component:
   is empty and nothing is being dragged (`pointer-events: none` on `.play.empty`),
   which is what lets a click reach the far half's table lying underneath. The near
   stadium passes clicks through the same way until it has a card in play, and it stays
-  the player's own whichever way the board is flipped.
+  the player's own whichever way the board is flipped. Both hold two cards per player
+  (see *The Stadium holds two cards* below).
 - **The Stadium's cell is three bands.** `.stadium-area` is itself a grid of
   `1fr 2fr 1fr`: `power2` in the top quarter, the two stadiums sharing the middle
   half, `power` in the bottom quarter. So each player's Pokemon Power zone is the
@@ -582,8 +583,37 @@ diagnostics panel), so it is state rather than board furniture.
 
 A pile draws its own count badge in the corner, except the table's, which asks for
 none: the stack there is read by looking at it, and a number on top of it was noise.
-Deck, hand, prizes, discard and lost zone carry one; the stadium (a single card), the
-active spot and the bench (slots) never did.
+Deck, hand, prizes, discard and lost zone carry one; the stadium, the active spot and
+the bench never did — the first because two cards are read by looking at them, the
+other two because they are slots.
+
+### The Stadium holds two cards, and a play clears the other player's
+
+The Stadium is the one zone both players play into, and each of them may keep **two
+cards** in it (`STADIUM_LIMIT`, in `src/lib/stores/custom/board.js`). Both are drawn
+side by side, each taking half of what one card used to, so the pair fits the band the
+single card did.
+
+- **A third card is the stadium being replaced.** The oldest of that player's own two
+  goes to their discard, and the new card joins the one that is left. Nothing is
+  refused: a drop that did nothing would be worse than a rule with a name.
+- **A card one player plays clears the other player's out of it**, all of them, into
+  that player's discard. So the two players' cards are only ever in it together for
+  the moment a play takes to cross the wire.
+
+That second rule is the one with a shape worth knowing, because the client that
+answers it is not the client that plays the card. Playing a card shares
+`stadiumPlayed`; the *other* client receives it, puts the card in its mirror of that
+player's Stadium, and then clears **its own** player's cards out — this board is the
+one that knows what its own player had in play. A spectator's mirrors follow the same
+event, and the cleared player's own `cardsMoved` is what moves those cards in a
+spectator's other mirror. In solo there is no relay and no other client, so the answer
+is made locally: `soloCardToStadium` clears the near half's cards itself, and the
+mirror image of it — a card played into the *near* half's Stadium clearing the far
+half's — is registered with `player.js` as `onStadiumPlay`. It is registered rather
+than imported because the board that answers imports `player.js`, and a second
+direction of import is the cycle that took the app down once already (see the note in
+`connection.js`).
 
 ### Zone borders and names
 
@@ -721,7 +751,7 @@ The board's own shortcuts, from `Board.svelte`:
 | `Alt`+`1`–`9` | look at that many from the top of the deck (the deck menu's *View Top X*) |
 | `D` `H` `L` `P` | the selection to discard / hand / lost zone / prizes |
 | `B` `A` | the selected Pokémon to the bench / the active spot |
-| `G` | the selection to the stadium, or log the stadium already in play |
+| `G` | the selection to the stadium, or what is in the stadium already |
 | `S` | shuffle: the selection into the deck, or the deck itself |
 | `T` `M` | the selection to the top / bottom of the deck |
 | `Q` `E` | attach / evolve with the selected card |

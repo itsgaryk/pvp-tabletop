@@ -11,6 +11,10 @@
  *   leaving    a player leaving ends the game for the one still sitting there,
  *              who gets the centred "Room closed: player left the room" dialog
  *              and an emptied board behind it; the leaver is not shown it
+ *   stadium    the one zone both players play into: two cards each, drawn side by
+ *              side, a third replacing that player's own oldest, and a card one
+ *              player plays sending the other player's cards to that player's
+ *              discard
  *   beacon     a spectator whose TAB CLOSES drops out of the count, with no
  *              button pressed - the pagehide beacon
  *   restart    a room stamped by another deployment closes on the next poll
@@ -562,7 +566,157 @@ if (want('leave')) {
    check('and it opens the room code prompt', await canOpenJoin(bob))
 }
 
-/* ------------------------------------------------- 2. the closed dialog --- */
+/* ------------------------------------------- 2. two cards in the Stadium --- */
+
+if (want('stadium')) {
+   const room = await seatGame('the Stadium: two cards each, and a play clears the other player\'s')
+   console.log(`  room ${room}`)
+
+   /*
+      The piles' own counts, which is where a discard is counted: only the top
+      card of a discard is drawn, so its cards cannot be counted off the DOM. The
+      Stadium is counted in cards instead - it carries no badge.
+   */
+   const badges = (page) => page.evaluate(`(() => {
+      const badge = (sel) => {
+         const el = document.querySelector(sel + ' .count')
+         return el ? parseInt(el.textContent.trim(), 10) : null
+      }
+      return {
+         own: { hand: badge('.hand'), deck: badge('.deck'), discard: badge('.discard'), prizes: badge('.prizes') },
+         far: { hand: badge('.hand2'), deck: badge('.deck2'), discard: badge('.discard2'), prizes: badge('.prizes2') }
+      }
+   })()`)
+
+   /* the two halves of the one Stadium cell: cards, and whether they sit side by side */
+   const stadium = (page) => page.evaluate(`(() => {
+      const shape = (sel) => {
+         const rects = [...document.querySelectorAll(sel + ' img.card')].map((i) => i.getBoundingClientRect())
+         const sorted = rects.slice().sort((a, b) => a.left - b.left)
+         return {
+            count: rects.length,
+            overlap: sorted.length > 1 && sorted[1].left < sorted[0].right - 1,
+            widths: rects.map((r) => Math.round(r.width))
+         }
+      }
+      const band = document.querySelector('.stadium-area > .stadium2')?.getBoundingClientRect()
+      return { own: shape('.stadium'), far: shape('.stadium2'), band: band ? Math.round(band.width) : null }
+   })()`)
+
+   /*
+      Play one card of a hand into the Stadium, the way a player does it: right
+      click the card, then the menu's own "To Stadium". The menu is portalled onto
+      the body, so it is found by its text rather than by where it was written -
+      and matched by prefix, because an entry carries its shortcut after its name.
+   */
+   const playToStadium = async (page, index = 0) => {
+      const card = await page.evaluate(`(() => {
+         const img = [...document.querySelectorAll('.hand img.card')][${index}]
+         if (!img) return null
+         img.parentElement.click()
+         return img.getAttribute('alt')
+      })()`)
+      if (!card) return false
+      await sleep(900)
+
+      await page.rightClick('.hand img.card')
+      await sleep(1000)
+      const chosen = await page.evaluate(`(() => {
+         const item = [...document.querySelectorAll('.item')].find((el) => el.textContent.trim().startsWith('To Stadium'))
+         if (!item) return false
+         item.click()
+         return true
+      })()`)
+      await sleep(2200)
+      return chosen
+   }
+
+   /*
+      This section is slower than the room's idle window, and reading the board
+      appends nothing, so both players answer the prompt while it works - the same
+      arrangement, and for the same reason, as the panel section.
+   */
+   const answering = setInterval(() => {
+      for (const page of [alice, bob]) {
+         page.evaluate(`(() => { const go = document.querySelector('.idle-go'); if (go) go.click(); return true })()`).catch(() => {})
+      }
+   }, 1500)
+
+   const start = await badges(alice)
+   check('both players start with cards in hand', start.own.hand === 7 && (await badges(bob)).own.hand === 7,
+      JSON.stringify({ alice: start.own, bob: (await badges(bob)).own }))
+   check('and nothing in either Stadium',
+      (await stadium(alice)).own.count === 0 && (await stadium(alice)).far.count === 0,
+      JSON.stringify(await stadium(alice)))
+
+   /* one card, then a second beside it rather than on top of it */
+   check('a card can be played into the player\'s Stadium', await playToStadium(alice))
+   const one = await stadium(alice)
+   check('and it is the only card there', one.own.count === 1, JSON.stringify(one.own))
+
+   check('a second card can be played', await playToStadium(alice))
+   const two = await stadium(alice)
+   check('so the Stadium holds both', two.own.count === 2, JSON.stringify(two.own))
+   check('and they are drawn side by side rather than one over the other', two.own.overlap === false, JSON.stringify(two.own))
+   check('each of them narrower than the single card was',
+      two.own.widths.length === 2 && two.own.widths.every((w) => w < one.own.widths[0]),
+      JSON.stringify({ one: one.own.widths, two: two.own.widths }))
+   check('and the pair still fits the band they are in',
+      two.own.widths.reduce((sum, w) => sum + w, 0) <= two.band, JSON.stringify({ widths: two.own.widths, band: two.band }))
+
+   const afterTwo = await badges(alice)
+   check('neither of them was discarded to make room', afterTwo.own.discard === 0, JSON.stringify(afterTwo.own))
+   check('the opponent sees the same two cards',
+      (await stadium(bob)).far.count === 2 && (await stadium(bob)).far.overlap === false,
+      JSON.stringify((await stadium(bob)).far))
+
+   /* a third card replaces the oldest of that player's own, into their discard */
+   check('a third card is played too', await playToStadium(alice))
+   const three = await stadium(alice)
+   check('the Stadium still holds two, not three', three.own.count === 2, JSON.stringify(three.own))
+   check('and the one it replaced went to that player\'s discard',
+      (await badges(alice)).own.discard === 1, JSON.stringify((await badges(alice)).own))
+
+   /*
+      The other player plays: everything the first player had in the Stadium goes
+      to the first player's discard, and the card played is the only one there.
+   */
+   check('the opponent can play into the Stadium as well', await playToStadium(bob))
+   await sleep(2500)
+   check('and the player\'s cards in it went to the player\'s discard',
+      (await stadium(alice)).own.count === 0 && (await badges(alice)).own.discard === 3,
+      JSON.stringify({ stadium: (await stadium(alice)).own, badges: (await badges(alice)).own }))
+   check('the opponent\'s own discard is untouched by playing',
+      (await badges(alice)).far.discard === 0, JSON.stringify((await badges(alice)).far))
+   check('with the card they played on their own half, where the player sees it',
+      (await stadium(alice)).far.count === 1, JSON.stringify((await stadium(alice)).far))
+   /*
+      Read on the opponent's own board, its two halves are the other way round: a
+      player's own Stadium is the near half of their own screen, and the one they
+      see across the table is the player's.
+   */
+   check('and on their own board it is their own half that holds it',
+      (await stadium(bob)).own.count === 1 && (await stadium(bob)).far.count === 0, JSON.stringify(await stadium(bob)))
+
+   /* and the rule is the same the other way round */
+   check('the opponent can keep two of their own in it', await playToStadium(bob))
+   const bobTwo = await stadium(bob)
+   check('drawn side by side on their half too', bobTwo.own.count === 2 && bobTwo.own.overlap === false, JSON.stringify(bobTwo.own))
+
+   check('and a card played by the player clears the opponent\'s two', await playToStadium(alice))
+   await sleep(3000)
+   const clearedBob = await stadium(bob)
+   const clearedAlice = await stadium(alice)
+   check('so their Stadium is empty again', clearedBob.own.count === 0, JSON.stringify(clearedBob.own))
+   check('and both of them are in the opponent\'s discard',
+      (await badges(bob)).own.discard === 2, JSON.stringify((await badges(bob)).own))
+   check('while the card just played is the only one left in the Stadium, on the player\'s half',
+      clearedAlice.own.count === 1 && clearedAlice.far.count === 0, JSON.stringify(clearedAlice))
+
+   clearInterval(answering)
+}
+
+/* ------------------------------------------------- 3. the closed dialog --- */
 
 if (want('closed')) {
    const room = await seatGame('a closed room tells the people still in it')

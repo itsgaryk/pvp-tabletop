@@ -1,7 +1,7 @@
 <script>
    import Slot from './Slot.svelte'
 
-   import { active, toActive, slotSelection, cardSelection } from '$lib/stores/player.js'
+   import { active, toActive, slotSelection, cardSelection, stadium } from '$lib/stores/player.js'
 
    /* DnD */
 
@@ -18,7 +18,7 @@
       far half is somebody else's and is not draggable at all, so this only ever
       applies in solo.
    */
-   const allowDrop = () => $source && $source !== 'stadium' && $draggedCard !== $active
+   const allowDrop = () => $source && $source !== stadium && $draggedCard !== $active
       && !($solo && onOpponentHalf($source))
       && ($slotSelection.length <= 1 && $cardSelection.length <= 1)
 

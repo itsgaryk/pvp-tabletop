@@ -168,7 +168,8 @@ function tally (board) {
 
    zones.active = slotSize(board?.active)
    zones.bench = (board?.bench || []).reduce((sum, slot) => sum + slotSize(slot), 0)
-   zones.stadium = board?.stadium ? 1 : 0
+   /* the Stadium holds a list: up to two of that player's own cards in play */
+   zones.stadium = (board?.stadium || []).length
    zones.total = Object.values(zones).reduce((sum, n) => sum + n, 0)
    return zones
 }
@@ -181,7 +182,7 @@ function zonesLine (zones) {
 
    if (zones.active) parts.push(`active ${zones.active}`)
    if (zones.bench) parts.push(`bench ${zones.bench}`)
-   if (zones.stadium) parts.push('stadium 1')
+   if (zones.stadium) parts.push(`stadium ${zones.stadium}`)
 
    return parts.length ? parts.join(', ') : 'nothing'
 }

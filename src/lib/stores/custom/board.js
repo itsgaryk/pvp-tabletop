@@ -11,6 +11,14 @@ import { DEFAULT_TIMER_MS, timer } from '../timer.js'
 */
 export { DEFAULT_TIMER_MS, timer }
 
+/*
+   How many cards one player may have in the Stadium at once. The Stadium is the
+   one cell both players play into, and each of them may keep two cards in play
+   there; a third replaces the oldest of that player's own two, the way playing a
+   Stadium replaces the one already in play.
+*/
+export const STADIUM_LIMIT = 2
+
 export function board () {
 
    const cards = writable([])
@@ -22,7 +30,18 @@ export function board () {
    const lz = pile('lz')
    const bench = slots()
    const active = writable(null)
-   const stadium = writable(null)
+   /*
+      The Stadium is a list rather than the single card it used to be: a player
+      may have two cards in play in it at once (see STADIUM_LIMIT), and they are
+      drawn side by side.
+
+      It is still one zone per player - the opponent's cards in it are their own,
+      on the same board's other half - so a card played by either player kicks the
+      *other* player's cards out of it and into that player's discard. That answer
+      is made by the client of whoever is being kicked, which is why the event
+      that plays a card is what carries it (see opponent.js and solo.js).
+   */
+   const stadium = pile('stadium')
    const table = pile('table')
    const pickup = pile('pickup')
 
@@ -84,7 +103,7 @@ export function board () {
       lz.clear()
       bench.clear()
       active.set(null)
-      stadium.set(null)
+      stadium.clear()
       table.clear()
       pickup.clear()
    }
@@ -109,7 +128,7 @@ export function board () {
          lz: expPile(lz),
          active: active.get() ? expSlot(active.get()) : null,
          bench: bench.get().map(slot => expSlot(slot)),
-         stadium: stadium.get()?._id,
+         stadium: expPile(stadium),
          table: expPile(table),
          pickup: expPile(pickup),
          powerMarker: powerMarker.get(),
