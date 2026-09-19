@@ -8,7 +8,8 @@
    import { prizes, deck, prizesFlipped } from '$lib/stores/player.js'
 
    /*
-      The prizes cascade only once there are more than the six a game is dealt.
+      The prizes cascade only once there are more than the six a game is dealt, and
+      the cards are the size the dealt six are.
 
       Six is three rows of two, and they sit *next* to one another: that is the table
       a game starts with, and it is read at a glance. A seventh is a card put into the
@@ -16,9 +17,12 @@
       columns it was dealt as rather than sideways, because a pile of ten should not
       be a wider table.
 
-      `rows` is counted here rather than in CSS because the arithmetic needs it, and a
-      stylesheet cannot count its own children. With no overlap the same formula below
-      is the plain "the rows share the height" case, so one covers both.
+      The size is worked out for *three* rows whatever the pile holds, so taking a
+      prize does not make the ones left grow: the block is two rows of the same cards
+      in the same place, centred, and only a pile past six is sized by what it has
+      become. `rows` is counted here rather than in CSS because the arithmetic needs
+      it, and a stylesheet cannot count its own children; with no overlap the same
+      formula below is the plain "the rows share the height" case.
    */
    const COLUMNS = 2
    const CASCADE_AFTER = 3   /* rows: the six prizes a game is dealt */
@@ -26,7 +30,12 @@
 
    $: rows = Math.max(1, Math.ceil($prizes.length / COLUMNS))
    $: overlap = rows > CASCADE_AFTER ? OVERLAP : 0
-   $: layout = { '--rows': rows, '--overlap': overlap, '--columns': COLUMNS }
+   $: layout = {
+      '--rows': rows,
+      '--size-rows': Math.max(CASCADE_AFTER, rows),
+      '--overlap': overlap,
+      '--columns': COLUMNS
+   }
 
    let menu
 
@@ -117,22 +126,29 @@
    /*
       One prize's box. The arithmetic, in the zone's own units:
 
-         card   = (zone height - the pile's padding) x (1 + overlap) / (rows + overlap)
+         card   = (what is inside the pile) x (1 + overlap) / (size-rows + overlap)
          step   = card / (1 + overlap)     the row pitch, a card's overlap shorter
-         block  = (rows - 1) x step + card = what is inside the pile, exactly
+         block  = (rows - 1) x step + card
+         top    = half of what is left over, so a short block is centred
 
-      and the columns are one card wide each, centred, so the two in a row touch. The
-      8px is the pile's own `p-1` padding, which `100cqh` knows nothing about: without
-      it the block is 8px too tall for the space it is laid out in and the last row
-      hangs over the zone's edge.
+      `size-rows` is the rows a *dealt* table has rather than the rows this pile has,
+      which is what keeps the cards the same size as prizes are taken: three rows'
+      worth of size, and a block of one or two rows centred in the zone.
+
+      The columns are one card wide each, centred, so the two in a row touch. The 8px
+      is the pile's own `p-1` padding, which `100cqh` knows nothing about: without it
+      the block is 8px too tall for the space it is laid out in and the last row hangs
+      over the zone's edge.
    */
    .prize {
-      --card-h: calc((100cqh - 8px) * (1 + var(--overlap)) / (var(--rows) + var(--overlap)));
+      --avail: calc(100cqh - 8px);
+      --card-h: calc(var(--avail) * (1 + var(--overlap)) / (var(--size-rows) + var(--overlap)));
       --card-w: calc(var(--card-h) * var(--card-ratio));
       --step: calc(var(--card-h) / (1 + var(--overlap)));
+      --block-h: calc((var(--rows) - 1) * var(--step) + var(--card-h));
 
       position: absolute;
-      top: calc(var(--row) * var(--step));
+      top: calc((var(--avail) - var(--block-h)) / 2 + var(--row) * var(--step));
       left: calc(50% + (var(--col) - var(--columns) / 2) * var(--card-w));
       width: var(--card-w);
       height: var(--card-h);
