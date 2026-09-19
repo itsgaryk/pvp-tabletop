@@ -17,8 +17,9 @@
    $: ({ prizes, prizesFlipped } = store)
 
    /*
-      The same as the near half's: two columns, next to one another for the six a game
-      is dealt, and cascading once there are more (see the near half).
+      The same as the near half's: two columns next to one another for the six a game
+      is dealt, cards that keep that size as prizes are taken, and a cascade once
+      there are more (see the near half).
    */
    const COLUMNS = 2
    const CASCADE_AFTER = 3
@@ -26,7 +27,12 @@
 
    $: rows = Math.max(1, Math.ceil($prizes.length / COLUMNS))
    $: overlap = rows > CASCADE_AFTER ? OVERLAP : 0
-   $: layout = { '--rows': rows, '--overlap': overlap, '--columns': COLUMNS }
+   $: layout = {
+      '--rows': rows,
+      '--size-rows': Math.max(CASCADE_AFTER, rows),
+      '--overlap': overlap,
+      '--columns': COLUMNS
+   }
 
    let menu
 
@@ -91,15 +97,18 @@
 
    /*
       One prize's box, placed by the row and column it fills: the same arithmetic as
-      the near half's - card, step, and a block that is exactly the zone's height.
+      the near half's - a size taken from the rows a dealt table has, a step, and a
+      block centred in the zone (see the near half).
    */
    .prize {
-      --card-h: calc((100cqh - 8px) * (1 + var(--overlap)) / (var(--rows) + var(--overlap)));
+      --avail: calc(100cqh - 8px);
+      --card-h: calc(var(--avail) * (1 + var(--overlap)) / (var(--size-rows) + var(--overlap)));
       --card-w: calc(var(--card-h) * var(--card-ratio));
       --step: calc(var(--card-h) / (1 + var(--overlap)));
+      --block-h: calc((var(--rows) - 1) * var(--step) + var(--card-h));
 
       position: absolute;
-      top: calc(var(--row) * var(--step));
+      top: calc((var(--avail) - var(--block-h)) / 2 + var(--row) * var(--step));
       left: calc(50% + (var(--col) - var(--columns) / 2) * var(--card-w));
       width: var(--card-w);
       height: var(--card-h);
