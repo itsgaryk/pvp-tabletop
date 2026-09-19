@@ -14,6 +14,16 @@
    export let pile
    export let name = null
    /*
+      The number belongs to the piles that are counted. The table is not one of
+      them - it is where cards are played rather than a pile anybody counts - and
+      it asks for no number (see Temp.svelte). It always did: the prop was named by
+      the caller and never declared here, and a prop that is not declared is a prop
+      that is dropped, so the count was drawn on the table of every board (a
+      player's, a spectator's and solo's far half). Same prop and same default as
+      the player's own piles, so the two halves cannot disagree about it.
+   */
+   export let displayCount = true
+   /*
       A menu is only wired where a caller asks for one - in solo, where the other
       half is yours too. Online, an opponent's pile stays unclickable.
    */
@@ -94,7 +104,7 @@
    use:ctrlA on:ctrlA={() => { if (showMenu) selectPile(pile) }}
    use:dnd={dndConfig}>
 
-   {#if name}
+   {#if name && displayCount}
       <div class="count" on:click={openMenu} bind:this={heading}>
          {$pile.length}
       </div>
