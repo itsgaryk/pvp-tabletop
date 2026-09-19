@@ -933,7 +933,7 @@ if (want('panel')) {
    const described = await alice.evaluate(`[...document.querySelectorAll('.setting')].map((b) => b.innerText.replace(/\\s+/g, ' ').trim())`)
    check('with nothing restating what a control already says',
       described.length > 0 && described.length === shape.length &&
-         !described.some((t) => /Talonflame|once you have used that power|Outlines each area|events this browser has received|always shown in dark mode/.test(t)),
+         !described.some((t) => /Talonflame|once you have used that power|Outlines each area|events this browser has received|always shown in dark mode|Scale down the size of card images/.test(t)),
       JSON.stringify(described))
 
    /*
