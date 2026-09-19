@@ -290,24 +290,24 @@ if (!rejoinFast || !quick) {
       `b` stops polling. Its presence goes stale, the sweep stops counting it as
       sitting there - and the room starts waiting for it to come back. Its seat
       is kept, not given up: that is what makes the reconnect below work.
-   */
-   const waited = await pollUntil(a.roomId, a.memberId, (body) => body.rejoin || body.gone, { timeout: STALE + 20000 })
-   check('a vanished player stops counting as present', waited.opponent?.count === 0, JSON.stringify(waited.opponent))
-   check('but keeps the seat that is being held', waited.players?.length === 2, JSON.stringify(waited.players))
-   check('the wait is announced to the player still there', Boolean(waited.rejoin), JSON.stringify(waited.rejoin))
 
-   /*
-      The idle window is a different clock and would close the room first, so
-      the wait is given a busy table to run out against: the point here is which
-      ending arrives when the rejoin wait expires, not which of the two clocks
-      is shorter.
+      The table is kept busy throughout. The idle window is a *different* clock
+      and is deliberately shorter than the wait being checked here, so a test
+      that simply sits still would watch the room idle-close and report the
+      wrong ending.
    */
    const keepBusy = setInterval(() => {
       emit(a.roomId, a.memberId, 'boardReset').catch(() => {})
    }, Math.max(500, Math.floor(IDLE / 3)))
 
+   let waited
    let closed
    try {
+      waited = await pollUntil(a.roomId, a.memberId, (body) => body.rejoin || body.gone, { timeout: STALE + 20000 })
+      check('a vanished player stops counting as present', waited.opponent?.count === 0, JSON.stringify(waited.opponent))
+      check('but keeps the seat that is being held', waited.players?.length === 2, JSON.stringify(waited.players))
+      check('the wait is announced to the player still there', Boolean(waited.rejoin), JSON.stringify(waited.rejoin))
+
       closed = await pollUntil(a.roomId, a.memberId, (body) => body.gone, { timeout: REJOIN_WAIT + 20000 })
    } finally {
       clearInterval(keepBusy)
@@ -319,13 +319,28 @@ if (!rejoinFast || !quick) {
    /* and the other way round: rejoining calls the wait off */
    const c = (await create()).body
    const d = (await join(c.roomId)).body
-   await pollUntil(c.roomId, c.memberId, (body) => body.rejoin || body.gone, { timeout: STALE + 20000 })
 
-   /* the same member id coming back is what makes this the same player */
-   const back = await join(c.roomId, 'Other', d.memberId)
-   check('a player who reconnects takes their own seat back', back.body.role === 'guest' && back.body.memberId === d.memberId, JSON.stringify({ role: back.body.role, memberId: back.body.memberId, wanted: d.memberId }))
+   /*
+      The same busy table, for the same reason: the host has to still be in a
+      room that is waiting when the guest comes back, not in one that idled out.
+   */
+   const keepAlive = setInterval(() => {
+      emit(c.roomId, c.memberId, 'boardReset').catch(() => {})
+   }, Math.max(500, Math.floor(IDLE / 3)))
 
-   const after = await poll(c.roomId, c.memberId)
+   let after
+   try {
+      await pollUntil(c.roomId, c.memberId, (body) => body.rejoin || body.gone, { timeout: STALE + 20000 })
+
+      /* the same member id coming back is what makes this the same player */
+      const back = await join(c.roomId, 'Other', d.memberId)
+      check('a player who reconnects takes their own seat back', back.body.role === 'guest' && back.body.memberId === d.memberId, JSON.stringify({ role: back.body.role, memberId: back.body.memberId, wanted: d.memberId }))
+
+      after = await poll(c.roomId, c.memberId)
+   } finally {
+      clearInterval(keepAlive)
+   }
+
    check('and the wait is called off', !after.body.rejoin && after.body.gone !== true, JSON.stringify(after.body.rejoin || after.body.reason))
 }
 

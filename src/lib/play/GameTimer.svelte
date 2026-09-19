@@ -115,9 +115,17 @@
       setTimer({ running: !$timerStore.running, remaining: left }, socket.serverNow())
    }
 
-   function add (minutes) {
-      const left = remainingAt($timerStore, Date.now())
-      setTimer({ running: $timerStore.running, remaining: left + minutes * MINUTE }, socket.serverNow())
+   /*
+      One place that writes a new value from a button, so adding and taking away
+      cannot drift apart. Taking time away also stops at zero: past it the clock
+      would read as already over, and the run-out behaviour (the glow, the words
+      across the screen, the log line) is about actually reaching it. Whether the
+      clock is running is carried through, so an adjustment does not start or stop
+      it.
+   */
+   function spend (seconds) {
+      const left = Math.max(0, remainingAt($timerStore, Date.now()) + seconds * 1000)
+      setTimer({ running: $timerStore.running, remaining: left }, socket.serverNow())
    }
 
    onMount(() => {
@@ -135,9 +143,19 @@
 <!--
    Under the turn row, and only in a room: it is the table's clock, not a lobby
    setting. A spectator watches it; the buttons are the players'.
+
+   Taking time away sits to the left of the clock and adding it to the right, so
+   the two are told apart by where they are rather than by reading a sign, and
+   neither can move the clock below zero.
 -->
 <div class="timer-row">
    {#if !$spectating}
+      <div class="adjusts">
+         <button class="control" on:click={() => spend(-1)} disabled={remaining <= 0} title="Take a second off" aria-label="Take a second off">-1</button>
+         <button class="control" on:click={() => spend(-10)} disabled={remaining <= 0} title="Take ten seconds off" aria-label="Take ten seconds off">-10</button>
+         <button class="control" on:click={() => spend(-60)} disabled={remaining <= 0} title="Take a minute off" aria-label="Take a minute off">-1m</button>
+      </div>
+
       <button
          class="control"
          on:click={toggle}
@@ -150,10 +168,10 @@
    <span class="clock" class:glowing class:expired={remaining <= 0 && !$timerStore.running}>{clock}</span>
 
    {#if !$spectating}
-      <div class="adds">
-         <button class="control" on:click={() => add(1)} title="Add a minute">+1</button>
-         <button class="control" on:click={() => add(10)} title="Add ten minutes">+10</button>
-         <button class="control" on:click={() => add(50)} title="Add fifty minutes">+50</button>
+      <div class="adjusts">
+         <button class="control" on:click={() => spend(60)} title="Add a minute" aria-label="Add a minute">+1m</button>
+         <button class="control" on:click={() => spend(600)} title="Add ten minutes" aria-label="Add ten minutes">+10</button>
+         <button class="control" on:click={() => spend(3000)} title="Add fifty minutes" aria-label="Add fifty minutes">+50</button>
       </div>
    {/if}
 </div>
@@ -163,8 +181,16 @@
 {/if}
 
 <style>
+   /*
+      The three controls on each side wrap as a block, so a narrow panel puts a
+      whole side onto its own line rather than splitting -1m from -10.
+   */
    .timer-row {
-      @apply flex items-center gap-1 mt-1;
+      @apply flex flex-wrap items-center justify-center gap-1 mt-1;
+   }
+
+   .adjusts {
+      @apply flex gap-1 shrink-0;
    }
 
    .clock {
@@ -194,10 +220,6 @@
 
    .control:disabled {
       @apply opacity-50;
-   }
-
-   .adds {
-      @apply flex gap-1;
    }
 
    /* time is up: the words cross the screen once, left to right */

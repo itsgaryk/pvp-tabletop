@@ -20,6 +20,44 @@
       : $chat.filter((entry) => (tab === 'chat') === (entry.type === 'chat'))
    $: locked = tab === 'game'
 
+   /*
+      A message that arrives while the log is showing has nowhere to appear, so
+      the Chat tab says so instead. The mark is set by comparing the stream with
+      what was there when the tab was last looked at - `seen` is how many entries
+      have been shown - which means it is raised once per new line rather than
+      once per render, and a burst of messages is one glow rather than several.
+
+      The count starts at whatever is already in the log, so opening a board on a
+      game in progress does not light the tab for a conversation that happened
+      before this browser arrived.
+
+      Only chat is counted: the game log is not something a player needs to be
+      called back for, and `type` is what tells the two apart.
+   */
+   let chatNode
+   let seen = $chat.length
+   let unread = false
+
+   chat.subscribe((history) => {
+      if (tab === 'chat') {
+         seen = history.length
+         unread = false
+      } else {
+         unread = history.length > seen && history.slice(seen).some((entry) => entry.type === 'chat')
+      }
+   })
+
+   /* looking at the tab is what settles it, however the switch was made */
+   $: if (tab === 'chat') unread = false
+
+   function show (next) {
+      tab = next
+      if (next === 'chat') {
+         unread = false
+         seen = $chat.length
+      }
+   }
+
    function sendMessage () {
       if (locked || !message) return
       publishToChat(message, 'chat')
@@ -30,8 +68,6 @@
       const format = { hour: '2-digit', minute: '2-digit', second: '2-digit' }
       return (new Date(time)).toLocaleTimeString([], format)
    }
-
-   let chatNode
 
    function autoscroll () {
       if (!chatNode) return
@@ -51,8 +87,8 @@
 
    {#if !$solo}
       <div class="tabs">
-         <button class:active={tab === 'game'} on:click={() => (tab = 'game')}>Game</button>
-         <button class:active={tab === 'chat'} on:click={() => (tab = 'chat')}>Chat</button>
+         <button class:active={tab === 'game'} on:click={() => show('game')}>Game</button>
+         <button class:active={tab === 'chat'} class:unread on:click={() => show('chat')}>Chat</button>
       </div>
    {/if}
 
@@ -95,6 +131,20 @@
 
    .tabs button.active {
       @apply text-white bg-[var(--primary-color)];
+   }
+
+   /*
+      A message arrived while the log was showing. The same glow Setup uses on
+      the Hide Pokemon button, so "this control wants you" reads the same way
+      everywhere - and it stops the moment the tab is looked at.
+   */
+   .tabs button.unread {
+      animation: chat-glow 1.1s ease-in-out infinite;
+   }
+
+   @keyframes chat-glow {
+      0%, 100% { box-shadow: 0 0 0 rgba(250, 204, 21, 0); }
+      50% { box-shadow: 0 0 12px 3px rgba(250, 204, 21, 0.9); }
    }
 
    .chat {

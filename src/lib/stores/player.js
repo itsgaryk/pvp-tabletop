@@ -437,13 +437,17 @@ export function setStatus (id) {
 
 /*
    The VSTAR / GX marker this player shows on their side of the board - 'none',
-   'vstar' or 'gx', never both. It is shared like any other board change, so the
-   opponent and any spectator see it. Picking one is a setting, so it says nothing
-   in the game log; the marker's used state does (see below).
+   'vstar', 'gx' or 'both'. It is shared like any other board change, so the
+   opponent and any spectator see it. Picking one is a setting, so it says
+   nothing in the game log; the marker's used state does (see below).
+
+   'both' is for a deck that runs one of each: the two marks sit together on the
+   board, so a player who has both powers available does not have to choose
+   which of them the table can see.
 */
 export function setPowerMarker (marker) {
    if (isSpectator()) return
-   if (!['none', 'vstar', 'gx'].includes(marker)) return
+   if (!['none', 'vstar', 'gx', 'both'].includes(marker)) return
    if (marker === powerMarker.get()) return
 
    powerMarker.set(marker)
@@ -453,6 +457,9 @@ export function setPowerMarker (marker) {
    share('powerMarker', { marker })
    share('powerMarkerUsed', { used: false })
 }
+
+/* what to call the marker that is showing, for the log line */
+const markerLabel = (marker) => (marker === 'both' ? 'VStar and GX' : marker === 'vstar' ? 'VStar' : 'GX')
 
 /*
    Clicking a marker says the power has been used (and clicking again takes that
@@ -466,7 +473,7 @@ export function togglePowerMarkerUsed () {
    powerMarkerUsed.set(used)
 
    share('powerMarkerUsed', { used })
-   if (used) publishLog(`Used ${powerMarker.get() === 'vstar' ? 'VStar' : 'GX'}`)
+   if (used) publishLog(`Used ${markerLabel(powerMarker.get())}`)
 }
 
 /* take every status effect off at once */

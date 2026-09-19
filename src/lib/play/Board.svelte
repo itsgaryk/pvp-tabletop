@@ -113,6 +113,17 @@
       : (soloSwapped ? defaultOpponent.powerMarkerUsed : myPowerMarkerUsed)
    $: markerImage = (marker) => marker === 'vstar' ? '/vstar.png' : '/gx.png'
 
+   /*
+      The marks one half shows. 'both' draws VSTAR and GX together - for a deck
+      that has one of each - with VSTAR first, so the pair reads the same way up
+      on both halves whichever way round the half is drawn.
+   */
+   const markerImages = (marker) => {
+      if (marker === 'both') return ['vstar', 'gx']
+      return marker === 'none' ? [] : [marker]
+   }
+   const markerAlt = (marker) => (marker === 'vstar' ? 'VSTAR' : 'GX')
+
    let inspectionModal
    let selectionModal
    let slotModal
@@ -337,23 +348,36 @@
          A player's own marker can be clicked to mark the power as used, which
          dims it; the top half's marker faces the player sitting opposite, the way
          their cards do, and stays upright for a spectator who reads both halves.
+
+         A half showing 'both' stacks the two marks rather than picking one, so
+         the whole block is one thing to click and one thing to dim. The row is
+         reversed for the top half, which is drawn upside down, so VSTAR stays on
+         top as it is read.
       -->
       {#if $topMarker !== 'none'}
-         <img
+         <div
             class="power-marker marker-top"
             class:opposite={!$spectating}
             class:used={$topUsed}
-            src={markerImage($topMarker)}
-            alt={$topMarker === 'vstar' ? 'VSTAR' : 'GX'}>
+            class:stacked={markerImages($topMarker).length > 1}
+         >
+            {#each markerImages($topMarker) as mark}
+               <img class="mark" src={markerImage(mark)} alt={markerAlt(mark)}>
+            {/each}
+         </div>
       {/if}
       {#if $bottomMarker !== 'none'}
-         <img
+         <div
             class="power-marker marker-bottom"
             class:mine={!$spectating}
             class:used={$bottomUsed}
-            src={markerImage($bottomMarker)}
-            alt={$bottomMarker === 'vstar' ? 'VSTAR' : 'GX'}
-            on:click|stopPropagation={togglePowerMarkerUsed}>
+            class:stacked={markerImages($bottomMarker).length > 1}
+            on:click|stopPropagation={togglePowerMarkerUsed}
+         >
+            {#each markerImages($bottomMarker) as mark}
+               <img class="mark" src={markerImage(mark)} alt={markerAlt(mark)}>
+            {/each}
+         </div>
       {/if}
 
       <div class="gameboard min-h-0 relative flex-1" class:zone-borders={$zoneBorders}>
@@ -556,6 +580,10 @@
       The VSTAR / GX marker: one per player, sitting in the space just past the
       opponent's deck on that player's side of the board. It only exists while a
       player has one turned on in Settings.
+
+      It is a small block rather than a bare image because a player may show both
+      marks at once ('both' in Settings), and then the two have to be positioned
+      relative to each other as one thing to click and one thing to dim.
    */
    .power-marker {
       position: absolute;
@@ -563,6 +591,31 @@
       width: calc(var(--card-width) * var(--card-scale) * 1.15);
       pointer-events: none;
       filter: drop-shadow(0 0 6px var(--selection-color));
+   }
+
+   .power-marker .mark {
+      display: block;
+      width: 100%;
+   }
+
+   /*
+      Both marks in the space one used to take: VSTAR is the wider logo of the
+      two and is drawn smaller so the pair fits the free space without reaching
+      the deck above it or the board below.
+   */
+   .power-marker.stacked {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+   }
+
+   .power-marker.stacked .mark:first-child {
+      width: 70%;
+   }
+
+   /* the top half is drawn upside down, so its stack is read bottom to top */
+   .power-marker.stacked.opposite {
+      flex-direction: column-reverse;
    }
 
    .marker-top {
