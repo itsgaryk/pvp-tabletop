@@ -83,6 +83,30 @@
       }, 400)
    }
 
+   /*
+      The room code, and the lobby status that belongs to it, are the room this
+      browser was in rather than the menu it lands on.
+
+      `locked` is the status that disables Join Room, and it was latched: a
+      player's own join fills the second seat, so the summary fetched just after
+      they typed the code comes back locked - and the button stayed disabled after
+      they left. That is a dead end, because the button is also the only way to
+      type another code: the main menu's Join Room could not be pressed at all. A
+      spectator watched a room that was full for the same reason, so leaving
+      forgets both and the next join is judged on the code actually typed.
+   */
+   function forgetLobbyState () {
+      clearTimeout(statusTimer)
+      roomId = ''
+      status = null
+   }
+
+   /* every way out of a room reports this: the button, a tab close, a closed game */
+   onMount(() => {
+      socket.on('leftRoom', forgetLobbyState)
+      return () => socket.off('leftRoom', forgetLobbyState)
+   })
+
    /* the relay's own message is more use than "could not", so show it too */
    const why = (fallback) => ($roomError ? `${fallback} (${$roomError})` : fallback)
 
@@ -91,11 +115,21 @@
       the prompt with true when it worked, or with the sentence to show on the
       form when it did not - the prompt is where the values were typed, so it is
       where a failure belongs.
+
+      `busy` is what disables all three buttons while one of them is in flight, so
+      it is released in a `finally`: a request that rejected rather than answering
+      - a transport that threw before it had a promise to catch - left the flag on
+      and the whole menu dead, which is the same shape of dead end as a latched
+      lobby status above.
    */
    async function create () {
       busy = true
-      const res = await createRoom()
-      busy = false
+      let res = null
+      try {
+         res = await createRoom()
+      } finally {
+         busy = false
+      }
       if (res) return true
       return relay.state === 'error'
          ? `Could not create a room. (${relay.error})`
@@ -120,8 +154,12 @@
 
    async function join () {
       busy = true
-      const res = await joinRoom(roomId)
-      busy = false
+      let res = null
+      try {
+         res = await joinRoom(roomId)
+      } finally {
+         busy = false
+      }
       if (res) return true
 
       /* the room being full is the one failure worth its own sentence */
@@ -131,8 +169,12 @@
 
    async function spectate () {
       busy = true
-      const res = await spectateRoom(roomId)
-      busy = false
+      let res = null
+      try {
+         res = await spectateRoom(roomId)
+      } finally {
+         busy = false
+      }
       if (res) return true
       return why(`Could not spectate ${roomId.toUpperCase()}.`)
    }

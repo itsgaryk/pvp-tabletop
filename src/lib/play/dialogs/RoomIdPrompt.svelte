@@ -72,8 +72,22 @@
 
       busy = true
       error = null
-      const done = await run({ name: who, roomId, what: kind })
-      busy = false
+
+      let done
+      try {
+         done = await run({ name: who, roomId, what: kind })
+      } catch (err) {
+         /*
+            An action that throws must not take the prompt with it. `busy` is what
+            disables OK and Cancel, and Escape refuses while it is set - so an
+            action that rejected rather than answering left this dialog over the
+            window with nothing left to press and no way out. What it threw is the
+            message instead.
+         */
+         done = err?.message ? `Could not do that. (${err.message})` : 'Could not do that. Try again.'
+      } finally {
+         busy = false
+      }
 
       if (done === true) open = false
       else error = typeof done === 'string' ? done : 'Could not do that. Try again.'
