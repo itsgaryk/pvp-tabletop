@@ -701,6 +701,23 @@ wide as the cards on it and an empty one has no width at all. Grid neither shrin
 narrows it, so the row keeps the zone's full width and a card taller than the zone now
 overflows it evenly rather than downwards only.
 
+**A card attached to a bench Pokémon is drawn whole.** A card attached to a Pokémon in
+play stands off that card's bottom edge — 34px for a tool, 17px for an energy
+(`--attach-lift-tool` and `--attach-lift-energy`, in `global.css`) — and the two cards are
+the same size, so the attached card reaches exactly that far above the top of the card it
+is under. Each slot declares that distance about itself (`--attach-lift`, in
+`Slot.svelte`), and the bench's row spends it as room above that slot: the row is then as
+tall as the group a slot draws, and the zone centres the group.
+
+It has to be the row that spends it rather than the slot, and it is the bench alone that
+has to spend it at all. A slot is in the active spot and on the table as well, where
+nothing scrolls and the fan hangs over the cards beside it exactly as it should; the bench
+is the one zone of the three that scrolls, and a scroll container clips at its own box —
+`overflow-x: auto` makes the other axis `auto` too, whatever it says — so an attached card
+that reached above the row was drawn from the row's top edge down, its top 34px — the part
+that says which card it is — cut off. The row's cards also line up on their bottom edges
+rather than centred in it, since a slot carrying a tool is a taller item than one without.
+
 **A prize stays face down while it is moved, and looking at one is said out loud.** The
 card under the pointer in a drag is drawn from the card's face, so picking a face-down
 prize up used to turn it over — both a look at a card nobody has taken yet and a lie,

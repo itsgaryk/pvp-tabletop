@@ -33,6 +33,11 @@
    $: ({ pokemon, trainer, energy, damage, status, abilityUsed } = slot)
    $: top = $pokemon[ $pokemon.length - 1]
 
+   /* how far this Pokemon's attached cards reach above it: the near half's note, in
+      board/Slot.svelte, in full */
+   $: attachLift = $trainer.length ? 'var(--attach-lift-tool)'
+      : ($energy.length ? 'var(--attach-lift-energy)' : '0px')
+
    /* DnD */
 
    /*
@@ -160,7 +165,7 @@
    })
 </script>
 
-<div class="slot relative w-max z-15" style="margin-right: calc({$energy.length * 25 + $trainer.length * 35}px)"
+<div class="slot relative w-max z-15" style="--attach-lift: {attachLift}; margin-right: calc({$energy.length * 25 + $trainer.length * 35}px)"
    class:dragged={$solo && $dragging && $slotSelection.includes(slot)}
    on:click|stopPropagation={onClick}
    on:contextmenu={onCtx}
@@ -188,7 +193,7 @@
 
    {#each $energy as nrg, i (nrg._id)}
       <img src="{cardImage(nrg, 'xs')}" alt="{nrg.name}" class="card absolute" draggable=false
-         style="bottom: 17px; left: calc({(i + 1)* 25}px); z-index: {$solo && $cardSelection.includes(nrg) ? 12 : 9 - i}"
+         style="bottom: var(--attach-lift-energy); left: calc({(i + 1)* 25}px); z-index: {$solo && $cardSelection.includes(nrg) ? 12 : 9 - i}"
          data-attached="energy"
          class:card-attached-selected={$solo && $cardSelection.includes(nrg)}
          on:click={(e) => onCardClick(e, nrg, energy)}
@@ -198,7 +203,7 @@
 
    {#each $trainer as tool, i (tool._id)}
       <img src="{cardImage(tool, 'xs')}" alt="{tool.name}" class="card absolute" draggable=false
-         style="bottom: 34px; left: calc({$energy.length * 25 + (i + 1) * 35}px); z-index: {$solo && $cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
+         style="bottom: var(--attach-lift-tool); left: calc({$energy.length * 25 + (i + 1) * 35}px); z-index: {$solo && $cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
          data-attached="trainer"
          class:card-attached-selected={$solo && $cardSelection.includes(tool)}
          on:click={(e) => onCardClick(e, tool, trainer)}

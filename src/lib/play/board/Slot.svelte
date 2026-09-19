@@ -30,6 +30,17 @@
 
    $: top = $pokemon[ $pokemon.length - 1]
 
+   /*
+      How far the cards attached to this Pokemon reach above the top of it, as a length
+      a zone can spend - the row of a bench does, because a slot draws outside its own
+      box and a zone that scrolls clips at its own (see Bench.svelte). A tool is lifted
+      34px off the bottom edge and an energy 17px (see global.css), the cards being the
+      same size, so the tallest attached card is what has to fit; a Pokemon carrying
+      neither needs none of it.
+   */
+   $: attachLift = $trainer.length ? 'var(--attach-lift-tool)'
+      : ($energy.length ? 'var(--attach-lift-energy)' : '0px')
+
    /* DnD */
 
    import { dnd } from '$lib/dnd/actions.js'
@@ -142,7 +153,7 @@
    })
 </script>
 
-<div class="slot relative w-max z-15" style="margin-right: calc({$energy.length * 25 + $trainer.length * 35}px)"
+<div class="slot relative w-max z-15" style="--attach-lift: {attachLift}; margin-right: calc({$energy.length * 25 + $trainer.length * 35}px)"
    class:dragged={$dragging && $selection.includes(slot)}
    on:click|stopPropagation={onClick}
    on:contextmenu={onCtx}
@@ -168,7 +179,7 @@
 
    {#each $energy as nrg, i (nrg._id)}
       <img src="{cardImage(nrg, 'xs')}" alt="{nrg.name}" class="card absolute" draggable=false
-         style="bottom: 17px; left: calc({(i + 1)* 25}px); z-index: {$cardSelection.includes(nrg) ? 12 : 9 - i}"
+         style="bottom: var(--attach-lift-energy); left: calc({(i + 1)* 25}px); z-index: {$cardSelection.includes(nrg) ? 12 : 9 - i}"
          data-attached="energy"
          class:card-attached-selected={$cardSelection.includes(nrg)}
          on:click={(e) => onCardClick(e, nrg, energy)}
@@ -178,7 +189,7 @@
 
    {#each $trainer as tool, i (tool._id)}
       <img src="{cardImage(tool, 'xs')}" alt="{tool.name}" class="card absolute" draggable=false
-         style="bottom: 34px; left: calc({$energy.length * 25 + (i + 1) * 35}px); z-index: {$cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
+         style="bottom: var(--attach-lift-tool); left: calc({$energy.length * 25 + (i + 1) * 35}px); z-index: {$cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
          data-attached="trainer"
          class:card-attached-selected={$cardSelection.includes(tool)}
          on:click={(e) => onCardClick(e, tool, trainer)}

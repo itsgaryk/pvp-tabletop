@@ -89,18 +89,42 @@
 
    .bench-row {
       display: flex;
-      align-items: center;
+      /*
+         The cards sit on the row's bottom edge rather than centred in it: a slot with a
+         tool attached is a taller item than one without (see --attach-lift below), and
+         centring the items would put the Pokemon beside it half a tool's lift higher
+         than it. On the bottom edge, every card in the row is at the same height.
+      */
+      align-items: flex-end;
       gap: var(--scaled-rem);
       /*
          The row is as wide as its cards, so the scroll container has something to
          scroll: `max-content` lets it grow past the zone, and `min-width: 100%`
          keeps a half-empty bench filling its zone's width for the drop target.
 
-         Its height is its cards' rather than the zone's - the zone is what places
-         the row, and centres it (see .bench-zone) - so a bench whose cards are
-         taller than the zone overflows it evenly instead of downwards only.
+         Its height is its cards' plus the room the fan above them takes (see
+         --attach-lift), rather than the zone's - the zone is what places the row, and
+         centres it (see .bench-zone) - so the group a slot draws is centred as a whole,
+         and a bench taller than the zone overflows it evenly instead of downwards only.
       */
       width: max-content;
       min-width: 100%;
+   }
+
+   /*
+      What each slot declares about itself (see Slot.svelte): how far the cards attached
+      to it reach above its top - 34px for a tool, 17px for an energy, nothing for a
+      Pokemon carrying neither. The row spends it as room above that slot, so that the
+      row is as tall as the group a slot draws.
+
+      The slot cannot spend it itself: a slot is in the active spot and on the table as
+      well, where nothing scrolls and the fan is drawn whole, and it is only the bench
+      that scrolls - a scroll container clipping at its own box, `overflow-x: auto`
+      making the other axis `auto` too, whatever it says. Unspent, an attached card that
+      reached above the row was drawn from the row's top edge down: the top 34px of it,
+      the part that says which card it is, was cut off.
+   */
+   .bench-row > :global(.slot) {
+      margin-top: var(--attach-lift, 0px);
    }
 </style>
