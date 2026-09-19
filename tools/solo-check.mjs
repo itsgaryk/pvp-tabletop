@@ -60,9 +60,15 @@ const ORIENT = `(() => {
    }
    window.__kind = kind
    const board = document.querySelector('.gameboard')
-   /* the zone cells themselves: .prizes also names a grid inside one of them */
+   /*
+      the zone cells themselves: .prizes also names a grid inside one of them.
+      Two cells hold more than one zone per player, so their zones are a level
+      below the cell: the active area's two rows, and the three bands of the
+      Stadium's cell (the near and far Pokemon Power zones, and the Stadium).
+   */
    const cell = (zone) => document.querySelector('.gameboard > .' + zone) ||
-      document.querySelector('.active > .' + zone)
+      document.querySelector('.active > .' + zone) ||
+      document.querySelector('.stadium-area > .' + zone)
    const out = {}
    for (const zone of ${JSON.stringify(ZONES)}) {
       const el = cell(zone)

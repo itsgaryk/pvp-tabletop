@@ -4,7 +4,6 @@
    import { publishLog, spectating, seatedPlayers, myId } from '$lib/stores/connection.js'
    import { pick, shuffle, pokemonHidden, handRevealed } from '$lib/stores/player.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
-   import { markerUsed } from '$lib/util/markers.js'
    import { isTyping } from '$lib/util/typing.js'
    import { defaultOpponent, spectatorOpponents, spectatorFlipped, handRevealed as oppHandRevealed } from '$lib/stores/opponent.js'
    import { solo, onOpponentSelection, soloSelectedTo } from '$lib/stores/solo.js'
@@ -22,6 +21,7 @@
    import Table from './board/Temp.svelte'
 
    import DndCard from './DndCard.svelte'
+   import PowerZone from './PowerZone.svelte'
 
    import OppHand from './opponent/Hand.svelte'
    import OppDeck from './opponent/Deck.svelte'
@@ -113,41 +113,26 @@
    $: bottomUsed = $spectating
       ? bottomStore.powerMarkerUsed
       : (soloSwapped ? defaultOpponent.powerMarkerUsed : myPowerMarkerUsed)
-   $: markerImage = (marker) => marker === 'vstar' ? '/vstar.png' : '/gx.png'
-
    /*
-      The marks one half shows. 'both' draws VSTAR and GX together - for a deck
-      that has one of each - with VSTAR first, so the pair reads the same way up
-      on both halves whichever way round the half is drawn.
+      The name of each player's Pokemon Power zone, written in the band of the
+      Stadium's cell that is that player's own while Settings -> Board zones is
+      on. Like Lost Zone, the break between the two words is written in rather
+      than left to the width of the zone, so both halves read the same way.
    */
-   const marksOn = (marker) => {
-      if (marker === 'both') return ['vstar', 'gx']
-      return marker === 'none' ? [] : [marker]
-   }
-   const markerAlt = (marker) => (marker === 'vstar' ? 'VSTAR' : 'GX')
-
-   /*
-      One entry per mark, each with its own used state and its own click. A half
-      showing both is two buttons rather than one: they are separate powers, so
-      using VSTAR must not dim - or write to the log about - GX.
-   */
-   const marksFor = (marker, used) => marksOn(marker).map((mark) => ({
-      mark,
-      src: markerImage(mark),
-      alt: markerAlt(mark),
-      used: markerUsed(used, mark)
-   }))
+   const powerLabel = 'Pokemon\nPower'
 
    /*
       The name of each zone, to be written in the middle of it while the zone
       borders are turned on in Settings - they are a pair, a border to see where a
       zone begins and a name to say which one it is.
 
-      One label per cell of the board's grid, which is why the table and the
-      stadium appear once each: both players play into the same cell, so its two
-      zones are drawn on top of one another and share the one name. The active
-      area is the exception - it is a cell holding one zone per player - so it is
-      labelled twice (see the markup).
+      One label per cell of the board's grid, which is why the table appears once:
+      both players play into the same cell, so its two zones are drawn on top of
+      one another and share the one name. Two cells are the exception, because
+      each holds more than one zone per player and is labelled in its own markup
+      instead: the active area (one zone per player, so a name per player), and
+      the Stadium's cell (three bands, so a name per band - the two Pokemon Power
+      zones and the Stadium between them).
 
       A name of more than one word is broken over its words (see .zone-label), so
       it reads as a small centred block rather than one long line across a zone.
@@ -163,7 +148,6 @@
       { area: 'lz2', text: 'Lost\nZone' },
       { area: 'bench2', text: 'Bench' },
       { area: 'play', text: 'Table' },
-      { area: 'stadium', text: 'Stadium' },
       { area: 'prizes', text: 'Prizes' },
       { area: 'bench', text: 'Bench' },
       { area: 'lz', text: 'Lost\nZone' },
@@ -407,37 +391,10 @@
       {/if}
 
       <!--
-         The VSTAR / GX marker each player shows, in the free space past the
-         opponent's deck on their own side: under the top player's deck for the
-         bottom half, and the matching spot the other way up for the top half.
-
-         A half showing both is two marks with a little space between them, each
-         one clickable on its own: clicking a mark says that power has been used
-         and dims only that mark, because they are separate powers. The top half's
-         markers face the player sitting opposite, the way their cards do, and
-         stay upright for a spectator who reads both halves.
+         The VSTAR / GX marker each player shows lives in that player's Pokemon
+         Power zone - the band of the Stadium's cell between their bench and the
+         Stadium - so it is drawn there rather than here (see .stadium-area).
       -->
-      {#if $topMarker !== 'none'}
-         <div class="power-marker marker-top" class:opposite={!$spectating} class:pair={marksOn($topMarker).length > 1}>
-            {#each marksFor($topMarker, $topUsed) as m (m.mark)}
-               <img class="mark" class:used={m.used} src={m.src} alt={m.alt}>
-            {/each}
-         </div>
-      {/if}
-      {#if $bottomMarker !== 'none'}
-         <div class="power-marker marker-bottom" class:pair={marksOn($bottomMarker).length > 1}>
-            {#each marksFor($bottomMarker, $bottomUsed) as m (m.mark)}
-               <img
-                  class="mark"
-                  class:mine={!$spectating}
-                  class:used={m.used}
-                  src={m.src}
-                  alt={m.alt}
-                  on:click|stopPropagation={() => togglePowerMarkerUsed(m.mark)}
-               >
-            {/each}
-         </div>
-      {/if}
 
       <div class="gameboard min-h-0 relative flex-1" class:zone-borders={$zoneBorders}>
 
@@ -521,22 +478,52 @@
          {/if}
          </div>
 
-         <div class="stadium2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
-            <OppStadium store={topStore} />
-         </div>
-
          <!--
-            The two stadiums share this cell as well. The player's own stays on top
-            and stays theirs, flipped or not: the other half's is the one behind it
-            (it is what a click falls through to when nothing is in play), and
-            flipping the board must not take the player's own out of reach.
+            The Stadium's cell, which is three bands rather than one: the far
+            half's Pokemon Power zone, the Stadium both players play into, and the
+            near half's Pokemon Power zone. The Power zones take half the cell
+            between them - a quarter each, at the top and the bottom - so each
+            player's VSTAR / GX marker sits between their own bench and the
+            Stadium, and the Stadium keeps the middle half it always had.
+
+            The two Stadiums still share the one band, the player's own on top
+            (see .stadium): a card dropped in the middle lands on the table being
+            played rather than on the other half's, and flipping the board must
+            not take the player's own out of reach.
          -->
-         <div class="stadium">
-            {#if $spectating}
-            <OppStadium store={bottomStore} />
-         {:else}
-            <Stadium />
-         {/if}
+         <div class="stadium-area">
+            <!--
+               Three names for the one cell - one per band - and they come first,
+               the way the board's own names come before the zones they name: a
+               caption belongs on the empty part of a zone, and a card or a token
+               in the middle of one covers its name rather than the other way
+               round.
+            -->
+            {#if $zoneBorders}
+               <div class="zone-label power-label power-label-top">{powerLabel}</div>
+               <div class="zone-label power-label power-label-mid">Stadium</div>
+               <div class="zone-label power-label power-label-bottom">{powerLabel}</div>
+            {/if}
+
+            <div class="power2">
+               <PowerZone marker={$topMarker} used={$topUsed} opposite={!$spectating} />
+            </div>
+
+            <div class="stadium2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
+               <OppStadium store={topStore} />
+            </div>
+
+            <div class="stadium">
+               {#if $spectating}
+               <OppStadium store={bottomStore} />
+            {:else}
+               <Stadium />
+            {/if}
+            </div>
+
+            <div class="power">
+               <PowerZone marker={$bottomMarker} used={$bottomUsed} mine={!$spectating} onToggle={togglePowerMarkerUsed} />
+            </div>
          </div>
 
          <div class="active">
@@ -674,79 +661,73 @@
    }
 
    /*
-      The VSTAR / GX marker: one per player, sitting in the space just past the
-      opponent's deck on that player's side of the board. It only exists while a
-      player has one turned on in Settings.
+      The Stadium's cell is three bands, and the two Pokemon Power zones are the
+      quarter of it above the Stadium and the quarter below.
 
-      It is a block rather than a bare image because a player may show both marks
-      at once ('both' in Settings) - and then they are two separate buttons, each
-      with its own used state, so the used/dimmed styling lives on the mark rather
-      than on the block around them.
+      That is where the VSTAR / GX markers went. They used to be absolutely placed
+      in the free space past the opponent's deck - a token floating on the board
+      rather than a thing in a zone - and each player's now sits between their own
+      bench and the Stadium, on their own side of the table. The two zones take
+      half the cell between them and the Stadium keeps the middle half.
+
+      The bands take no clicks of their own: a Power zone holds a token rather
+      than a card, so the only thing in it that answers the pointer is a player's
+      own mark (see PowerZone.svelte).
    */
-   .power-marker {
-      position: absolute;
-      z-index: 12;
-      width: calc(var(--card-width) * var(--card-scale) * 1.15);
+   .stadium-area {
+      grid-area: stadium;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+      min-width: 0;
+      min-height: 0;
+   }
+
+   .stadium-area > .power2,
+   .stadium-area > .power {
+      grid-column: 1;
       pointer-events: none;
-      filter: drop-shadow(0 0 6px var(--selection-color));
    }
 
-   .power-marker .mark {
-      display: block;
-      width: 100%;
+   .stadium-area > .power2 {
+      grid-row: 1;
    }
 
-   /*
-      Both marks, in the space one used to take. They are the same width: the two
-      logos are drawn from images of different sizes, and a VSTAR shrunk to fit
-      beside a GX read as a smaller, lesser token rather than the other half of
-      the same pair. A gap keeps the two from reading as a single mark.
-   */
-   .power-marker.pair {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: calc(var(--scaled-rem) * 0.5);
+   .stadium-area > .power {
+      grid-row: 3;
    }
 
-   /* the top half is drawn upside down, so its pair is read bottom to top */
-   .power-marker.pair.opposite {
-      flex-direction: column-reverse;
+   /* the two Stadiums share the middle band, the player's own on top of it */
+   .stadium-area > .stadium2,
+   .stadium-area > .stadium {
+      grid-row: 2;
+      grid-column: 1;
    }
 
-   .marker-top {
-      right: 16%;
-      top: 41%;
+   /* each band's name is centred in its own band, not in the cell */
+   .power-label {
+      grid-column: 1;
    }
 
-   .marker-bottom {
-      left: 15%;
-      top: 54%;
+   .power-label-top {
+      grid-row: 1;
    }
 
-   /* the top half's marker faces the player sitting opposite, so it is turned */
-   .power-marker.opposite {
-      transform: scale(-1, -1);
+   .power-label-mid {
+      grid-row: 2;
    }
 
-   /* a player's own marks can be clicked: that says the power has been used */
-   .power-marker .mark.mine {
-      pointer-events: auto;
-      cursor: pointer;
-   }
-
-   /* used: dimmed by half, and no longer glowing */
-   .power-marker .mark.used {
-      opacity: 0.5;
-      filter: none;
+   .power-label-bottom {
+      grid-row: 3;
    }
 
    /*
       Optional zone outlines, from Settings: they draw where each area of the
       board begins and ends, for both players. The active area holds one zone per
-      player, and the veil is only a shading over the whole board, so neither is
-      outlined as one. Neither is a zone's name: a label sits inside a zone rather
-      than being one.
+      player, the Stadium's cell holds three bands, and the veil is only a shading
+      over the whole board - so the cells are outlined for where they are, and the
+      zones inside them for what they hold. Neither is a zone's name: a label sits
+      inside a zone rather than being one.
 
       A solid line at half strength, so the outline reads as a line drawn on the
       board rather than as another dashed box competing with the cards.
@@ -756,7 +737,8 @@
       outline-offset: -1px;
    }
 
-   .gameboard.zone-borders .active > :global(div:not(.zone-label)) {
+   .gameboard.zone-borders .active > :global(div:not(.zone-label)),
+   .gameboard.zone-borders .stadium-area > :global(div:not(.zone-label)) {
       outline: 1px solid var(--zone-border-color);
       outline-offset: -1px;
    }
@@ -861,6 +843,10 @@
       cell, so it was stretched to the whole zone - which put its words at the top
       of the zone rather than in the middle of it. A name is sized by its own
       words (see .zone-label).
+
+      The Stadium's bands and the active area's rows need saying too: they are one
+      level down from the cell a component is asked to fill, so the rule is not
+      reached through them.
    */
    .gameboard > div > :global(div:first-child:not(.zone-label)) {
       @apply w-full h-full;
@@ -871,7 +857,6 @@
    }
 
    .stadium {
-      grid-area: stadium;
       z-index: 10; /* above opponent's stadium! */
       pointer-events: none; /* to click on opp stadium below - overwritten when own stadium is in play */
    }
@@ -909,7 +894,8 @@
       pointer-events: none;
    }
 
-   .active > div > :global(div:first-child:not(.zone-label)) {
+   .active > div > :global(div:first-child:not(.zone-label)),
+   .stadium-area > div > :global(div:first-child:not(.zone-label)) {
       @apply w-full h-full;
    }
 
@@ -973,7 +959,9 @@
    }
 
    .stadium2 {
-      grid-area: stadium;
+      /* the middle band of the Stadium's cell, which the two Stadiums share */
+      grid-row: 2;
+      grid-column: 1;
    }
 
    .flip {

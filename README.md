@@ -530,6 +530,7 @@ status, ability used.
 | Active | `active` (`active1`, `active2`) | `board/Active.svelte` | `opponent/Active.svelte` | `active` (one slot) |
 | Table | `play` / `play2` | `board/Temp.svelte` | `opponent/Temp.svelte` | `table` |
 | Stadium | `stadium` / `stadium2` | `board/Stadium.svelte` | `opponent/Stadium.svelte` | `stadium` |
+| Pokemon Power | `power` / `power2` | `PowerZone.svelte` | `PowerZone.svelte` | `powerMarker` |
 
 The board fields are the ones `src/lib/stores/custom/board.js` creates and
 `player.js` re-exports; `opponent.js` builds the same shape as a mirror. The `2`
@@ -537,15 +538,30 @@ suffix on the far half's class names is the whole of the difference between the 
 halves' markup, and `play2` and `stadium2` deliberately resolve to the *same* grid
 area as `play` and `stadium`.
 
-Three cells are not one zone to one component:
+**Pokemon Power** is the one zone that holds no cards: it holds the player's VSTAR /
+GX marker, the tokens a deck's own power is tracked with. It is why
+`PowerZone.svelte` is a single component rather than the board/opponent pair every
+other zone needs — it shows no cards and reads no board store, so what it shows is
+handed to it. It is also why the marker is no longer a token floating in the free
+space past the opponent's deck: a token belongs to a zone, and this is the zone for
+it. The marks are sized by the band rather than by Settings' card size, so a short
+window takes them with it instead of letting them spill over the Stadium.
 
-- **The table and the stadium are shared.** Both players play into the same cell, so
-  each half's component is placed in it and the near one is on top (`.play` at
-  `z-index: 11`, `.stadium` at `10`). In solo the near table stands aside while it is
-  empty and nothing is being dragged (`pointer-events: none` on `.play.empty`), which
-  is what lets a click reach the far half's table lying underneath. The near stadium
-  passes clicks through the same way until it has a card in play, and it stays the
-  player's own whichever way the board is flipped.
+Four cells are not one zone to one component:
+
+- **The table, and the Stadium's cell, are shared.** Both players play into the same
+  cell, so each half's component is placed in it and the near one is on top (`.play`
+  at `z-index: 11`, `.stadium` at `10`). In solo the near table stands aside while it
+  is empty and nothing is being dragged (`pointer-events: none` on `.play.empty`),
+  which is what lets a click reach the far half's table lying underneath. The near
+  stadium passes clicks through the same way until it has a card in play, and it stays
+  the player's own whichever way the board is flipped.
+- **The Stadium's cell is three bands.** `.stadium-area` is itself a grid of
+  `1fr 2fr 1fr`: `power2` in the top quarter, the two stadiums sharing the middle
+  half, `power` in the bottom quarter. So each player's Pokemon Power zone is the
+  quarter of the cell between their own bench and the Stadium, the two Power zones
+  take half the cell between them, and each name is centred in its own band rather
+  than in the cell.
 - **The active spot holds two zones.** `.active` is itself a two-row grid: `active2`
   in row 1 for the top half and `active1` in row 2 for the bottom, with the pokeball
   watermark (`:before`) belonging to the cell rather than to either zone.
@@ -602,8 +618,10 @@ Four things about them are deliberate, and each was a bug first:
   as the zone — so it read as centred and looked wrong.
 
 The active area is the one cell holding a zone per player, so it carries the name
-**Active** twice, each centred in its own row of that cell. Sixteen names for fourteen
-cells, for that reason, is the number the browser check asserts.
+**Active** twice, each centred in its own row of that cell; the Stadium's cell carries
+three, one per band, so **Pokemon Power** is written twice — once for each player's
+zone — with the **Stadium** between them. Eighteen names for fourteen cells, for that
+reason, is the number the browser check asserts.
 
 ### Flipping the board
 

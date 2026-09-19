@@ -21,7 +21,8 @@
  *              message that arrived unseen, the zone names that come with the
  *              outlines and the number the table does not carry, and both markers
  *              at once - each with its own click, its own used state and its own
- *              log line
+ *              log line, in the Pokemon Power zone that is the top and bottom
+ *              quarter of the Stadium's cell
  *
  *   node tools/browser-check.mjs --only panel      # just that section
  *
@@ -719,9 +720,17 @@ if (want('panel')) {
       marks: [...el.querySelectorAll('img.mark')].map((i) => i.getAttribute('alt')),
       used: [...el.querySelectorAll('img.mark.used')].map((i) => i.getAttribute('alt')),
       widths: [...el.querySelectorAll('img.mark')].map((i) => Math.round(i.getBoundingClientRect().width)),
+      heights: [...el.querySelectorAll('img.mark')].map((i) => Math.round(i.getBoundingClientRect().height)),
       mine: [...el.querySelectorAll('img.mark.mine')].length > 0,
       paired: el.classList.contains('pair'),
-      gap: getComputedStyle(el).rowGap
+      gap: getComputedStyle(el).rowGap,
+      /*
+         Which band of the Stadium's cell the marks are in, and how much of it
+         they take. A Power zone is a quarter of that cell, and what is inside
+         one is sized by the band rather than by Settings' card size.
+      */
+      zone: el.closest('.power, .power2')?.className.split(' ')[0] || null,
+      fill: el.getBoundingClientRect().height / (el.parentElement?.getBoundingClientRect().height || 1)
    }))`)
 
    /*
@@ -1035,8 +1044,14 @@ if (want('panel')) {
          The zones, not the names: a name is a child of the board too, and asking
          which zone a name is in must not answer "itself". The veil is a shading
          over several zones rather than one of them.
+
+         Two cells hold more than one zone per player, so their zones are a level
+         below the cell rather than the cell itself: the active area's two rows,
+         and the three bands of the Stadium's cell - a Power zone, the Stadium,
+         and the other Power zone. A name is looked up against the smallest zone
+         it falls in, which is what those are for.
       */
-      const cells = [...document.querySelectorAll('.gameboard > div:not(.zone-label):not(.veil), .active > .active1, .active > .active2')]
+      const cells = [...document.querySelectorAll('.gameboard > div:not(.zone-label):not(.veil), .active > .active1, .active > .active2, .stadium-area > div:not(.zone-label)')]
          .map((el) => ({ cls: el.className, rect: el.getBoundingClientRect() }))
 
       return [...document.querySelectorAll('.zone-label')].map((el) => {
@@ -1123,11 +1138,11 @@ if (want('panel')) {
       const values = parts[1].split(',').map((v) => Number(v.trim()))
       return values.length === 4 ? values[3] : 1
    }
-   check('turning the outlines on names every zone', named.length === 16, JSON.stringify(named.map((l) => l.text)))
-   check('both halves, with the table and the stadium named once between them',
+   check('turning the outlines on names every zone', named.length === 18, JSON.stringify(named.map((l) => l.text)))
+   check('both halves, with the table named once and the Stadium\'s cell named per band',
       JSON.stringify(tally(named.map((l) => l.text))) === JSON.stringify([
          ['Active', 2], ['Bench', 2], ['Deck', 2], ['Discard', 2], ['Hand', 2],
-         ['Lost Zone', 2], ['Prizes', 2], ['Stadium', 1], ['Table', 1]
+         ['Lost Zone', 2], ['Pokemon Power', 2], ['Prizes', 2], ['Stadium', 1], ['Table', 1]
       ]),
       JSON.stringify(tally(named.map((l) => l.text))))
    check('each name in the middle of its own zone, and none of them turned over',
@@ -1167,14 +1182,56 @@ if (want('panel')) {
       halves. Read as a colour rather than as a style name, because "50%" is the
       alpha channel of it.
    */
-   const outlines = await alice.evaluate(`[...document.querySelectorAll('.gameboard > div:not(.veil):not(.zone-label), .active > .active1, .active > .active2')]
+   const outlines = await alice.evaluate(`[...document.querySelectorAll('.gameboard > div:not(.veil):not(.zone-label), .active > .active1, .active > .active2, .stadium-area > div:not(.zone-label)')]
       .map((el) => {
          const style = getComputedStyle(el)
          return { cls: el.className.split(' ')[0], style: style.outlineStyle, width: style.outlineWidth, colour: style.outlineColor }
       })`)
-   check('every zone is outlined', outlines.length >= 16, String(outlines.length))
+   check('every zone is outlined', outlines.length >= 18, String(outlines.length))
    check('with a solid line', outlines.every((o) => o.style === 'solid'), JSON.stringify(outlines.filter((o) => o.style !== 'solid')))
    check('at half strength', outlines.every((o) => alpha(o.colour) === 0.5), JSON.stringify(outlines.map((o) => [o.cls, o.colour])))
+   check('and the Stadium\'s three bands are among them',
+      ['power2', 'stadium', 'power'].every((band) => outlines.some((o) => o.cls === band)), JSON.stringify(outlines.map((o) => o.cls)))
+
+   /*
+      Where the Power zones are, measured rather than assumed: the Stadium's cell
+      splits into three bands, each Power zone takes a quarter of the cell and the
+      Stadium the middle half, and each zone sits between its own player's bench
+      and the Stadium - the near one under the Stadium and over the near bench, the
+      far one the other way up.
+   */
+   const bands = await alice.evaluate(`(() => {
+      const rect = (sel) => {
+         const el = document.querySelector(sel)
+         if (!el) return null
+         const r = el.getBoundingClientRect()
+         return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height) }
+      }
+      const area = rect('.stadium-area')
+      const cell = area ? area.height : 0
+      const share = (r) => (r && cell ? r.height / cell : 0)
+      return {
+         area,
+         power2: rect('.stadium-area > .power2'),
+         stadium2: rect('.stadium-area > .stadium2'),
+         power: rect('.stadium-area > .power'),
+         nearBench: rect('.gameboard > .bench'),
+         farBench: rect('.gameboard > .bench2'),
+         share: { power2: share(rect('.stadium-area > .power2')), power: share(rect('.stadium-area > .power')), stadium: share(rect('.stadium-area > .stadium')) }
+      }
+   })()`)
+   check('a Power zone is a quarter of the Stadium\'s cell, top and bottom',
+      Math.abs(bands.share.power2 - 0.25) < 0.02 && Math.abs(bands.share.power - 0.25) < 0.02,
+      JSON.stringify(bands.share))
+   check('which leaves the Stadium the middle half of it',
+      Math.abs(bands.share.stadium - 0.5) < 0.02, JSON.stringify(bands.share))
+   check('and the two Stadiums still share that one band',
+      bands.stadium2 && Math.abs(bands.stadium2.top - bands.power2.bottom) < 2 && Math.abs(bands.stadium2.bottom - bands.power.top) < 2,
+      JSON.stringify({ power2: bands.power2, stadium2: bands.stadium2, power: bands.power }))
+   check('the near Power zone is between the Stadium and the near bench',
+      bands.power.bottom <= bands.nearBench.top + 2, JSON.stringify({ power: bands.power, bench: bands.nearBench }))
+   check('and the far one between the far bench and the Stadium',
+      bands.farBench.bottom <= bands.power2.top + 2, JSON.stringify({ power2: bands.power2, bench: bands.farBench }))
 
    /* the menu this section found open is left open, and the outlines as they were */
    await cog()
@@ -1218,11 +1275,24 @@ if (want('panel')) {
    const mine = shown.find((m) => m.mine)
    check('Both shows the two marks together', JSON.stringify(mine?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(mine ?? shown))
    check('paired, not one instead of the other', mine?.paired === true, JSON.stringify(mine ?? shown))
-   check('and the two marks are the same width',
-      Array.isArray(mine?.widths) && mine.widths.length === 2 && mine.widths[0] === mine.widths[1],
-      JSON.stringify(mine?.widths ?? shown))
+   /*
+      The pair shares the dimension its zone has to give. The band it sits in is
+      wide and short, so the two logos lie along it and are the same *height* -
+      the two images are different shapes, and forcing one width on both would
+      leave the taller one sticking out of the band.
+   */
+   check('and the two marks are the same height',
+      Array.isArray(mine?.heights) && mine.heights.length === 2 && mine.heights[0] === mine.heights[1],
+      JSON.stringify(mine?.heights ?? shown))
    check('with a gap between them so they do not read as one mark', parseFloat(mine?.gap || '0') > 0, mine?.gap ?? JSON.stringify(shown))
    check('and neither is dimmed to begin with', Array.isArray(mine?.used) && mine.used.length === 0, JSON.stringify(mine ?? shown))
+   /*
+      The markers are in the Pokemon Power zones now - the quarter of the
+      Stadium's cell above it, and the quarter below - rather than floating in the
+      free space past the opponent's deck, and they are sized by that band.
+   */
+   check('the player\'s marks are in the near Power zone', mine?.zone === 'power', JSON.stringify(shown.map((m) => m.zone)))
+   check('and a mark fills the band it is in', shown.every((m) => m.fill > 0.9), JSON.stringify(shown.map((m) => m.fill)))
 
    /*
       Each mark is its own button. Clicking one says that power has been used and
@@ -1263,8 +1333,10 @@ if (want('panel')) {
    await sleep(3000)
    const farShown = await markers(bob)
    const far = farShown.find((m) => !m.mine)
-   check('and the opponent sees both as well', JSON.stringify(far?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(far ?? farShown))
+   check('the opponent sees both as well', JSON.stringify(far?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(far ?? farShown))
    check('with the used one dimmed on their side too', JSON.stringify(far?.used) === JSON.stringify(['GX']), JSON.stringify(far?.used ?? farShown))
+   /* and on their board it is the far Power zone, the one above the Stadium */
+   check('and in the far Power zone, above their Stadium', far?.zone === 'power2', JSON.stringify(farShown.map((m) => m.zone)))
 
    const turnedOff = await alice.clickText('Off', { settle: 1500, kinds: 'label' })
    await sleep(2000)
