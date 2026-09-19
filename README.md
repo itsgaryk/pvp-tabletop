@@ -666,6 +666,14 @@ and the discard's sat half out of its own.
 one row of card backs, and six of them are a block; the cell each card had was spacing
 that bought the look of a grid of loose cards rather than a pile counted in two columns.
 
+**The bench is the one zone that wraps.** It holds five Pokémon to a row, which is the
+bench a game is played with, and the sixth starts a new row rather than shrinking the
+Pokémon already in play to fit another beside them. A row is decided by how many Pokémon
+are on the bench and by nothing else — what is attached *under* one of them is not a
+card on the bench and is not counted. The rows share the zone's height between them, so
+a second row is a smaller card for all of them rather than a card half out of the zone,
+and each is fitted to its own cell like every other card on the board.
+
 **A prize stays face down while it is moved, and looking at one is said out loud.** The
 card under the pointer in a drag is drawn from the card's face, so picking a face-down
 prize up used to turn it over — both a look at a card nobody has taken yet and a lie,
