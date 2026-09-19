@@ -88,9 +88,6 @@
             <input type="range" bind:value={$scale} min="0.4" max="1" step="0.05">
             Scale
          </label>
-         <p class="hint">
-            Scale down the size of card images if the field doesn't fit your screen.
-         </p>
       </div>
 
       <div class="setting">
