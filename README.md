@@ -581,7 +581,7 @@ GX marker, the tokens a deck's own power is tracked with. It is why
 other zone needs — it shows no cards and reads no board store, so what it shows is
 handed to it. It is also why the marker is no longer a token floating in the free
 space past the opponent's deck: a token belongs to a zone, and this is the zone for
-it. The marks are sized by the band rather than by Settings' card size, so a short
+it. The marks are sized by the band they are in, so a short
 window takes them with it instead of letting them spill over the Stadium.
 
 Four cells are not one zone to one component:
@@ -643,8 +643,22 @@ the other arrangement: its cards lie *along* it, so they are sized by the zone's
 and the row scrolls sideways once twenty of them no longer fit.
 
 This is why `--card-width` is only what a card is *outside* a zone now — in an
-inspection, in the deck list, in a dialog — and why Settings' card size moves the
-board's spacing (`--scaled-rem`, `--card-gap`) rather than the cards themselves.
+inspection, in the deck list, in a dialog.
+
+**There is no card size setting any more.** It was a slider over `--card-scale`, and
+once the cards were the zones' it did nothing useful and one thing that was worse than
+nothing: `--card-scale` multiplied the board's own spacing (`--scaled-rem`, the grid's
+column gap, and `--card-gap`), so a slider left at anything but its default moved every
+zone — a board scaled to 0.5 had narrower gaps, wider columns and cards that changed
+size with them. `--scaled-rem` is a plain `1rem` and `--card-gap` a plain `4px`, and
+nothing a card is sized by can be set from the menu.
+
+The four nudges that used to sit on three of those piles are gone with it. The top
+player's discard, and the bottom player's deck and lost zone, were each translated 30px
+off the middle of their zone to open up two gaps the rotated half leaves tighter than
+it reads — which was right while a card sat against its zone's corner and wrong the
+moment cards were centred in their zones: the deck's card hung over the discard's row,
+and the discard's sat half out of its own.
 
 Three things are not sized this way, and each is deliberate:
 
@@ -847,15 +861,16 @@ survives a reload:
 - **The room and the seat** (`pvp_session`, written by `src/lib/relay/client.js`), so
   a reload lands back in the same game as the same member. Leaving a room, or finding
   it gone, forgets it.
-- **The settings** (`auto_mulligan`, `scale`, `zone_borders`, `player_name`), through
+- **The settings** (`auto_mulligan`, `zone_borders`, `player_name`), through
   `storable()` in `src/lib/stores/custom/storable.js`.
 
 The board itself is persisted nowhere. In a room it is rebuilt by replaying the relay's
 event log, which is why a stale `pvp_session` matters and a stale board does not. In
 solo there is no relay and so no log: a reload returns to the main menu and the game
 is gone. That also makes the settings a debug lever — a board that looks wrong because
-of `zone_borders` or `scale` is fixed by clearing those keys, without touching the
-game.
+of `zone_borders` is fixed by clearing that key, without touching the game. A
+`scale` key left in `localStorage` by a version that had the card size slider is
+ignored rather than obeyed, so it can be left where it is.
 
 ## Troubleshooting and diagnostics
 

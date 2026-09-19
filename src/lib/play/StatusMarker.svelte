@@ -49,7 +49,7 @@
          the ability stripe crosses its middle, and a marker that reached it would
          cover the words.
       */
-      --size: calc(var(--card-width) * var(--card-scale) / 4);
+      --size: calc(var(--card-width) / 4);
       width: var(--size);
       height: var(--size);
       font-size: calc(var(--size) / 2);

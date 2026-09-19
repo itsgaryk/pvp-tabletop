@@ -881,7 +881,7 @@ if (want('panel')) {
       /*
          Which band of the Stadium's cell the marks are in, and how much of it
          they take. A Power zone is a quarter of that cell, and what is inside
-         one is sized by the band rather than by Settings' card size.
+         one is sized by the band it is in.
       */
       zone: el.closest('.power, .power2')?.className.split(' ')[0] || null,
       fill: el.getBoundingClientRect().height / (el.parentElement?.getBoundingClientRect().height || 1)
@@ -1157,10 +1157,12 @@ if (want('panel')) {
    /*
       The panel is the settings that can be set, and nothing else. "Appearance"
       held one line of prose about dark mode and no control at all, and the lines
-      that only restated what the control already says are gone with it.
+      that only restated what the control already says are gone with it. So is
+      "Card Size": a card on the board is the size of the zone it is in now, which
+      is not a thing a slider can improve on.
    */
    check('and only settings that can be set are there',
-      JSON.stringify(shape.map((s) => s.title)) === JSON.stringify(['Mulligans', 'VSTAR / GX marker', 'Card Size', 'Board zones', 'Diagnostics']),
+      JSON.stringify(shape.map((s) => s.title)) === JSON.stringify(['Mulligans', 'VSTAR / GX marker', 'Board zones', 'Diagnostics']),
       JSON.stringify(shape.map((s) => s.title)))
 
    const described = await alice.evaluate(`[...document.querySelectorAll('.setting')].map((b) => b.innerText.replace(/\\s+/g, ' ').trim())`)

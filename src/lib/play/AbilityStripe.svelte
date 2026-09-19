@@ -27,7 +27,7 @@
       padding: 0.15em 0;
       background: #00ffe6;
       color: #000;
-      font-size: calc(var(--card-width) * var(--card-scale) * 0.135);
+      font-size: calc(var(--card-width) * 0.135);
       font-weight: 700;
       line-height: 1.5;
       letter-spacing: 0.02em;
