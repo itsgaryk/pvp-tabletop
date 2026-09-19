@@ -336,12 +336,20 @@ if (!rejoinFast || !quick) {
       const back = await join(c.roomId, 'Other', d.memberId)
       check('a player who reconnects takes their own seat back', back.body.role === 'guest' && back.body.memberId === d.memberId, JSON.stringify({ role: back.body.role, memberId: back.body.memberId, wanted: d.memberId }))
 
-      after = await poll(c.roomId, c.memberId)
+      /*
+         Waited for rather than read once. The join clears the deadline and the
+         poll replies with it, but the host's own poll may already have been
+         answered from a read taken a moment before the join landed - a room this
+         test is keeping busy on purpose, so there is usually an event to hand
+         back. Reading once made this fail about one run in ten.
+      */
+      after = await pollUntil(c.roomId, c.memberId, (body) => !body.rejoin, { timeout: 15000 })
    } finally {
       clearInterval(keepAlive)
    }
 
-   check('and the wait is called off', !after.body.rejoin && after.body.gone !== true, JSON.stringify(after.body.rejoin || after.body.reason))
+   const reply = after || {}
+   check('and the wait is called off', !reply.rejoin && reply.gone !== true, JSON.stringify(reply.rejoin || reply.reason || 'no reply'))
 }
 
 /* ------------------------------------------------------- 2. restart ------- */
