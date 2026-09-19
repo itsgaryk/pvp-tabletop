@@ -485,6 +485,244 @@ Being derived from a read rather than an atomic counter it is approximate when
 requests arrive together; the client's own queue is what keeps it from being
 needed, since rejecting an action server-side would mean losing it.
 
+## The board
+
+One grid, two halves. The bottom half is always the near side — a player's own
+board; the top half is the other side of the table, either the opponent's mirror or,
+for a spectator, the second player's. `src/lib/play/Board.svelte` owns the grid and
+that assignment; the zones themselves are components under `src/lib/play/board/`
+(drawn for the player sitting at the bottom) and `src/lib/play/opponent/` (the same
+zones drawn for a half that is rotated, so their cards face the player on that side).
+
+### The zones
+
+A zone is a place a card can be dropped on and clicked in. It is a cell of the
+board's grid — and it is not the same thing as the name written inside it (see
+below), nor as what it holds: the deck, hand, prizes, discard, lost zone and table
+are piles, while the active spot and the bench are *slots*. A slot holds up to three
+lists (Pokémon, energy, trainer) plus the state that belongs to them — damage,
+status, ability used.
+
+| Zone | Grid area | Near half | Far half | Board field |
+| --- | --- | --- | --- | --- |
+| Hand | `hand` / `hand2` | `board/Hand.svelte` | `opponent/Hand.svelte` | `hand` |
+| Prizes | `prizes` / `prizes2` | `board/Prizes.svelte` | `opponent/Prizes.svelte` | `prizes` |
+| Deck | `deck` / `deck2` | `board/Deck.svelte` | `opponent/Deck.svelte` | `deck` |
+| Discard | `discard` / `discard2` | `board/Discard.svelte` | `opponent/Discard.svelte` | `discard` |
+| Lost Zone | `lz` / `lz2` | `board/LostZone.svelte` | `opponent/LostZone.svelte` | `lz` |
+| Bench | `bench` / `bench2` | `board/Bench.svelte` | `opponent/Bench.svelte` | `bench` (slots) |
+| Active | `active` (`active1`, `active2`) | `board/Active.svelte` | `opponent/Active.svelte` | `active` (one slot) |
+| Table | `play` / `play2` | `board/Temp.svelte` | `opponent/Temp.svelte` | `table` |
+| Stadium | `stadium` / `stadium2` | `board/Stadium.svelte` | `opponent/Stadium.svelte` | `stadium` |
+
+The board fields are the ones `src/lib/stores/custom/board.js` creates and
+`player.js` re-exports; `opponent.js` builds the same shape as a mirror. The `2`
+suffix on the far half's class names is the whole of the difference between the two
+halves' markup, and `play2` and `stadium2` deliberately resolve to the *same* grid
+area as `play` and `stadium`.
+
+Three cells are not one zone to one component:
+
+- **The table and the stadium are shared.** Both players play into the same cell, so
+  each half's component is placed in it and the near one is on top (`.play` at
+  `z-index: 11`, `.stadium` at `10`). In solo the near table stands aside while it is
+  empty and nothing is being dragged (`pointer-events: none` on `.play.empty`), which
+  is what lets a click reach the far half's table lying underneath. The near stadium
+  passes clicks through the same way until it has a card in play, and it stays the
+  player's own whichever way the board is flipped.
+- **The active spot holds two zones.** `.active` is itself a two-row grid: `active2`
+  in row 1 for the top half and `active1` in row 2 for the bottom, with the pokeball
+  watermark (`:before`) belonging to the cell rather than to either zone.
+- **The veil is not a zone at all.** It is the shading drawn while Hide Pokémon is
+  on (`pokemonHidden`), placed by named lines rather than declared as an area, so it
+  is deliberately outside both the zone outlines and the zone names.
+
+The grid is seven columns by six rows, with every track floored at `minmax(0, …)`:
+plain `fr` has an automatic minimum, so a zone with more in it — a full hand, a pile
+of prizes — grew its row and squeezed the others, which is how two views ended up
+disagreeing about where a zone was. Zones are placed by `grid-template-areas`, so the
+whole layout is one declaration and a zone's position is its area name; `grep` for
+that name to find the cell, and the table above to find the component.
+
+`pickup` is the one pile with no zone on the board: cards wait there while a
+multi-card selection is being resolved (the *in hand (moving)* line in the
+diagnostics panel), so it is state rather than board furniture.
+
+A pile draws its own count badge in the corner, except the table's, which asks for
+none: the stack there is read by looking at it, and a number on top of it was noise.
+Deck, hand, prizes, discard and lost zone carry one; the stadium (a single card), the
+active spot and the bench (slots) never did.
+
+### Zone borders and names
+
+**Settings → Board zones** (`zoneBorders`, persisted as `zone_borders`, off by
+default) outlines every zone of both halves and — only while it is on — writes each
+zone's name in the middle of it. The two are a pair: a line says where a zone begins
+and ends, a word says which zone it is. It is a development and teaching aid as much
+as a setting, and `node tools/browser-check.mjs --only panel` is what reads it.
+
+The names are the game's words rather than the components' — the discard pile is a
+*Discard*, the prize cards *Prizes*, the active spot an *Active*, and `Temp.svelte` is
+the *Table* — which is why the list is written out in `Board.svelte` instead of being
+derived from the files. A two-word name is broken over its words (`white-space:
+pre-line`), so *Lost Zone* reads as a small centred block rather than one long line
+across the zone.
+
+Four things about them are deliberate, and each was a bug first:
+
+- **A name is drawn under the cards, not over them.** The labels come first in the
+  board, before the zones they name, so whatever a zone draws comes after them and a
+  card in the middle of a zone covers its name. A caption belongs on the empty part
+  of a zone, not read through the cards.
+- **A name takes no pointer events and cannot be selected.** A zone is what the board
+  reacts to; a label that swallowed a click would be a hole in the middle of every
+  zone.
+- **Half strength is the colour's alpha, not the element's `opacity`.** `opacity`
+  gives the name a layer of its own, and it is then drawn over the cards in any zone
+  whose own markup is not positioned — the stadium's is not.
+- **A name is sized by its own words.** The rule that makes a zone's component fill
+  its zone caught the first of the active area's two names and stretched it to the
+  whole cell, which put its words at the top of the zone while its box still measured
+  as the zone — so it read as centred and looked wrong.
+
+The active area is the one cell holding a zone per player, so it carries the name
+**Active** twice, each centred in its own row of that cell. Sixteen names for fourteen
+cells, for that reason, is the number the browser check asserts.
+
+### Flipping the board
+
+The flip button sits beside the settings cog, and only a **spectator** or **solo**
+gets it: a player in a room already sits on their own side, so there is nothing to
+swap.
+
+One control and one store — `spectatorFlipped` in `opponent.js` — with two meanings,
+because the two modes have the same problem from opposite ends:
+
+- **A spectator** swaps which player is on which half of its screen. A spectator
+  keeps a mirror per player, and flipping re-points the two mirrors. It is a *local
+  view change*: nothing is sent to the relay and neither player's own board moves.
+- **In solo** both halves are the same person, so the flip swaps your own board with
+  the other side's: your half moves to the top and the other side's comes down, where
+  you can play it. `Board.svelte` states it as `soloSwapped = $solo &&
+  $spectatorFlipped`, and it is the same button and the same store as a spectator's
+  flip. The button's tooltip names which of the two it means.
+
+What travels with a half when it flips is whatever belongs to the player shown on it:
+for a spectator, the two nameplates (`topName` / `bottomName`, taken from the relay's
+seats in join order) and each half's VSTAR/GX marker; for anyone, the hand's
+*revealed* tint, which follows the hand that is at the bottom *now* (`soloSwapped ?
+$oppHandRevealed : $handRevealed`) because a flipped solo board has the other side's
+hand down there. A solo board has only one name to write — its own — because solo
+never joins a room and so has no seats.
+
+The two shared cells are the one thing a flip does not move. The table and the
+stadium are a single cell each with the near copy on top, and the near copy stays the
+player's own however the board is flipped; the other half's is the one behind it.
+Handing the player's own table or stadium to the other side of the screen is the one
+thing a flip must not do.
+
+What does not travel is everything else. No card moves, no event is relayed and no
+board state is touched: the turn, the clock, the decks and the piles are all where
+they were. It is a view, not an action — which is why a spectator can flip a game it
+cannot touch, and why the flip is safe to reach for mid-turn.
+
+The half being flipped is also the one piece of rendering that turns:
+
+- The top half is drawn rotated (`transform: scale(-1, -1)`) because it is the far
+  side of the table, so its cards face the player sitting opposite. A spectator's and
+  solo's top half uses the same layout, but the cards are turned back up again (the
+  `upright` class), because both halves are read by the same pair of eyes.
+- Anything that has to stay readable by whoever is looking at a rotated half — a
+  pile's count, a damage counter, a status marker, the ability stripe — is rotated
+  back in `Board.svelte`, the one place that knows the half is flipped. An element
+  added to the far half that carries words needs putting on that list, and there is no
+  error if it is forgotten: it simply arrives upside down.
+- The hand row is never rotated, for a player or a spectator, because its pile menu
+  renders inside it.
+- Flipping is not remembered. `spectatorFlipped` is a plain writable rather than a
+  `storable`, so a reload starts unflipped, and it is set back to false when a room is
+  left and when solo starts or ends.
+
+### Spectating
+
+**Spectate Game** on the main menu joins a room without taking a seat. A spectator is
+read-only, and the enforcement is not in the UI: every state change in the app funnels
+through `share()`, which refuses to act while `spectating`, and the relay answers any
+event but `chatMessage` from a spectator member with *"spectators cannot change the
+game"*. So the board's menus and shortcuts cannot touch the game however they are
+reached. Chat is the one thing a spectator may send, which is why it does not go
+through `share()`.
+
+On screen a spectator gets the whole board and none of the play:
+
+- **Two mirrors, one per player**, created once at module level (`spectatorOpponents`
+  in `opponent.js`) and seated from the relay's `seated` event. The normal single
+  mirror is switched off while spectating rather than unmounted, because it would
+  otherwise quietly collect both players' cards into one set of slots.
+- **No game actions.** The Setup / Hide Pokémon / Flip Coin / End Turn row is not
+  rendered and its shortcuts are not bound, so End Turn and New Game are not one
+  keystroke away for somebody who is only watching.
+- **Both hands and both sets of prizes are face up** (`$spectating` reveals them
+  outright), which is the deliberate difference from a player, who sees a hidden hand
+  and hidden prizes.
+- **The clock, without its controls**, no VSTAR/GX marker of its own, and no deck
+  panels — a spectator has no deck to edit.
+- **A spectator is not a seat.** A spectator leaving never closes the room, and a
+  spectator's presence going stale is only a count change (see *Leaving, and what
+  closes a room*).
+
+### Keyboard shortcuts
+
+Two document-level listeners, and both refuse while somebody is typing
+(`$lib/util/typing.js`, which also keeps Enter and Space for a focused button). No
+board shortcut uses the command modifier, on purpose: that combination belongs to the
+browser and the clipboard, so `Ctrl+V` / `Cmd+V` pastes a room code or a message and
+View All is `V` and only `V`.
+
+The board's own shortcuts, from `Board.svelte`:
+
+| Key | Does |
+| --- | --- |
+| `1`–`9` | draw that many cards |
+| `Alt`+`1`–`9` | look at that many from the top of the deck (the deck menu's *View Top X*) |
+| `D` `H` `L` `P` | the selection to discard / hand / lost zone / prizes |
+| `B` `A` | the selected Pokémon to the bench / the active spot |
+| `G` | the selection to the stadium, or log the stadium already in play |
+| `S` | shuffle: the selection into the deck, or the deck itself |
+| `T` `M` | the selection to the top / bottom of the deck |
+| `Q` `E` | attach / evolve with the selected card |
+| `U` | mark the selected Pokémon's ability used, or take that back |
+| `Space` | the selected card's details, and again to put them away |
+| `V` `W` | View All of the deck / of the table |
+| `X` | the selection to the table, or pick the table back up |
+| `Esc` | clear the selection |
+
+The game actions, from `GameActions.svelte`, which a spectator does not get at all:
+`Enter` ends the turn, `C` starts the next one, `N` starts a new game (after asking),
+`F` flips a coin, `Z` shows or hides Pokémon.
+
+In solo both halves are playable, so every key that moves a selection first asks which
+board it is meant for (`farSelected()`): the same key moves the far half's own cards
+into the far half's own zones, and never carries a card across the table into yours.
+
+### What the browser remembers
+
+Only two kinds of thing are persisted, both in `localStorage`, and nothing else
+survives a reload:
+
+- **The room and the seat** (`pvp_session`, written by `src/lib/relay/client.js`), so
+  a reload lands back in the same game as the same member. Leaving a room, or finding
+  it gone, forgets it.
+- **The settings** (`auto_mulligan`, `scale`, `zone_borders`, `player_name`), through
+  `storable()` in `src/lib/stores/custom/storable.js`.
+
+The board itself is persisted nowhere. In a room it is rebuilt by replaying the relay's
+event log, which is why a stale `pvp_session` matters and a stale board does not. In
+solo there is no relay and so no log: a reload returns to the main menu and the game
+is gone. That also makes the settings a debug lever — a board that looks wrong because
+of `zone_borders` or `scale` is fixed by clearing those keys, without touching the
+game.
+
 ## Troubleshooting and diagnostics
 
 Five tools, for the five questions that are expensive to answer by hand. Each of
