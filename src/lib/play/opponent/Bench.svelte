@@ -54,9 +54,50 @@
 <div class="p-1 flex items-center focus:outline-none" tabindex="0"
    use:dnd={dndConfig}
    use:ctrlA on:ctrlA={selectAll}>
-   <div class="p-1 flex gap-[var(--scaled-rem)] min-w-0">
+   <div class="bench-slots">
       {#each $bench as slot (slot.id)}
          <Slot bind:slot={slot} {store} />
       {/each}
    </div>
 </div>
+
+<style>
+   /*
+      The same shape as the near half's: five to a row, and the sixth starts a new
+      row, with the rows sharing the zone's height between them.
+   */
+   .bench-slots {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-auto-rows: minmax(0, 1fr);
+      place-items: center;
+      gap: var(--scaled-rem);
+      width: 100%;
+      height: 100%;
+   }
+
+   .bench-slots :global(.slot) {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* the grid is the spacing; the slot's own right margin is for attached cards */
+      margin-right: 0 !important;
+   }
+
+   /* the wrapper needs the height too, or the image has nothing to be a % of */
+   .bench-slots :global(.slot .pokemon-card) {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+   }
+
+   .bench-slots :global(.slot img.card.pokemon) {
+      width: auto;
+      height: auto;
+      max-width: 100%;
+      max-height: 100%;
+   }
+</style>
