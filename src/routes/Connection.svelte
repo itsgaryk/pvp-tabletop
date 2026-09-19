@@ -7,7 +7,6 @@
    import RoomIdPrompt from '$lib/play/dialogs/RoomIdPrompt.svelte'
    import { check, copy } from '$lib/icons/paths.js'
    import { PVP_SERVER } from '$lib/util/env.js'
-   import { playerName } from '$lib/stores/settings.js'
    import {
       connected, room, spectating, spectators, chat,
       createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary, roomError,
@@ -94,9 +93,9 @@
    }
 
    /*
-      Joining and spectating both start by asking for the code: one prompt, and
-      which button opened it is what decides what happens to the code that comes
-      back.
+      All three of the lobby's actions start by asking: who you are, and for two
+      of them which room. One prompt, and which button opened it is what decides
+      what happens to what comes back.
    */
    function askForRoom (what) {
       failure = null
@@ -105,7 +104,9 @@
 
    async function onRoomChosen (event) {
       roomId = event.detail.roomId
-      if (event.detail.what === 'spectate') await spectate()
+
+      if (event.detail.what === 'create') await create()
+      else if (event.detail.what === 'spectate') await spectate()
       else await join()
    }
 
@@ -212,21 +213,13 @@
          <button class="connect" on:click={startSolo}>Play Solo</button>
          <hr>
 
-         <!-- the name is asked for first: it shows in chat and on the board -->
-         <input
-            class="p-2 border border-[var(--bg-color-three)] rounded-lg"
-            type="text" name="playerName" bind:value={$playerName}
-            placeholder="Your Name" maxlength="24" on:keydown|stopPropagation
-         >
-
-         <button class="connect" on:click={create} disabled={busy}>Create Room</button>
-         <hr>
-
          <!--
-            No Room ID field: the code is asked for by the prompt each button
-            opens, so these are plain buttons and all three of them are the same
-            size as each other.
+            No name field and no Room ID field: the prompt each button opens asks
+            for what that button needs, so these are plain buttons and all of them
+            are the same size as each other.
          -->
+         <button class="connect" on:click={() => askForRoom('create')} disabled={busy}>Create Room</button>
+         <hr>
          <button class="connect" on:click={() => askForRoom('join')} disabled={busy || status?.locked}>Join Room</button>
          <button class="connect" on:click={() => askForRoom('spectate')} disabled={busy}>Spectate Game</button>
 

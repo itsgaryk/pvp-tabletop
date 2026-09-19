@@ -492,9 +492,10 @@ click, its own used state and its own log line:
 node tools/browser-check.mjs --only panel     # just that section
 ```
 
-Its `lobby` section covers the way in: the lobby has no Room ID field, so joining
-and spectating open a centred prompt for the code, and all three lobby buttons
-measure the same as each other.
+Its `lobby` section covers the way in: the lobby has no name field and no Room ID
+field, so all three buttons open a centred prompt for whatever that button needs
+— the name, and for joining or spectating the room code — and all three measure
+the same as each other.
 
 ```sh
 node tools/browser-check.mjs --only lobby     # just that section
