@@ -505,6 +505,15 @@ console.log('\nthe table clock')
    const drift = Math.round((Number(later.now) - Number(later.timer?.at)) - (RUNNING_MS - Number(later.timer?.remaining)))
    check('what it reports left is measured from its own anchor', Math.abs(drift) <= 1, `${drift}ms out`)
 
+   /*
+      Elapsed time is counted on the **relay's** clock, from the anchor, and not
+      by subtracting timestamps on this machine. A verifier running against a
+      deployment is a different machine with a clock of its own, and the whole
+      point of the anchor is that a client's clock is not the one to measure it
+      with - a check that did so would be reporting its own skew as a fault.
+   */
+   const elapsedRelay = (reply) => Number(reply.now) - Number(set.timer?.at)
+
    /* the other player, and a watcher that arrived after the clock was set */
    const guest = (await poll(a.roomId, b.memberId)).body
    check('the other player is told the same clock', Math.abs(Number(guest.timer?.remaining) - Number(later.timer?.remaining)) < 2000, `${later.timer?.remaining} vs ${guest.timer?.remaining}`)
@@ -513,7 +522,7 @@ console.log('\nthe table clock')
    rooms.push([a.roomId, watching.memberId])
    check('a spectator arriving late is told it on joining', Boolean(watching.timer), JSON.stringify(watching.timer))
    check('with the anchor the clock was actually set at', Number(watching.timer?.at) === Number(set.timer?.at), `${watching.timer?.at} vs ${set.timer?.at}`)
-   check('and the time really left on it', Math.abs(Number(watching.timer?.remaining) - (RUNNING_MS - (Date.now() - Number(set.timer?.at)))) < 2000, `${watching.timer?.remaining} left`)
+   check('and the time really left on it', Number(watching.timer?.remaining) === RUNNING_MS - elapsedRelay(watching), `${watching.timer?.remaining} left, ${elapsedRelay(watching)}ms into the clock`)
 
    /*
       A paused clock is a value rather than a count, which is what makes it worth
