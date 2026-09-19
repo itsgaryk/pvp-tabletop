@@ -726,9 +726,14 @@ if (want('panel')) {
 
    /*
       A shortcut is the board's, not the button's. Clicking Setup leaves that
-      button focused, and Ctrl+V used to do nothing at all until the player
-      clicked somewhere else first - because a focused button was treated as
-      somebody typing. Only the two keys that press a button belong to it.
+      button focused, and a focused button used to be treated as somebody typing,
+      which swallowed every shortcut pressed from it. Only the two keys that press
+      a button belong to it, so V still opens the deck from there.
+
+      V and only V, though: Ctrl+V is how a player pastes a room code or a
+      message, and the deck must not open on top of the paste. The paste chord is
+      the platform's own - Cmd+V on a Mac, Ctrl+V anywhere else - which is the
+      pair the app treats as its command modifier.
    */
    const keyOnFocused = (page, key, code, modifiersText = '') => page.evaluate(`(() => {
       const el = document.activeElement || document.body
@@ -740,19 +745,29 @@ if (want('panel')) {
       return el.tagName
    })()`)
 
-   await alice.evaluate(`[...document.querySelectorAll('.game-actions button')].find((b) => b.textContent.includes('Setup')).focus()`)
+   const focusSetup = () => alice.evaluate(`[...document.querySelectorAll('.game-actions button')].find((b) => b.textContent.includes('Setup')).focus()`)
+
+   await focusSetup()
    check('the Setup button is focused', /Setup/.test(await alice.evaluate(`(document.activeElement.textContent || '').trim()`)))
    const shut = await controls(alice)
    check('the deck is not open to begin with', shut.board && !shut.deck, JSON.stringify(shut))
 
-   await keyOnFocused(alice, 'v', 'KeyV', 'ctrl')
+   await keyOnFocused(alice, 'v', 'KeyV')
    await sleep(900)
    const opened = await controls(alice)
-   check('Ctrl+V opens the deck while that button has focus', opened.board && opened.deck, JSON.stringify(opened))
+   check('V opens the deck while that button has focus', opened.board && opened.deck, JSON.stringify(opened))
    if (opened.deck) await alice.clickText('Close', { settle: 1200, kinds: 'button' })
 
+   const paste = await alice.evaluate(`/mac/i.test(navigator.userAgent) ? 'meta' : 'ctrl'`)
+   await focusSetup()
+   await keyOnFocused(alice, 'v', 'KeyV', paste)
+   await sleep(900)
+   const pasted = await controls(alice)
+   check(`and ${paste === 'meta' ? 'Cmd+V' : 'Ctrl+V'}, the paste key, does not`,
+      pasted.board && !pasted.deck, JSON.stringify(pasted))
+
    /* and Space still presses the focused button rather than the board */
-   await alice.evaluate(`[...document.querySelectorAll('.game-actions button')].find((b) => b.textContent.includes('Setup')).focus()`)
+   await focusSetup()
    await keyOnFocused(alice, ' ', 'Space')
    await sleep(900)
    const stayedShut = await controls(alice)

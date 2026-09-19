@@ -340,7 +340,13 @@
       /* u marks the selected Pokemon's ability as used (or takes that back) */
       else if (key === 'u') toggleAbilityUsed()
 
-      else if (key === 'v') openPile(deck)
+      /*
+         View All is V, and only V. Ctrl+V is how a player pastes a room code or a
+         message, and opening the deck on top of the paste is the one thing a
+         paste must not do: a combination with the command modifier is the
+         browser's and the clipboard's, not the board's.
+      */
+      else if (key === 'v' && !holdingCtrlOrCmd(e)) openPile(deck)
       else if (key === 'w') openPile(table)
 
       else if (key === 'w') moveSelection(table) // older version table shortcut without the extra functionality

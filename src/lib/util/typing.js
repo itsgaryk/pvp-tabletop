@@ -8,11 +8,15 @@
    where the digit keys are the whole point of the field.
 
    A button is a narrower case than a field, and it used to be treated as the same
-   thing - which swallowed a modifier shortcut wherever a button happened to have
-   focus. Clicking Setup leaves it focused, so Ctrl+V did nothing at all until the
-   player clicked somewhere else first. On a button, only the two keys that press
-   it belong to the button: everything else is still the board's, so Ctrl+V opens
-   the deck whether or not a button is focused.
+   thing - which swallowed every shortcut wherever a button happened to have
+   focus. Clicking Setup leaves that button focused, so a bare key has to reach
+   the board from there: on a button, only the two keys that press it belong to
+   it, so D still discards and V still opens the deck while it is focused.
+
+   What a button does not decide is which keys are shortcuts at all. A combination
+   with Ctrl or Cmd belongs to the browser and to the player's clipboard - Ctrl+V
+   pastes - so a shortcut that would otherwise take one asks whether the modifier
+   is held (see the deck's own V in Board.svelte).
 */
 export function isTyping (target, e = null) {
    if (!target || !target.tagName) return false
