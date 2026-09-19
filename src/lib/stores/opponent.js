@@ -5,6 +5,7 @@ import { slot } from './custom/cards.js'
 import { socket } from './connection.js'
 import { discardStadium } from './player.js'
 import { normalizeStatus } from '$lib/util/status.js'
+import { normalizeMarkerUsed } from '$lib/util/markers.js'
 
 /* every mirror ever created, so relay events can reach the right ones */
 const instances = new Set()
@@ -138,7 +139,7 @@ export function createOpponent () {
       }
 
       if (state.powerMarker) powerMarker.set(state.powerMarker)
-      powerMarkerUsed.set(Boolean(state.powerMarkerUsed))
+      powerMarkerUsed.set(normalizeMarkerUsed(state.powerMarkerUsed))
       turn.set(Math.max(0, Number(state.turn) || 0))
       /*
          Hiding follows the state, both ways. It used to be one-way - only ever set
@@ -259,7 +260,7 @@ export function createOpponent () {
       },
       pokemonToggle: ({ hidden }) => pokemonHidden.set(hidden),
       powerMarker: ({ marker }) => powerMarker.set(marker || 'none'),
-      powerMarkerUsed: ({ used }) => powerMarkerUsed.set(Boolean(used)),
+      powerMarkerUsed: ({ used }) => powerMarkerUsed.set(normalizeMarkerUsed(used)),
       turnChanged: ({ turn: value }) => turn.set(Math.max(0, Number(value) || 0)),
       prizeToggle: ({ flipped }) => prizesFlipped.set(flipped),
       handToggle: ({ revealed }) => handRevealed.set(revealed)

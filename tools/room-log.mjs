@@ -270,7 +270,9 @@ function describe (event) {
       case 'powerMarker':
          return `marker ${data.marker}`
       case 'powerMarkerUsed':
-         return `marker used: ${data.used}`
+         return data.marker
+            ? `${data.marker} marker ${data.used ? 'used' : 'cleared'}`
+            : `marker used: ${data.used}`
       case 'turnChanged':
          return `turn ${data.turn}`
       case 'timerUpdated':

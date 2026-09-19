@@ -397,8 +397,10 @@ if (want('panel')) {
 
    const markers = (page) => page.evaluate(`[...document.querySelectorAll('.power-marker')].map((el) => ({
       marks: [...el.querySelectorAll('img.mark')].map((i) => i.getAttribute('alt')),
-      mine: el.classList.contains('mine'),
-      stacked: el.classList.contains('stacked')
+      used: [...el.querySelectorAll('img.mark.used')].map((i) => i.getAttribute('alt')),
+      mine: [...el.querySelectorAll('img.mark.mine')].length > 0,
+      paired: el.classList.contains('pair'),
+      gap: getComputedStyle(el).rowGap
    }))`)
 
    /* Setup hides the board and says so; the glow used to fade on a timer */
@@ -460,10 +462,47 @@ if (want('panel')) {
    await sleep(2500)
    const mine = (await markers(alice)).find((m) => m.mine)
    check('Both shows the two marks together', JSON.stringify(mine?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(mine))
-   check('stacked, not one instead of the other', mine?.stacked === true, JSON.stringify(mine))
+   check('paired, not one instead of the other', mine?.paired === true, JSON.stringify(mine))
+   check('with a gap between them so they do not read as one mark', parseFloat(mine?.gap || '0') > 0, mine?.gap)
+   check('and neither is dimmed to begin with', (mine?.used || []).length === 0, JSON.stringify(mine?.used))
+
+   /*
+      Each mark is its own button. Clicking one says that power has been used and
+      must not dim - or write to the log about - the other.
+   */
+   const clickMark = (page, alt) => page.evaluate(`(() => {
+      const mark = [...document.querySelectorAll('.power-marker img.mark.mine')].find((i) => i.getAttribute('alt') === ${JSON.stringify(alt)})
+      if (!mark) return false
+      mark.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }))
+      return true
+   })()`)
+
+   check('VSTAR is clickable on its own', await clickMark(alice, 'VSTAR'))
+   await sleep(2000)
+   const afterVstar = (await markers(alice)).find((m) => m.mine)
+   check('using VSTAR dims only VSTAR', JSON.stringify(afterVstar?.used) === JSON.stringify(['VSTAR']), JSON.stringify(afterVstar?.used))
+   check('and says so in the log', /Used VStar/.test(await alice.evaluate(`document.querySelector('.chat')?.innerText || ''`)), 'log')
+
+   check('GX is clickable on its own too', await clickMark(alice, 'GX'))
+   await sleep(2000)
+   const afterBoth = (await markers(alice)).find((m) => m.mine)
+   check('using GX dims GX as well, and leaves the two apart',
+      JSON.stringify((afterBoth?.used || []).slice().sort()) === JSON.stringify(['GX', 'VSTAR']),
+      JSON.stringify(afterBoth?.used))
+   check('and the log names GX, not the pair', /Used GX/.test(await alice.evaluate(`document.querySelector('.chat')?.innerText || ''`)), 'log')
+
+   /* clicking one again takes only that one back */
+   await clickMark(alice, 'VSTAR')
+   await sleep(1500)
+   const afterUndo = (await markers(alice)).find((m) => m.mine)
+   check('clicking a used mark takes just that one back',
+      JSON.stringify(afterUndo?.used) === JSON.stringify(['GX']),
+      JSON.stringify(afterUndo?.used))
+
    await sleep(3000)
    const far = (await markers(bob)).find((m) => !m.mine)
    check('and the opponent sees both as well', JSON.stringify(far?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(far))
+   check('with the used one dimmed on their side too', JSON.stringify(far?.used) === JSON.stringify(['GX']), JSON.stringify(far?.used))
 
    await alice.clickText('Off', { settle: 1500, kinds: 'label' })
    await sleep(2000)
