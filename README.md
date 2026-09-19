@@ -666,9 +666,12 @@ it reads — which was right while a card sat against its zone's corner and wron
 moment cards were centred in their zones: the deck's card hung over the discard's row,
 and the discard's sat half out of its own.
 
-**The prizes have no gap between them.** A prize face down next to a prize face down is
-one row of card backs, and six of them are a block; the cell each card had was spacing
-that bought the look of a grid of loose cards rather than a pile counted in two columns.
+**The prizes cascade.** Two columns — the table a game is played with — and each row
+overlapping the one above it, so ten prizes still read as the two columns they were
+dealt as rather than growing sideways. The rows are the zone's height between them and
+the last row's cards end exactly at the bottom of it, so nothing hangs out of the zone
+however many there are; a card put into the prizes fills the next spot down, and the
+whole pile is sized by how many rows it makes.
 
 **The bench keeps its card size and scrolls.** A bench is five Pokémon, which fits, and
 solo can put any number on one — so a bench that no longer fits is *navigated* rather

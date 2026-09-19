@@ -16,6 +16,17 @@
    export let store = defaultOpponent
    $: ({ prizes, prizesFlipped } = store)
 
+   /*
+      The same cascade as the near half's: two columns, and each row overlapping the
+      one above it, with the rows sharing the zone's height (see the near half for
+      the arithmetic).
+   */
+   const COLUMNS = 2
+   const OVERLAP = 0.3
+
+   $: rows = Math.max(1, Math.ceil($prizes.length / COLUMNS))
+   $: layout = { '--rows': rows, '--overlap': OVERLAP, '--columns': COLUMNS }
+
    let menu
 
    /* a spectator may look through either player's prizes (read-only, no log) */
@@ -46,9 +57,12 @@
 </script>
 
 <Pile pile={prizes} name="Prizes" showMenu={$solo} bind:menu={menu}>
-   <div class="prizes" on:click|stopPropagation={view}>
-      {#each $prizes as card (card._id)}
-         <Card {card} pile={prizes} revealed={$prizesFlipped || $spectating} />
+   <div class="prizes" style={Object.entries(layout).map(([key, value]) => `${key}: ${value}`).join('; ')} on:click|stopPropagation={view}>
+      {#each $prizes as card, i (card._id)}
+         <!-- one prize, placed by the row and column it fills -->
+         <div class="prize" style="--row: {Math.floor(i / COLUMNS)}; --col: {i % COLUMNS}">
+            <Card {card} pile={prizes} revealed={$prizesFlipped || $spectating} />
+         </div>
       {/each}
    </div>
 
@@ -69,51 +83,40 @@
       card by card, and its columns and rows share the zone between them.
    */
    .prizes {
-      /*
-         The same table as the near half's: three rows, filled down each column, with
-         a new column when the three are full (see the near half).
-      */
-      display: grid;
-      grid-template-rows: repeat(3, auto);
-      grid-auto-flow: column;
-      grid-auto-columns: auto;
-      place-content: center;
+      position: relative;
       width: 100%;
       height: 100%;
-      gap: 0;
-      padding: 0;
-      box-sizing: border-box;
    }
 
    /*
-      Each prize is sized by its own cell of that block, with the cards next to each
-      other: the transparent 2px border a card carries is not part of the block (see
-      the near half), and the selection is drawn inside the card instead. The whole
-      selector is global because the card is drawn by Card.svelte, which does not
-      carry this component's scope - a scoped `img.card` would not reach it.
+      One prize's box, placed by the row and column it fills: the same arithmetic as
+      the near half's - card, step, and a block that is exactly the zone's height.
    */
-   :global(.prizes > div) {
+   .prize {
+      --card-h: calc((100cqh - 8px) * (1 + var(--overlap)) / (var(--rows) + var(--overlap)));
+      --card-w: calc(var(--card-h) * var(--card-ratio));
+      --step: calc(var(--card-h) / (1 + var(--overlap)));
+
+      position: absolute;
+      top: calc(var(--row) * var(--step));
+      left: calc(50% + (var(--col) - var(--columns) / 2) * var(--card-w));
+      width: var(--card-w);
+      height: var(--card-h);
+   }
+
+   /* the card fills the box that was worked out for it, border and all */
+   :global(.prizes .prize > div),
+   :global(.prizes img.card) {
+      width: 100%;
+      height: 100%;
+   }
+
+   :global(.prizes .prize > div) {
       border-width: 0 !important;
    }
 
    :global(.prizes img.card.selected) {
       outline: 2px solid var(--selection-color);
       outline-offset: 0;
-   }
-
-   :global(.prizes img.card) {
-      width: min(calc(100cqw / 2), calc((100cqh / 3) * var(--card-ratio)));
-   }
-
-   .prizes:has(> :nth-child(7)) :global(img.card) {
-      width: min(calc(100cqw / 3), calc((100cqh / 3) * var(--card-ratio)));
-   }
-
-   .prizes:has(> :nth-child(10)) :global(img.card) {
-      width: min(calc(100cqw / 4), calc((100cqh / 3) * var(--card-ratio)));
-   }
-
-   .prizes:has(> :nth-child(13)) :global(img.card) {
-      width: min(calc(100cqw / 5), calc((100cqh / 3) * var(--card-ratio)));
    }
 </style>
