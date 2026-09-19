@@ -976,11 +976,26 @@ if (want('panel')) {
    })()`)
 
    const zoneLabels = () => alice.evaluate(`(() => {
-      const cells = [...document.querySelectorAll('.gameboard > div, .active > .active1, .active > .active2')]
+      /*
+         The zones, not the names: a name is a child of the board too, and asking
+         which zone a name is in must not answer "itself". The veil is a shading
+         over several zones rather than one of them.
+      */
+      const cells = [...document.querySelectorAll('.gameboard > div:not(.zone-label):not(.veil), .active > .active1, .active > .active2')]
          .map((el) => ({ cls: el.className, rect: el.getBoundingClientRect() }))
 
       return [...document.querySelectorAll('.zone-label')].map((el) => {
-         const rect = el.getBoundingClientRect()
+         /*
+            The words themselves rather than the element around them. They are not
+            always the same box: a name stretched to its zone - which the active
+            area's first one was, caught by the rule that makes a zone's component
+            fill its zone - has a box the size of the zone with its words at the
+            top of it, and reads as a name in the wrong place.
+         */
+         const range = document.createRange()
+         range.selectNodeContents(el)
+         const rect = range.getBoundingClientRect()
+         const box = el.getBoundingClientRect()
          const mid = { x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2 }
          const x = Math.round(mid.x)
          const y = Math.round(mid.y)
@@ -1009,6 +1024,8 @@ if (want('panel')) {
                ? Math.abs(mid.x - (zone.rect.left + zone.rect.right) / 2) < 3 &&
                   Math.abs(mid.y - (zone.rect.top + zone.rect.bottom) / 2) < 3
                : false,
+            /* a name whose box is the whole zone is a name in the wrong place */
+            stretched: zone ? box.width >= zone.rect.width - 1 && box.height >= zone.rect.height - 1 : false,
             upright: style.transform === 'none',
             clickable: under === el || el.contains(under),
             opacity: style.opacity,
@@ -1054,15 +1071,23 @@ if (want('panel')) {
    check('turning the outlines on names every zone', named.length === 16, JSON.stringify(named.map((l) => l.text)))
    check('both halves, with the table and the stadium named once between them',
       JSON.stringify(tally(named.map((l) => l.text))) === JSON.stringify([
-         ['Active Spot', 2], ['Bench', 2], ['Deck', 2], ['Discard', 2], ['Hand', 2],
+         ['Active', 2], ['Bench', 2], ['Deck', 2], ['Discard', 2], ['Hand', 2],
          ['Lost Zone', 2], ['Prizes', 2], ['Stadium', 1], ['Table', 1]
       ]),
       JSON.stringify(tally(named.map((l) => l.text))))
    check('each name in the middle of its own zone, and none of them turned over',
       named.length > 0 && named.every((l) => l.centred && l.upright),
       JSON.stringify(named.filter((l) => !l.centred || !l.upright)))
+   /*
+      The words, not the box around them: the active area's first name is the first
+      child of a cell, and the rule that makes a zone's component fill its zone
+      caught it and stretched it - so its words sat at the top of the zone while
+      its box was the zone itself, and reading the box said "centred" either way.
+   */
+   check('and none of them stretched to the zone it names',
+      named.length > 0 && named.every((l) => !l.stretched), JSON.stringify(named.filter((l) => l.stretched)))
    check('a name of two words broken over its two lines',
-      named.filter((l) => l.text === 'Lost Zone' || l.text === 'Active Spot').every((l) => l.lines === 2) &&
+      named.filter((l) => / /.test(l.text)).every((l) => l.lines === 2) &&
          named.filter((l) => !/ /.test(l.text)).every((l) => l.lines === 1),
       JSON.stringify(named.map((l) => [l.text, l.lines])))
    /*
