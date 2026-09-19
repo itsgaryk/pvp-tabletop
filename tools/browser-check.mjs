@@ -961,6 +961,13 @@ if (want('panel')) {
       Read against the zone each one lands in rather than against the board, since
       that is where a name belongs: the active area is the one cell holding two
       zones, one per player, and its two names are centred in those.
+
+      A name is also half strength with nothing behind it, and *under* the cards:
+      the board's names come before the zones they name, so a card in the middle of
+      a zone covers its name. That last one cannot be read the way the rest can -
+      a name takes no pointer events, so the browser leaves it out of the stack at
+      its own centre - so the stack is read with the label hit-testable for the
+      moment it takes to read, which does not change what is painted where.
    */
    const cog = () => alice.evaluate(`(() => {
       const b = [...document.querySelectorAll('button')].find((el) => (el.getAttribute('aria-label') || el.title) === 'Settings')
@@ -975,6 +982,8 @@ if (want('panel')) {
       return [...document.querySelectorAll('.zone-label')].map((el) => {
          const rect = el.getBoundingClientRect()
          const mid = { x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2 }
+         const x = Math.round(mid.x)
+         const y = Math.round(mid.y)
          /*
             the smallest zone the name is in: for a name in the active area that is
             its own row rather than the two rows together.
@@ -984,7 +993,14 @@ if (want('panel')) {
                mid.y >= c.rect.top - 1 && mid.y <= c.rect.bottom + 1)
             .sort((a, b) => a.rect.width * a.rect.height - b.rect.width * b.rect.height)[0]
 
-         const under = document.elementFromPoint(Math.round(mid.x), Math.round(mid.y))
+         const under = document.elementFromPoint(x, y)
+         const style = getComputedStyle(el)
+
+         /* topmost first, with this label in the stack for the moment it is read */
+         el.style.pointerEvents = 'auto'
+         const stack = document.elementsFromPoint(x, y)
+         el.style.pointerEvents = ''
+
          return {
             text: el.innerText.replace(/\\s+/g, ' ').trim(),
             lines: el.innerText.split('\\n').filter((line) => line.trim()).length,
@@ -993,8 +1009,14 @@ if (want('panel')) {
                ? Math.abs(mid.x - (zone.rect.left + zone.rect.right) / 2) < 3 &&
                   Math.abs(mid.y - (zone.rect.top + zone.rect.bottom) / 2) < 3
                : false,
-            upright: getComputedStyle(el).transform === 'none',
-            clickable: under === el || el.contains(under)
+            upright: style.transform === 'none',
+            clickable: under === el || el.contains(under),
+            opacity: style.opacity,
+            colour: style.color,
+            background: style.backgroundColor,
+            /* where the name is in the stack, and where the topmost card is */
+            at: stack.indexOf(el),
+            cardAt: stack.findIndex((node) => node.tagName === 'IMG' && node.classList.contains('card'))
          }
       })
    })()`)
@@ -1022,6 +1044,13 @@ if (want('panel')) {
    const tally = (names) => Object
       .entries(names.reduce((all, name) => ({ ...all, [name]: (all[name] || 0) + 1 }), {}))
       .sort()
+   /* the alpha channel of a computed colour, which is where "half strength" lives */
+   const alpha = (colour) => {
+      const parts = String(colour).match(/rgba?\(([^)]+)\)/)
+      if (!parts) return null
+      const values = parts[1].split(',').map((v) => Number(v.trim()))
+      return values.length === 4 ? values[3] : 1
+   }
    check('turning the outlines on names every zone', named.length === 16, JSON.stringify(named.map((l) => l.text)))
    check('both halves, with the table and the stadium named once between them',
       JSON.stringify(tally(named.map((l) => l.text))) === JSON.stringify([
@@ -1036,8 +1065,36 @@ if (want('panel')) {
       named.filter((l) => l.text === 'Lost Zone' || l.text === 'Active Spot').every((l) => l.lines === 2) &&
          named.filter((l) => !/ /.test(l.text)).every((l) => l.lines === 1),
       JSON.stringify(named.map((l) => [l.text, l.lines])))
+   /*
+      The half strength is in the name's own colour rather than its `opacity`, and
+      that is worth asserting rather than assuming: an element with opacity is a
+      layer of its own, which lifts it over every card in a zone whose own markup
+      is not positioned - the stadium, for one - instead of leaving it under them.
+   */
+   check('each name is half strength, in its own colour, with no plate behind it',
+      named.length > 0 && named.every((l) => alpha(l.colour) === 0.5 && l.opacity === '1' &&
+         (l.background === 'rgba(0, 0, 0, 0)' || l.background === 'transparent')),
+      JSON.stringify(named.map((l) => [l.text, l.colour, l.opacity, l.background])))
+   check('and a card in the middle of a zone covers its name rather than the other way round',
+      named.filter((l) => l.cardAt !== -1).length > 0 &&
+         named.filter((l) => l.cardAt !== -1).every((l) => l.at > l.cardAt && l.cardAt === 0),
+      JSON.stringify(named.map((l) => [l.text, l.cardAt, l.at])))
    check('and a name takes no click, so the zone under it still does',
       named.length > 0 && named.every((l) => !l.clickable), JSON.stringify(named.filter((l) => l.clickable)))
+
+   /*
+      The outline itself: a solid line at half strength, on every zone and on both
+      halves. Read as a colour rather than as a style name, because "50%" is the
+      alpha channel of it.
+   */
+   const outlines = await alice.evaluate(`[...document.querySelectorAll('.gameboard > div:not(.veil):not(.zone-label), .active > .active1, .active > .active2')]
+      .map((el) => {
+         const style = getComputedStyle(el)
+         return { cls: el.className.split(' ')[0], style: style.outlineStyle, width: style.outlineWidth, colour: style.outlineColor }
+      })`)
+   check('every zone is outlined', outlines.length >= 16, String(outlines.length))
+   check('with a solid line', outlines.every((o) => o.style === 'solid'), JSON.stringify(outlines.filter((o) => o.style !== 'solid')))
+   check('at half strength', outlines.every((o) => alpha(o.colour) === 0.5), JSON.stringify(outlines.map((o) => [o.cls, o.colour])))
 
    /* the menu this section found open is left open, and the outlines as they were */
    await cog()

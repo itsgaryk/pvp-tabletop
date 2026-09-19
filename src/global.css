@@ -15,8 +15,10 @@
    --shadow-color: rgb(160, 160, 160);
    --selection-color: #3b82f6;
    --message-color: #ea580c;
-   /* outlines of the board zones, when they are turned on in settings */
-   --zone-border-color: rgba(23, 23, 23, 0.35);
+   /* the outlines of the board zones and the names drawn in them, when they are
+      turned on in settings: both at half strength */
+   --zone-border-color: rgba(23, 23, 23, 0.5);
+   --zone-label-color: rgba(23, 23, 23, 0.5);
 
    --card-width: 136px;
    --card-height: 139px;
@@ -39,7 +41,8 @@
    --shadow-color: rgb(22, 22, 22);
    --selection-color: #f5d0fe;
    --message-color: #facc15;
-   --zone-border-color: rgba(245, 245, 245, 0.3);
+   --zone-border-color: rgba(245, 245, 245, 0.5);
+   --zone-label-color: rgba(245, 245, 245, 0.5);
 }
 
 body {
