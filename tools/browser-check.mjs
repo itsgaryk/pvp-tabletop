@@ -5,6 +5,9 @@
  * catches the rules. This asks the *app* - real pages, real clicks, real polls -
  * which is the only way the client half of these behaviours can be seen:
  *
+ *   lobby      the lobby has no Room ID field: joining and spectating open a
+ *              centred prompt for the code, and all three buttons are the size
+ *              of each other
  *   leaving    a player leaving ends the game for the one still sitting there,
  *              who gets the centred "Room closed: player left the room" dialog
  *              and an emptied board behind it; the leaver is not shown it
@@ -15,8 +18,8 @@
  *              clears it for everyone, and an unanswered one closes the room
  *   panel      the board panel's own changes: the glow that stays until it is
  *              clicked, the clock in both directions, the Chat tab lit by a
- *              message that arrived unseen, and both markers at once with the
- *              settings panel around them
+ *              message that arrived unseen, and both markers at once - each with
+ *              its own click, its own used state and its own log line
  *
  *   node tools/browser-check.mjs --only panel      # just that section
  *
@@ -190,6 +193,78 @@ console.log(`browser check against ${BASE}`)
 console.log(`  idle ${health.idle?.idleMs}ms, prompt ${health.idle?.promptMs}ms, epoch ${health.epoch}`)
 
 const want = (name) => !only || only === name
+
+/* --------------------------------------------------------- 0. the lobby --- */
+
+if (want('lobby')) {
+   console.log('\nthe lobby asks for the room code')
+
+   await lobby(alice, 'alice')
+
+   const fields = () => alice.evaluate(`[...document.querySelectorAll('input[name]')].map((i) => i.name)`)
+   check('the lobby has no Room ID field', !(await fields()).includes('roomId'), JSON.stringify(await fields()))
+
+   /* every lobby button the same size, which is the point of dropping the field */
+   const boxes = await alice.evaluate(`(() => {
+      const box = (text) => {
+         const el = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === text)
+         if (!el) return null
+         const r = el.getBoundingClientRect()
+         return { w: Math.round(r.width), h: Math.round(r.height) }
+      }
+      return { create: box('Create Room'), join: box('Join Room'), spectate: box('Spectate Game') }
+   })()`)
+
+   check('Join Room is the size of Create Room',
+      Boolean(boxes.create && boxes.join) && boxes.create.w === boxes.join.w && boxes.create.h === boxes.join.h,
+      JSON.stringify(boxes))
+   check('so is Spectate Game',
+      Boolean(boxes.create && boxes.spectate) && boxes.create.w === boxes.spectate.w && boxes.create.h === boxes.spectate.h,
+      JSON.stringify(boxes))
+   check('there is no OK button before a prompt is opened',
+      (await alice.evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'OK')`)) === false)
+
+   await alice.clickText('Join Room', { settle: 800 })
+   const prompt = await alice.evaluate(`(() => {
+      const box = document.querySelector('.prompt-dialog')
+      if (!box) return null
+      const r = box.getBoundingClientRect()
+      return {
+         text: box.innerText.replace(/\\s+/g, ' ').trim(),
+         field: Boolean(box.querySelector('input[name="roomId"]')),
+         ok: box.querySelector('.prompt-ok') ? box.querySelector('.prompt-ok').textContent.trim() : null,
+         cancel: box.querySelector('.prompt-cancel') ? box.querySelector('.prompt-cancel').textContent.trim() : null,
+         okDisabled: box.querySelector('.prompt-ok') ? box.querySelector('.prompt-ok').disabled : null,
+         centred: Math.abs((r.left + r.right) / 2 - window.innerWidth / 2) < 4 &&
+            Math.abs((r.top + r.bottom) / 2 - window.innerHeight / 2) < 4
+      }
+   })()`)
+
+   check('Join Room opens a prompt asking for the code', /room/i.test(prompt?.text || ''), prompt?.text)
+   check('it is centred on the screen', prompt?.centred === true, JSON.stringify(prompt))
+   check('with a Room ID field', prompt?.field === true, JSON.stringify(prompt))
+   check('an OK and a Cancel', prompt?.ok === 'OK' && prompt?.cancel === 'Cancel', JSON.stringify(prompt))
+   check('and OK is disabled until something is typed', prompt?.okDisabled === true, JSON.stringify(prompt))
+
+   /* Cancel leaves the lobby alone */
+   await alice.clickText('Cancel', { settle: 800, kinds: 'button' })
+   check('Cancel closes it', (await alice.evaluate(`document.querySelector('.prompt-dialog') === null`)) === true)
+   check('and the lobby is still the lobby', (await alice.counts()).mode === 'lobby', (await alice.counts()).mode)
+
+   /* spectating goes through the same prompt, and does watch a real room */
+   const room = await alice.createRoom('Alice')
+   console.log(`  room ${room}`)
+
+   await bob.clickText('Spectate Game', { settle: 800 })
+   check('Spectate Game asks too', (await bob.evaluate(`document.querySelector('.prompt-dialog') !== null`)) === true)
+   await bob.answerRoomPrompt(room)
+   await sleep(2500)
+   check('and it lands in the room as a watcher', (await bob.counts()).mode === 'spectating', (await bob.counts()).mode)
+
+   await bob.forgetSession()
+   await lobby(bob, 'bob')
+   check('the field is gone again once back in the lobby', !(await fields()).includes('roomId'), JSON.stringify(await fields()))
+}
 
 /* ---------------------------------------------------------- 1. leaving --- */
 

@@ -479,11 +479,19 @@ header comment has the commands.
 Its `panel` section covers the board panel's own changes, which nothing else can
 see because none of them cross the wire — the Hide Pokémon glow that stays until
 it is clicked, the clock in both directions, the Chat tab lit by a message that
-arrived while the log was showing, and both markers at once with the settings
-panel around them:
+arrived while the log was showing, and both markers at once, each with its own
+click, its own used state and its own log line:
 
 ```sh
 node tools/browser-check.mjs --only panel     # just that section
+```
+
+Its `lobby` section covers the way in: the lobby has no Room ID field, so joining
+and spectating open a centred prompt for the code, and all three lobby buttons
+measure the same as each other.
+
+```sh
+node tools/browser-check.mjs --only lobby     # just that section
 ```
 
 ### A room's story: `tools/room-log.mjs`

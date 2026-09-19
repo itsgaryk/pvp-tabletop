@@ -4,6 +4,7 @@
    import Spinner from './Spinner.svelte'
    import GameActions from '$lib/play/GameActions.svelte'
    import Icon from '$lib/components/Icon.svelte'
+   import RoomIdPrompt from '$lib/play/dialogs/RoomIdPrompt.svelte'
    import { check, copy } from '$lib/icons/paths.js'
    import { PVP_SERVER } from '$lib/util/env.js'
    import { playerName } from '$lib/stores/settings.js'
@@ -15,6 +16,13 @@
    import { solo, startSolo, exitSolo } from '$lib/stores/solo.js'
 
    let roomId = ''
+
+   /*
+      The room code is asked for by a prompt rather than typed into the lobby, so
+      the lobby has no field in it: joining and spectating are buttons, and the
+      prompt is opened by whichever of them was pressed.
+   */
+   let prompt
 
    /* the room code's copy button shows a tick for a moment after a copy */
    let copied = false
@@ -83,6 +91,22 @@
       const res = await createRoom()
       if (!res) failure = why('Could not create a room.')
       busy = false
+   }
+
+   /*
+      Joining and spectating both start by asking for the code: one prompt, and
+      which button opened it is what decides what happens to the code that comes
+      back.
+   */
+   function askForRoom (what) {
+      failure = null
+      prompt.ask(what)
+   }
+
+   async function onRoomChosen (event) {
+      roomId = event.detail.roomId
+      if (event.detail.what === 'spectate') await spectate()
+      else await join()
    }
 
    async function join () {
@@ -194,18 +218,14 @@
 
          <button class="connect" on:click={create} disabled={busy}>Create Room</button>
          <hr>
-         <form class="flex flex-col gap-2" on:submit|preventDefault={join}>
-            <input
-               class="p-2 border border-[var(--bg-color-three)] rounded-lg"
-               type="text" name="roomId" bind:value={roomId} placeholder="Room ID" on:keydown|stopPropagation
-               required
-            >
 
-            <div class="flex gap-2">
-               <button class="connect flex-1" disabled={busy || status?.locked}>Join Room</button>
-               <button type="button" class="connect flex-1" on:click={spectate} disabled={busy}>Spectate Game</button>
-            </div>
-         </form>
+         <!--
+            No Room ID field: the code is asked for by the prompt each button
+            opens, so these are plain buttons and all three of them are the same
+            size as each other.
+         -->
+         <button class="connect" on:click={() => askForRoom('join')} disabled={busy || status?.locked}>Join Room</button>
+         <button class="connect" on:click={() => askForRoom('spectate')} disabled={busy}>Spectate Game</button>
 
          {#if status?.locked}
             <div class="text-xs text-center text-[var(--text-color-two)]">
@@ -332,9 +352,17 @@
    </div>
 </div>
 
+<!--
+   The room-code prompt, centred over the lobby. It is a sibling of the panel
+   rather than inside it, so the dialog is not laid out by the lobby's column.
+-->
+<RoomIdPrompt bind:this={prompt} on:confirmed={onRoomChosen} />
+
 <style>
    button.connect {
       @apply py-2 px-3 font-bold text-white bg-[var(--primary-color)] rounded-lg;
+      /* every lobby button is the same size, the width of the panel it sits in */
+      @apply w-full;
    }
 
    button.connect:disabled {
