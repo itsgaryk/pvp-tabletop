@@ -350,7 +350,9 @@ A few consequences worth knowing:
 `tools/relay-check.mjs` covers the relay's half of this: that an unset clock reads
 as none, that a running one counts down, that the anchor does not move while it
 runs, that a late spectator is told the time actually left, and that a clock which
-runs out reaches zero rather than going negative.
+runs out reaches zero rather than going negative. `tools/clock-check.mjs` covers
+the half no server can: two real browsers, twelve seconds of a running clock, and
+a wall clock moved underneath one of them.
 
 In solo the whole question does not arise — there is one browser and no relay — so
 the clock is hidden along with the rest of what only matters in a room.
@@ -493,6 +495,7 @@ least once.
 | "Has my change actually shipped?" | `node tools/deployed.mjs --url <app> <marker>` |
 | "Does the relay still enforce its own rules?" | `node tools/relay-check.mjs` |
 | "Does the app really do that, in a browser?" | `node tools/browser-check.mjs` |
+| "Is the clock still smooth and still shared?" | `node tools/clock-check.mjs` |
 
 ### Verifying a change: `tools/relay-check.mjs` and `tools/browser-check.mjs`
 
@@ -551,6 +554,30 @@ joining or spectating the room code.
 ```sh
 node tools/browser-check.mjs --only lobby     # just that section
 ```
+
+### Is the clock smooth, and the same on both boards?
+
+The clock is the one thing here that is about *time*, so it gets its own tool
+rather than a section of `browser-check`: it needs twenty quiet seconds on two
+browsers, and it makes the room it uses itself. A section that continued in
+whatever room another section left open was a check that could be skipped for the
+wrong reason — and the fault it exists for, a client-side crash while a board is
+being built, shows up as *every* later section failing instead.
+
+```sh
+node tools/clock-check.mjs
+```
+
+It says whether the room opened at all (which is what a crash in the clock
+component looks like from outside), then samples both boards every 700 ms for
+twelve seconds of a running clock: never counting up, never stuck, never dropping
+several seconds at once, and the two players never drifting apart. Then it moves
+one browser's wall clock +8 s and then −9 s underneath it and checks that nothing
+on screen moved — a machine clock being corrected by NTP is not time passing on
+the table.
+
+Its dev server needs idle windows longer than the run (two minutes is
+comfortable), since a clock sits still for twenty seconds at a time on purpose.
 
 ### A room's story: `tools/room-log.mjs`
 
