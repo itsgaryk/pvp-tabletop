@@ -7,7 +7,7 @@
       hand, discard, deck, prizes, lz, table,
       moveSelection, toActive, toBench, toStadium
    } from '$lib/stores/player.js'
-   import { spectating } from '$lib/stores/connection.js'
+   import { spectating, publishLog } from '$lib/stores/connection.js'
 
    const { openDetails, startAE } = getContext('boardActions')
 
@@ -22,7 +22,15 @@
    /* one card, and its face is known: the name is worth clicking */
    $: canShowDetails = $selection.length === 1 && revealed
 
+   /*
+      Showing a card is the one thing a player does that the other player cannot
+      see, so a face-down prize card is the one card it is worth saying out loud:
+      looking at it is information the opponent is entitled to know was taken, even
+      though the card itself is not. Every other pile a player shows themselves is
+      already either face up or their own hand, which is not news.
+   */
    function showDetails () {
+      if (!revealed && pile === prizes) publishLog('Viewed prize card')
       openDetails($selection[0])
    }
 
@@ -85,6 +93,11 @@
       {#if $deck.length && pile !== deck}
          <ContextMenuOption click={() => moveTo(deck, { switch: true })} text="Switch With Top of Deck" disabled={$spectating} />
       {/if}
-      <ContextMenuOption click={() => openDetails($selection[0])} text="Show Details" />
+      <!--
+         Through showDetails rather than openDetails: this entry is how a face-down
+         prize is looked at, and that look is what the log records. The heading does
+         the same thing (see headingClick), and only when the face is already known.
+      -->
+      <ContextMenuOption click={showDetails} text="Show Details" />
    {/if}
 </ContextMenu>

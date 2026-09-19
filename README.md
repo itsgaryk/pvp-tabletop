@@ -575,14 +575,15 @@ suffix on the far half's class names is the whole of the difference between the 
 halves' markup, and `play2` and `stadium2` deliberately resolve to the *same* grid
 area as `play` and `stadium`.
 
-**Pokemon Power** is the one zone that holds no cards: it holds the player's VSTAR /
-GX marker, the tokens a deck's own power is tracked with. It is why
-`PowerZone.svelte` is a single component rather than the board/opponent pair every
-other zone needs — it shows no cards and reads no board store, so what it shows is
-handed to it. It is also why the marker is no longer a token floating in the free
-space past the opponent's deck: a token belongs to a zone, and this is the zone for
-it. The marks are sized by the band they are in, so a short
-window takes them with it instead of letting them spill over the Stadium.
+**Pokemon Power** holds the player's VSTAR / GX marker, the tokens a deck's own power
+is tracked with — and **no Pokémon**. It is deliberately not a card zone: nothing is
+played into it and no card is ever drawn there, so `PowerZone.svelte` is a single
+component rather than the board/opponent pair every other zone needs. It shows no
+cards and reads no board store, so what it shows is handed to it. It is also why the
+marker is no longer a token floating in the free space past the opponent's deck: a
+token belongs to a zone, and this is the zone for it. The marks are sized by the band
+they are in, so a short window takes them with it instead of letting them spill over
+the Stadium.
 
 Four cells are not one zone to one component:
 
@@ -638,7 +639,8 @@ What each zone asks for follows from its own layout, and the one that matters is
 new rule for a zone holding more than one card: **the cards are sized by the block they
 make together, not by the zone one of them would have had.** The prizes are the
 example the rule was written for — a block of two columns, as many rows as it takes,
-filling the zone, so six prizes are sized by six and three prizes by three. The hand is
+filling the zone with no gap between the cards, so six prizes are sized by six and
+three prizes by three. The hand is
 the other arrangement: its cards lie *along* it, so they are sized by the zone's height
 and the row scrolls sideways once twenty of them no longer fit.
 
@@ -659,6 +661,18 @@ off the middle of their zone to open up two gaps the rotated half leaves tighter
 it reads — which was right while a card sat against its zone's corner and wrong the
 moment cards were centred in their zones: the deck's card hung over the discard's row,
 and the discard's sat half out of its own.
+
+**The prizes have no gap between them.** A prize face down next to a prize face down is
+one row of card backs, and six of them are a block; the cell each card had was spacing
+that bought the look of a grid of loose cards rather than a pile counted in two columns.
+
+**A prize stays face down while it is moved, and looking at one is said out loud.** The
+card under the pointer in a drag is drawn from the card's face, so picking a face-down
+prize up used to turn it over — both a look at a card nobody has taken yet and a lie,
+since taking a prize turns nothing over; the drag preview draws the back for a pile
+whose cards are face down. And **Show Details** on a face-down prize writes *Viewed
+prize card* to the game log: it is the one private look a player takes that the opponent
+cannot see, so the log says it happened even though the card is not named.
 
 Three things are not sized this way, and each is deliberate:
 
