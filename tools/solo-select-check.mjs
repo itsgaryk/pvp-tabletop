@@ -383,6 +383,92 @@ check('a far Pokemon dropped on the player\'s own pile is refused, both boards l
    (await count('.bench2 img.card.pokemon')) === farBench4,
    `own discard ${await count('.discard img.card')}, own bench ${await count('.bench img.card.pokemon')}, far bench ${await count('.bench2 img.card.pokemon')}`)
 
+/* ---------------------------------------------------------------------------
+   The player's own Active spot is not a place a far card may land. The two
+   halves are separate boards even though one person plays both, and a far card
+   dropped there used to be taken: it attached itself to whatever was already in
+   the spot, or silently began an evolve that never happened.
+--------------------------------------------------------------------------- */
+
+/* something of the player's is up there, so an accepted drop would have somewhere to land */
+for (let i = 0; i < 5 && (await count('.active1 img.card.pokemon')) === 0; i++) {
+   if ((await count('.hand img.card')) === 0) {
+      await fire('.deck .count', 'contextmenu')
+      await clickMenu('Draw')
+   }
+   await drag('.hand img.card', '.active1')
+}
+check('the player has a Pokemon in their own Active spot', (await count('.active1 img.card.pokemon')) === 1,
+   `${await count('.active1 img.card.pokemon')} active`)
+
+await farHand(1)
+await drag('.hand2 img.card', '.bench2')
+const ownActiveBefore = await count('.active1 img.card')
+const ownActiveAttachedBefore = await count('.active1 img[data-attached]')
+const farPokemon = await count('.bench2 img.card.pokemon')
+const farHandBefore2 = await count('.hand2 img.card')
+await drag('.bench2 img.card.pokemon', '.active1')
+check('a far Pokemon dragged onto the player\'s Active is refused, and stays where it was',
+   (await count('.active1 img.card')) === ownActiveBefore &&
+   (await count('.active1 img[data-attached]')) === ownActiveAttachedBefore &&
+   (await count('.bench2 img.card.pokemon')) === farPokemon,
+   `own active ${await count('.active1 img.card')} (was ${ownActiveBefore}), attached ${await count('.active1 img[data-attached]')} (was ${ownActiveAttachedBefore}), far bench ${await count('.bench2 img.card.pokemon')} (was ${farPokemon})`)
+
+/* and the same card goes where it belongs, so the refusal is about the destination */
+await drag('.bench2 img.card.pokemon', '.active2')
+check('the same card still goes to its own half\'s Active',
+   (await count('.active1 img.card')) === ownActiveBefore &&
+   (await count('.active2 img.card.pokemon')) === 1,
+   `own active ${await count('.active1 img.card')}, far active ${await count('.active2 img.card.pokemon')}`)
+
+/* back to the bench for the checks below, which expect it there */
+await drag('.active2 img.card.pokemon', '.bench2')
+
+/* ---------------------------------------------------------------------------
+   A card on the far half's Stadium can be taken off it: to its Bench, and to
+   its hand. That is the one zone of that half held as a single card rather than
+   a list, and taking from it used to call a list method on a store.
+--------------------------------------------------------------------------- */
+
+console.log('\ncards on the far half\'s Stadium')
+
+async function farStadium () {
+   for (let i = 0; i < 6 && (await count('.stadium2 img.card')) === 0; i++) {
+      await farHand(1)
+      if ((await count('.hand2 img.card')) === 0) break
+      await fire('.hand2 img.card', 'click')
+      await press('g')
+      await sleep(300)
+   }
+}
+
+await farStadium()
+check('the far half has a Stadium card', (await count('.stadium2 img.card')) === 1,
+   `${await count('.stadium2 img.card')}`)
+
+const ownBench5 = await count('.bench img.card.pokemon')
+const ownHand5 = await count('.hand img.card')
+const ownStadium5 = await count('.stadium img.card')
+const farBench5 = await count('.bench2 img.card.pokemon')
+
+await drag('.stadium2 img.card', '.bench2')
+check('a card can be dragged from the far Stadium to that half\'s Bench',
+   (await count('.stadium2 img.card')) === 0 &&
+   (await count('.bench2 img.card')) > farBench5 &&
+   (await count('.bench img.card')) === ownBench5 &&
+   (await count('.hand img.card')) === ownHand5,
+   `far stadium ${await count('.stadium2 img.card')}, far bench ${await count('.bench2 img.card')} (was ${farBench5}), own bench ${await count('.bench img.card')}`)
+
+await farStadium()
+const farHand6 = await count('.hand2 img.card')
+await drag('.stadium2 img.card', '.hand2')
+check('and from the far Stadium to that half\'s hand',
+   (await count('.stadium2 img.card')) === 0 &&
+   (await count('.hand2 img.card')) > farHand6 &&
+   (await count('.hand img.card')) === ownHand5 &&
+   (await count('.stadium img.card')) === ownStadium5,
+   `far stadium ${await count('.stadium2 img.card')}, far hand ${await count('.hand2 img.card')} (was ${farHand6}), own hand ${await count('.hand img.card')}, own stadium ${await count('.stadium img.card')}`)
+
 /* ------------------------------------------------- 8. the shared table --- */
 
 console.log('\nthe table')

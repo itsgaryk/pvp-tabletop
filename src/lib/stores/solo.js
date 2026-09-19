@@ -120,14 +120,24 @@ export function onOpponentSelection () {
    Every zone here is a list except the Stadium, which holds the single card that
    is in play: that one is set and cleared rather than pushed and removed, and
    playing a second card on it discards the first, the way it does on your own.
+
+   The Stadium is recognized by the store it is, not by its name: a card on the
+   far half is dragged with its pile as the source, and that pile for the Stadium
+   is the store itself. Treating it as a list called `remove` on a store that has
+   no such method is why a card could not be taken off the far half's Stadium at
+   all - the throw left it there, and the log said nothing about it.
 */
+function isStadium (pile) {
+   return Boolean(pile) && pile === defaultOpponent.stadium
+}
+
 function takeFrom (source, card) {
-   if (source === defaultOpponent.stadium) defaultOpponent.stadium.set(null)
+   if (isStadium(source)) defaultOpponent.stadium.set(null)
    else source.remove(card)
 }
 
 function putInto (target, card, bottom = false) {
-   if (target === defaultOpponent.stadium) {
+   if (isStadium(target)) {
       const current = defaultOpponent.stadium.get()
       if (current) defaultOpponent.discard.push(current)
       defaultOpponent.stadium.set(card)
