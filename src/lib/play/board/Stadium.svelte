@@ -8,7 +8,7 @@
 
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
-   import { solo, onOpponentHalf } from '$lib/stores/solo.js'
+   import { solo, onOpponentHalf, soloCardToStadium } from '$lib/stores/solo.js'
 
    /*
       A card of the player's own may land here from any pile but the Stadium
@@ -16,13 +16,22 @@
       the stadium being replaced rather than a drop to refuse, so `toStadium`
       sends the oldest of the two to the discard.
 
-      A card of the far half's may not. The Stadium is shared - both players play
-      into the one cell - but each of them plays into *their own* Stadium in it,
-      so a card dragged off the opponent's Stadium lands back on theirs rather than
-      here, and one out of their hand is played from their own side.
+      The Stadium's cell is shared, and each half plays into *its own* Stadium in
+      it - so this one stands aside while a card of the far half's is being
+      carried, exactly as the near table stands aside for one (see .far-drag in
+      Board.svelte). The far half's Stadium lies under this one and takes the drop
+      itself, which is where its rules are: a card played there clears the
+      *player's* cards out of the Stadium, not the other way round.
+
+      Without that, the two halves of a shared zone disagree about who a card
+      belongs to: the far half could not play into its own Stadium at all while
+      the player had anything in theirs, because this one was in the way and
+      refused the drop.
    */
+   $: farDrag = $solo && $dragging && onOpponentHalf($source)
+
    const allowDrop = () => $source && $source !== 'slot' && $source !== stadium && $selection.length === 1
-      && !($solo && onOpponentHalf($source))
+      && !farDrag
 
    function onDragDrop () {
       toStadium()
@@ -36,7 +45,7 @@
 </script>
 
 <div class="stadium-cards p-1 flex justify-center items-center"
-   class:pointer-events-auto={$stadium.length || $dragging}
+   class:pointer-events-auto={($stadium.length || $dragging) && !farDrag}
    use:dnd={dndConfig}>
    {#each $stadium as card (card._id)}
       <Card {card} pile={stadium} />

@@ -579,6 +579,29 @@ await refused('the far half cannot take the player\'s card off the table', '.pla
 await refused('and the player cannot take the far half\'s off it', '.play2 img.card', '.gameboard > .play', [ ...OWN, ...FAR ])
 await refused('nor out of the shared Stadium and into the player\'s', '.stadium2 img.card', '.gameboard > .stadium', [ ...OWN, ...FAR ])
 
+/*
+   And each half can still play into its own of the two shared zones, by drag. The
+   near one stands aside while a card of the far half's is being carried (see
+   .play.far-drag in Board.svelte), which is what lets the drop reach the far half's
+   table and Stadium underneath - the player's table is not empty here, which is the
+   case that used to swallow the far half's play.
+*/
+const ownTableNow = await count('.play img.card')
+const farTableNow = await count('.play2 img.card')
+await farHand(1)
+await drag('.hand2 img.card', '.gameboard > .play')
+check('a card of the far half\'s dragged at the shared table lands on the far half\'s table',
+   (await count('.play2 img.card')) === farTableNow + 1 && (await count('.play img.card')) === ownTableNow,
+   `far table ${await count('.play2 img.card')} (was ${farTableNow}), own table ${await count('.play img.card')} (was ${ownTableNow})`)
+
+const ownStadiumNow = await count('.stadium img.card')
+const farStadiumNow = await count('.stadium2 img.card')
+await farHand(1)
+await drag('.hand2 img.card', '.stadium-area > .stadium')
+check('and one dragged at the shared Stadium lands on the far half\'s Stadium',
+   (await count('.stadium2 img.card')) === farStadiumNow + 1 && (await count('.stadium img.card')) === ownStadiumNow,
+   `far stadium ${await count('.stadium2 img.card')} (was ${farStadiumNow}), own stadium ${await count('.stadium img.card')} (was ${ownStadiumNow})`)
+
 /* but each of them can still move its own card out of a shared zone */
 const farTableBefore = await count('.play2 img.card')
 const farHandNow = await count('.hand2 img.card')
@@ -593,10 +616,10 @@ await fire('.play2 img.card', 'click')
 const selectedFar = await count('.play2 .selected')
 await press('h')
 await sleep(400)
-check('while the far half can still move its own card out of the shared table, to its own hand',
+check('while the far half can still move its own cards out of the shared table, to its own hand',
    selectedFar === 1 &&
-   (await count('.play2 img.card')) === farTableBefore - 1 &&
-   (await count('.hand2 img.card')) === farHandNow + 1,
+   (await count('.play2 img.card')) === 0 &&
+   (await count('.hand2 img.card')) === farHandNow + farTableBefore,
    `selected ${selectedFar}, far table ${await count('.play2 img.card')} (was ${farTableBefore}), far hand ${await count('.hand2 img.card')} (was ${farHandNow})`)
 
 /*
