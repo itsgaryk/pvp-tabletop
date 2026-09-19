@@ -4,6 +4,7 @@
    import { publishLog, spectating, seatedPlayers, myId } from '$lib/stores/connection.js'
    import { pick, shuffle, pokemonHidden, handRevealed } from '$lib/stores/player.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
+   import { markerUsed } from '$lib/util/markers.js'
    import { defaultOpponent, spectatorOpponents, spectatorFlipped, handRevealed as oppHandRevealed } from '$lib/stores/opponent.js'
    import { solo, onOpponentSelection, soloSelectedTo } from '$lib/stores/solo.js'
    import { playerName, zoneBorders } from '$lib/stores/settings.js'
@@ -118,11 +119,23 @@
       that has one of each - with VSTAR first, so the pair reads the same way up
       on both halves whichever way round the half is drawn.
    */
-   const markerImages = (marker) => {
+   const marksOn = (marker) => {
       if (marker === 'both') return ['vstar', 'gx']
       return marker === 'none' ? [] : [marker]
    }
    const markerAlt = (marker) => (marker === 'vstar' ? 'VSTAR' : 'GX')
+
+   /*
+      One entry per mark, each with its own used state and its own click. A half
+      showing both is two buttons rather than one: they are separate powers, so
+      using VSTAR must not dim - or write to the log about - GX.
+   */
+   const marksFor = (marker, used) => marksOn(marker).map((mark) => ({
+      mark,
+      src: markerImage(mark),
+      alt: markerAlt(mark),
+      used: markerUsed(used, mark)
+   }))
 
    let inspectionModal
    let selectionModal
@@ -345,37 +358,31 @@
          The VSTAR / GX marker each player shows, in the free space past the
          opponent's deck on their own side: under the top player's deck for the
          bottom half, and the matching spot the other way up for the top half.
-         A player's own marker can be clicked to mark the power as used, which
-         dims it; the top half's marker faces the player sitting opposite, the way
-         their cards do, and stays upright for a spectator who reads both halves.
 
-         A half showing 'both' stacks the two marks rather than picking one, so
-         the whole block is one thing to click and one thing to dim. The row is
-         reversed for the top half, which is drawn upside down, so VSTAR stays on
-         top as it is read.
+         A half showing both is two marks with a little space between them, each
+         one clickable on its own: clicking a mark says that power has been used
+         and dims only that mark, because they are separate powers. The top half's
+         markers face the player sitting opposite, the way their cards do, and
+         stay upright for a spectator who reads both halves.
       -->
       {#if $topMarker !== 'none'}
-         <div
-            class="power-marker marker-top"
-            class:opposite={!$spectating}
-            class:used={$topUsed}
-            class:stacked={markerImages($topMarker).length > 1}
-         >
-            {#each markerImages($topMarker) as mark}
-               <img class="mark" src={markerImage(mark)} alt={markerAlt(mark)}>
+         <div class="power-marker marker-top" class:opposite={!$spectating} class:pair={marksOn($topMarker).length > 1}>
+            {#each marksFor($topMarker, $topUsed) as m (m.mark)}
+               <img class="mark" class:used={m.used} src={m.src} alt={m.alt}>
             {/each}
          </div>
       {/if}
       {#if $bottomMarker !== 'none'}
-         <div
-            class="power-marker marker-bottom"
-            class:mine={!$spectating}
-            class:used={$bottomUsed}
-            class:stacked={markerImages($bottomMarker).length > 1}
-            on:click|stopPropagation={togglePowerMarkerUsed}
-         >
-            {#each markerImages($bottomMarker) as mark}
-               <img class="mark" src={markerImage(mark)} alt={markerAlt(mark)}>
+         <div class="power-marker marker-bottom" class:pair={marksOn($bottomMarker).length > 1}>
+            {#each marksFor($bottomMarker, $bottomUsed) as m (m.mark)}
+               <img
+                  class="mark"
+                  class:mine={!$spectating}
+                  class:used={m.used}
+                  src={m.src}
+                  alt={m.alt}
+                  on:click|stopPropagation={() => togglePowerMarkerUsed(m.mark)}
+               >
             {/each}
          </div>
       {/if}
@@ -581,9 +588,10 @@
       opponent's deck on that player's side of the board. It only exists while a
       player has one turned on in Settings.
 
-      It is a small block rather than a bare image because a player may show both
-      marks at once ('both' in Settings), and then the two have to be positioned
-      relative to each other as one thing to click and one thing to dim.
+      It is a block rather than a bare image because a player may show both marks
+      at once ('both' in Settings) - and then they are two separate buttons, each
+      with its own used state, so the used/dimmed styling lives on the mark rather
+      than on the block around them.
    */
    .power-marker {
       position: absolute;
@@ -599,22 +607,23 @@
    }
 
    /*
-      Both marks in the space one used to take: VSTAR is the wider logo of the
-      two and is drawn smaller so the pair fits the free space without reaching
-      the deck above it or the board below.
+      Both marks, in the space one used to take: VSTAR is the wider logo of the
+      two and is drawn smaller, and a gap keeps the pair from reading as a single
+      mark.
    */
-   .power-marker.stacked {
+   .power-marker.pair {
       display: flex;
       flex-direction: column;
       align-items: center;
+      gap: calc(var(--scaled-rem) * 0.5);
    }
 
-   .power-marker.stacked .mark:first-child {
+   .power-marker.pair .mark:first-child {
       width: 70%;
    }
 
-   /* the top half is drawn upside down, so its stack is read bottom to top */
-   .power-marker.stacked.opposite {
+   /* the top half is drawn upside down, so its pair is read bottom to top */
+   .power-marker.pair.opposite {
       flex-direction: column-reverse;
    }
 
@@ -633,14 +642,14 @@
       transform: scale(-1, -1);
    }
 
-   /* a player's own marker can be clicked: that marks the power as used */
-   .power-marker.mine {
+   /* a player's own marks can be clicked: that says the power has been used */
+   .power-marker .mark.mine {
       pointer-events: auto;
       cursor: pointer;
    }
 
    /* used: dimmed by half, and no longer glowing */
-   .power-marker.used {
+   .power-marker .mark.used {
       opacity: 0.5;
       filter: none;
    }

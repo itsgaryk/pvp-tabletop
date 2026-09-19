@@ -19,12 +19,15 @@ export function board () {
 
    /*
       The VSTAR / GX marker this board shows on its side of the board: 'none',
-      'vstar' or 'gx'. Only ever one at a time, and off by default. `powerMarkerUsed`
-      is the marker's own state: a player clicks their marker to say the power has
-      been used, which dims it.
+      'vstar', 'gx', or 'both' for a deck that has one of each. Off by default.
+
+      `powerMarkerUsed` says which of the marks have been used, one flag each
+      rather than a single yes/no. The two marks are separate powers and separate
+      buttons on the board - showing both must not make clicking either of them
+      mean the same thing, and using one must not dim the other.
    */
    const powerMarker = writable('none')
-   const powerMarkerUsed = writable(false)
+   const powerMarkerUsed = writable({ vstar: false, gx: false })
 
    /*
       The table's turn number. It lives with the board so it travels with the rest
@@ -62,7 +65,7 @@ export function board () {
       loadDeck()
 
       powerMarker.set('none')
-      powerMarkerUsed.set(false)
+      powerMarkerUsed.set({ vstar: false, gx: false })
       turn.set(0)
       /*
          The timer is deliberately not touched here. It is the table's clock

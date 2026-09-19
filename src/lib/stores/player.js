@@ -6,6 +6,7 @@ import { share, react, publishLog, spectating, socket, onBoardCleanup, chat } fr
 import { fixOld } from './oldCards.js'
 import { s } from '$lib/util/strings.js'
 import { statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
+import { normalizeMarkerUsed } from '$lib/util/markers.js'
 import { logStatus, logStatusCleared } from './logger.js'
 import {
    logMove, logSlotMove, logPickup,
@@ -451,29 +452,35 @@ export function setPowerMarker (marker) {
    if (marker === powerMarker.get()) return
 
    powerMarker.set(marker)
-   /* a different token starts unused */
-   powerMarkerUsed.set(false)
+   /* a different token starts unused - both of them */
+   powerMarkerUsed.set({ vstar: false, gx: false })
 
    share('powerMarker', { marker })
    share('powerMarkerUsed', { used: false })
 }
 
-/* what to call the marker that is showing, for the log line */
-const markerLabel = (marker) => (marker === 'both' ? 'VStar and GX' : marker === 'vstar' ? 'VStar' : 'GX')
+/* what to call a marker, for the log line */
+const markerLabel = (marker) => (marker === 'vstar' ? 'VStar' : 'GX')
 
 /*
-   Clicking a marker says the power has been used (and clicking again takes that
-   back). Using it is the thing worth logging, so that is where the log line goes.
+   Clicking a marker says that power has been used (and clicking again takes that
+   back). Which mark was clicked is passed in, because a board showing both has
+   two of them: they are separate powers, so using one must not dim, log, or
+   otherwise speak for the other.
 */
-export function togglePowerMarkerUsed () {
+export function togglePowerMarkerUsed (which) {
    if (isSpectator()) return
    if (powerMarker.get() === 'none') return
+   if (which !== 'vstar' && which !== 'gx') return
+   /* a mark that is not on this board is not a mark anybody can click */
+   if (powerMarker.get() !== 'both' && powerMarker.get() !== which) return
 
-   const used = !powerMarkerUsed.get()
+   const before = normalizeMarkerUsed(powerMarkerUsed.get())
+   const used = { ...before, [which]: !before[which] }
    powerMarkerUsed.set(used)
 
-   share('powerMarkerUsed', { used })
-   if (used) publishLog(`Used ${markerLabel(powerMarker.get())}`)
+   share('powerMarkerUsed', { used, marker: which })
+   if (used[which]) publishLog(`Used ${markerLabel(which)}`)
 }
 
 /* take every status effect off at once */
