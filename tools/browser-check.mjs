@@ -385,15 +385,21 @@ if (want('panel')) {
       return b ? { unread: b.classList.contains('unread'), active: b.classList.contains('active') } : null
    })()`)
 
-   const timerRow = () => alice.evaluate(`(() => {
+   const timerRowFor = (page) => page.evaluate(`(() => {
       const row = document.querySelector('.timer-row')
       if (!row) return null
+      const clock = row.querySelector('.clock')
       return {
-         labels: [...row.querySelectorAll('button')].map((b) => b.textContent.trim()),
+         labels: [...row.querySelectorAll('button')]
+            .filter((b) => !b.classList.contains('clock'))
+            .map((b) => b.textContent.trim()),
          disabled: [...row.querySelectorAll('button')].filter((b) => b.disabled).map((b) => b.textContent.trim()),
-         clock: row.querySelector('.clock')?.textContent.trim() || null
+         clock: clock ? clock.textContent.trim() : null,
+         clockButton: clock ? clock.tagName.toLowerCase() === 'button' : false
       }
    })()`)
+
+   const timerRow = () => timerRowFor(alice)
 
    const markers = (page) => page.evaluate(`[...document.querySelectorAll('.power-marker')].map((el) => ({
       marks: [...el.querySelectorAll('img.mark')].map((i) => i.getAttribute('alt')),
@@ -413,19 +419,136 @@ if (want('panel')) {
    await alice.clickText('Show Pokémon', { settle: 2000, kinds: 'button' })
    check('clicking the button is what puts it out', (await hideButton())?.glow === false, JSON.stringify(await hideButton()))
 
-   /* the timer, both ways */
+   /*
+      The timer is set rather than nudged. A room's clock starts at fifty minutes,
+      the six adjustment buttons are gone, and the clock itself is the control
+      that opens the prompt - while the one button left beside it starts and
+      pauses.
+   */
    const both = await timerRow()
-   check('the clock offers both directions', JSON.stringify(both?.labels) === JSON.stringify(['-1', '-10', '-1m', '\u23EF\uFE0F', '+1m', '+10', '+50']), JSON.stringify(both?.labels))
-   await alice.clickText('+1m', { settle: 1500, kinds: 'button' })
-   check('adding a minute works', (await timerRow())?.clock === '01:00', (await timerRow())?.clock)
-   await alice.clickText('-10', { settle: 1500, kinds: 'button' })
-   check('and taking ten seconds off works', (await timerRow())?.clock === '00:50', (await timerRow())?.clock)
-   for (let i = 0; i < 14; i++) await alice.clickText('-1m', { settle: 400, kinds: 'button' })
-   await sleep(1200)
-   const floored = await timerRow()
-   check('taking time away stops at zero', floored?.clock === '00:00', floored?.clock)
-   check('and disables itself there', (floored?.disabled || []).includes('-1m'), JSON.stringify(floored?.disabled))
-   await alice.clickText('+10', { settle: 1000, kinds: 'button' })
+   check('a room clock starts at fifty minutes', both?.clock === '50:00', both?.clock)
+   check('the six adjustment buttons are gone',
+      JSON.stringify(both?.labels) === JSON.stringify(['\u23EF\uFE0F']) && both?.clockButton === true,
+      JSON.stringify(both))
+
+   await alice.clickText('50:00', { settle: 800, kinds: 'button' })
+   const timerPrompt = await alice.evaluate(`(() => {
+      const box = document.querySelector('.timer-dialog')
+      if (!box) return null
+      const r = box.getBoundingClientRect()
+      return {
+         text: box.innerText.replace(/\\s+/g, ' ').trim(),
+         minutes: box.querySelector('input[name="timerMinutes"]') ? box.querySelector('input[name="timerMinutes"]').value : null,
+         seconds: box.querySelector('input[name="timerSeconds"]') ? box.querySelector('input[name="timerSeconds"]').value : null,
+         ok: box.querySelector('.timer-ok') ? box.querySelector('.timer-ok').textContent.trim() : null,
+         cancel: box.querySelector('.timer-cancel') ? box.querySelector('.timer-cancel').textContent.trim() : null,
+         centred: Math.abs((r.left + r.right) / 2 - window.innerWidth / 2) < 4 &&
+            Math.abs((r.top + r.bottom) / 2 - window.innerHeight / 2) < 4
+      }
+   })()`)
+
+   check('clicking the clock opens a prompt to set the time', /set the timer/i.test(timerPrompt?.text || ''), timerPrompt?.text)
+   check('it is centred on the screen', timerPrompt?.centred === true, JSON.stringify(timerPrompt))
+   check('it opens on the time the clock is showing', timerPrompt?.minutes === '50' && timerPrompt?.seconds === '0', JSON.stringify(timerPrompt))
+   check('with an OK and a Cancel', timerPrompt?.ok === 'OK' && timerPrompt?.cancel === 'Cancel', JSON.stringify(timerPrompt))
+
+   /*
+      Each field caps at 60, because that is all a minutes or seconds field
+      holds. The cap is applied as you type, so the number on screen is the
+      number that will be set - which is why this reads the field back rather
+      than checking what the store ended up with.
+   */
+   await alice.evaluate(`(() => {
+      const set = (name, value) => {
+         const el = document.querySelector('input[name="' + name + '"]')
+         el.value = value
+         el.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      set('timerMinutes', '99')
+      set('timerSeconds', '75')
+      return true
+   })()`)
+   /* the binding writes back on the next tick, so read it after one */
+   await sleep(400)
+   const capped = await alice.evaluate(`(() => ({
+      minutes: document.querySelector('input[name="timerMinutes"]').value,
+      seconds: document.querySelector('input[name="timerSeconds"]').value
+   }))()`)
+   check('a field cannot be typed past 60', capped.minutes === '60' && capped.seconds === '60', JSON.stringify(capped))
+
+   await alice.evaluate(`(() => {
+      const set = (name, value) => {
+         const el = document.querySelector('input[name="' + name + '"]')
+         el.value = value
+         el.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      set('timerMinutes', '12')
+      set('timerSeconds', '34')
+      return true
+   })()`)
+   await alice.clickText('OK', { settle: 1500, kinds: 'button' })
+   await sleep(1000)
+   check('OK sets the clock to what was typed', (await timerRow())?.clock === '12:34', (await timerRow())?.clock)
+
+   /* and the other player sees the same clock, because it is the table's */
+   await sleep(3000)
+   check('and the opponent sees it too', (await timerRowFor(bob))?.clock === '12:34', (await timerRowFor(bob))?.clock)
+
+   /* Cancel leaves the clock alone */
+   await alice.clickText('12:34', { settle: 800, kinds: 'button' })
+   await alice.clickText('Cancel', { settle: 1000, kinds: 'button' })
+   await sleep(700)
+   check('Cancel leaves the clock as it was', (await timerRow())?.clock === '12:34', (await timerRow())?.clock)
+
+   /*
+      Setting a time is not the clock running out. A room clock that opens at
+      50:00 would otherwise look like one that had just finished the moment
+      anybody set it to zero.
+   */
+   await alice.clickText('12:34', { settle: 800, kinds: 'button' })
+   await alice.evaluate(`(() => {
+      const set = (name, value) => {
+         const el = document.querySelector('input[name="' + name + '"]')
+         el.value = value
+         el.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      set('timerMinutes', '0')
+      set('timerSeconds', '0')
+      return true
+   })()`)
+   await sleep(300)
+   await alice.clickText('OK', { settle: 1000, kinds: 'button' })
+   await sleep(800)
+   check('a clock set to zero reads 00:00', (await timerRow())?.clock === '00:00', (await timerRow())?.clock)
+   check('and nobody is told time is up for a clock that was set, not run out',
+      (await alice.evaluate(`document.querySelector('.time-up') === null`)) === true)
+
+   /* back to a working clock for the play button */
+   await alice.clickText('00:00', { settle: 800, kinds: 'button' })
+   await alice.evaluate(`(() => {
+      const set = (name, value) => {
+         const el = document.querySelector('input[name="' + name + '"]')
+         el.value = value
+         el.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      set('timerMinutes', '12')
+      set('timerSeconds', '34')
+      return true
+   })()`)
+   await sleep(300)
+   await alice.clickText('OK', { settle: 1200, kinds: 'button' })
+   await sleep(800)
+   check('and it can be set back to a real time', (await timerRow())?.clock === '12:34', (await timerRow())?.clock)
+
+   /* the play button starts and pauses it, and was not part of the removal */
+   await alice.clickText('\u23EF\uFE0F', { settle: 1200, kinds: 'button' })
+   const started = (await timerRow())?.clock
+   await sleep(2500)
+   check('the play button starts the clock', (await timerRow())?.clock !== started, `${started} -> ${(await timerRow())?.clock}`)
+   await alice.clickText('\u23EF\uFE0F', { settle: 1200, kinds: 'button' })
+   const paused = (await timerRow())?.clock
+   await sleep(2500)
+   check('and pauses it again', (await timerRow())?.clock === paused, `${paused} -> ${(await timerRow())?.clock}`)
 
    /* the Chat tab, which is only ever lit by a message that arrived unseen */
    check('the Chat tab starts quiet', (await chatTab())?.unread === false, JSON.stringify(await chatTab()))

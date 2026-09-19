@@ -270,13 +270,15 @@ idle client near one command per poll turn instead of four.
 
 ### The game timer
 
-Under the turn row, and only in a room: a table clock both players can start,
-pause and add to (+1, +10, +50 minutes), shown as `MM:SS`, or `HH:MM:SS` once
-there is an hour or more. A spectator sees the clock and none of the buttons.
+Under the turn row, and only in a room: a table clock, shown as `MM:SS`, or
+`HH:MM:SS` once there is an hour or more. A room's clock starts at **50:00**,
+paused. A player clicks the clock to set it — a centred prompt with minutes and
+seconds, each taking up to 60, and an OK and a Cancel — and the one button beside
+it starts and pauses. A spectator sees the clock and none of the controls.
 
 It is shared as a **value**, not a tick: "this many milliseconds left as of this
 timestamp". Every client counts down from that itself, so a running clock costs
-**no store commands at all** — only starting, pausing and adding time are events.
+**no store commands at all** — only starting, pausing and setting it are events.
 
 Three things about it are deliberate, and each was a bug first:
 
@@ -291,7 +293,11 @@ Three things about it are deliberate, and each was a bug first:
   clocks ended up pausing and restarting each other.
 
 A board reset — setup, importing a deck, adopting an opponent's board state — does
-not touch the clock. It is cleared when a room is entered instead.
+not touch the clock. Entering a room sets it back to the default 50:00 instead.
+
+The clock's keyboard shortcuts are the board's own (`C` next turn and so on), so
+the board ignores keys typed into a field: the timer's minutes and seconds are
+digits, and one of those would otherwise draw that many cards as it was typed.
 
 The timestamp travels as the relay's clock — learned from each poll and the join
 response — because two players' own clocks may not agree, which is what lets a

@@ -5,6 +5,7 @@
    import { pick, shuffle, pokemonHidden, handRevealed } from '$lib/stores/player.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import { markerUsed } from '$lib/util/markers.js'
+   import { isTyping } from '$lib/util/typing.js'
    import { defaultOpponent, spectatorOpponents, spectatorFlipped, handRevealed as oppHandRevealed } from '$lib/stores/opponent.js'
    import { solo, onOpponentSelection, soloSelectedTo } from '$lib/stores/solo.js'
    import { playerName, zoneBorders } from '$lib/stores/settings.js'
@@ -239,6 +240,14 @@
    const farSelected = () => $solo && onOpponentSelection()
 
    function keydown (e) {
+      /*
+         Somebody typing is not somebody playing. Every shortcut below is a bare
+         key, and this listener is on the document, so without this guard a room
+         code or the timer's minutes and seconds would be drawn, discarded and
+         moved about as they were typed.
+      */
+      if (isTyping(e.target)) return
+
       const key = e.key.toLowerCase()
 
       const digit = parseInt(e.code.slice(-1)) // e.code contains the number key pressed, e.g. "Digit1", even if it has been turned into a different key by holding Option on Mac

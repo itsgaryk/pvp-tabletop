@@ -3,6 +3,7 @@
    import { autoMulligan } from '$lib/stores/settings.js'
    import { share, publishLog, spectating } from '$lib/stores/connection.js'
    import { showMessage } from '$lib/stores/message.js'
+   import { isTyping } from '$lib/util/typing.js'
 
    import {
       cards, deck, hand, prizes, draw,
@@ -177,20 +178,15 @@
 
    /* Keyboard shortcuts */
 
-   /*
-      A shortcut must not fire while somebody is typing, or Enter in the chat box
-      would end the turn, and not while a button has focus, or Enter would do both
-      what the button does and what the shortcut does.
-   */
-   function isTyping (target) {
-      if (!target || !target.tagName) return false
-      const tag = target.tagName.toLowerCase()
-      return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || target.isContentEditable
-   }
-
    function keydown (e) {
       /* a spectator only watches - none of these shortcuts apply */
       if ($spectating) return
+      /*
+         A shortcut must not fire while somebody is typing, or Enter in the chat
+         box would end the turn, and not while a button has focus, or Enter would
+         do both what the button does and what the shortcut does. The same guard
+         is on the board's own shortcuts (see $lib/util/typing.js).
+      */
       if (isTyping(e.target)) return
 
       const key = e.key.toLowerCase()

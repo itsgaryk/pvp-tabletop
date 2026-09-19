@@ -1,5 +1,5 @@
 import { get, post } from '$lib/util/fetch-web.js'
-import { board } from './custom/board.js'
+import { board, DEFAULT_TIMER_MS } from './custom/board.js'
 import { pile, slot } from './custom/cards.js'
 import { writable } from './custom/writable.js'
 import { share, react, publishLog, spectating, socket, onBoardCleanup, chat } from './connection.js'
@@ -661,12 +661,13 @@ export function setTimer ({ running, remaining }, at = null) {
 */
 react('spectatorChanged', () => shareBoardstate())
 
-/* entering a room starts the clock at zero, with a board that can be read */react('joinedRoom', () => {
-   timer.set({ running: false, remaining: 0, at: 0 })
+/* entering a room starts the clock, with a board that can be read */
+react('joinedRoom', () => {
+   timer.set({ running: false, remaining: DEFAULT_TIMER_MS, at: 0 })
    pokemonHidden.set(false)
 })
 react('createdRoom', () => {
-   timer.set({ running: false, remaining: 0, at: 0 })
+   timer.set({ running: false, remaining: DEFAULT_TIMER_MS, at: 0 })
    pokemonHidden.set(false)
 })
 
