@@ -67,13 +67,18 @@ export function pile (name = null) {
          Which end of the array is the top is the one convention this store does
          not state anywhere, and it is the *end* of it: a deck is drawn from with
          `pop`, a card taken off the top of a pile is a `pop`, and a pile's own
-         view reverses the array so that the first card on screen is the card that
-         leaves first (see Inspection.svelte). So the top is index 0 of that
-         reversed view, which is the last index here - and a `push` adds to the
-         top while an `unshift` adds to the bottom.
+         view reads a pile from that same end. So `ordered` is the sequence top
+         first, which is the *reverse* of how it has to sit in the array - the
+         last card of the deck is the first one drawn - and the two ends are
+         mirror images of each other:
 
-         That is why a placement puts the cards at the end for the top and at the
-         front for the bottom, rather than the other way round.
+            on top     ordered, reversed, at the end   (ordered[0] drawn first)
+            on bottom  ordered, as it is, at the front (ordered[0] deepest)
+
+         Getting the top backwards is the bug this note exists for: the dialog
+         reads perfectly, because it shows the order that was chosen, and the deck
+         is face down, so nothing shows that the cards went on upside down until
+         somebody draws one.
 
          The cards are taken out before they are put back, so a card already in
          the pile is relocated rather than duplicated and the move can be repeated
@@ -89,7 +94,9 @@ export function pile (name = null) {
 
          update(v => {
             const kept = v.filter(card => !ids.has(card._id))
-            const next = bottom ? [ ...ordered, ...kept ] : [ ...kept, ...ordered ]
+            const next = bottom
+               ? [ ...ordered, ...kept ]
+               : [ ...kept, ...ordered.slice().reverse() ]
             v.splice(0, v.length, ...next)
             return v
          })

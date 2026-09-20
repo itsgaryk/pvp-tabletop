@@ -31,15 +31,33 @@
    }
 
    /*
-      Looking through the deck to put cards back on top of it - or under it - in a
-      chosen order: a search that ends with the player deciding what they draw
-      next. Opening it says nothing, the way picking cards up says nothing: what
-      the log records is the search itself, and that is written when the cards are
-      actually placed (see lookAndPlace). A player who opens this and closes it
-      again has done nothing to the deck and nothing worth telling anyone.
+      Looking through the whole deck to put cards back in a chosen order: the
+      search that ends with the player deciding what they draw next. The cards
+      never leave the deck, so opening this changes nothing - but it is a look
+      through the one pile the opponent cannot see, and that is what the log
+      records, the same as View All does. The placement says the rest, when the
+      cards are actually placed (see lookAndPlace).
    */
    function arrangeDeck () {
+      publishLog('Viewed deck')
       openDeckOrder()
+   }
+
+   /*
+      The same, over the top X cards only: reordering what is already on top of
+      the deck, which is the job *Ciphermaniac's Codebreaking* is really doing -
+      2 cards out of 60 are going back where they came from, in an order the
+      player chooses. Nothing is shuffled, so an order the player put there by an
+      earlier search survives it.
+   */
+   function orderTopX () {
+      let x = parseInt(prompt('Reorder how many cards from the top?'))
+      if (!x || x < 1) return
+
+      publishLog('Viewed deck')
+
+      /* show what there is rather than a number that is not there */
+      openDeckOrder(Math.min(x, deck.get().length))
    }
 
    /*
@@ -68,6 +86,7 @@
       <ContextMenuOption click={viewDeck} text="View All" shortcut="v" />
       <ContextMenuOption click={() => pickX()} text="View Top X" shortcut="Alt+1...9" disabled={$spectating} />
       <ContextMenuOption click={() => pickX(true)} text="View Bottom X" disabled={$spectating} />
+      <ContextMenuOption click={orderTopX} text="Order Top X" disabled={$spectating} />
       <ContextMenuOption click={arrangeDeck} text="Search & Order Deck" disabled={$spectating} />
       <ContextMenuOption click={() => moveTop(discard)} text="Discard Top Card" disabled={$spectating} />
       <ContextMenuOption click={() => moveTop(lz)} text="Lost Zone Top Card" disabled={$spectating} />

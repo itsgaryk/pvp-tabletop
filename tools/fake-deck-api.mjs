@@ -13,10 +13,13 @@
  *
  * Then:  node tools/deck-order-check.mjs
  *
- * The deck is deterministic: the same 60 cards every time, a mix of four-ofs and
- * three-ofs, deliberately including duplicate names. A deck of distinct cards is
- * the easy case - "the card I chose is on top" and "a card of that name is on
- * top" only come apart when a name repeats, and a real deck always repeats.
+ * The deck is deterministic and its **60 card names are all distinct** - `Card01`
+ * to `Card60`, in deck order. That is the point of it: a check about the *order*
+ * of a deck cannot say where a card went while "Pikachu" appears four times in
+ * it, and "the card I chose is on top" and "a card of that name is on top" come
+ * apart exactly when a name repeats. A real deck repeats, and that is worth
+ * knowing - but it is not what this stand-in is for, so the names are unique and
+ * a grid cell, a name and a position are all the same statement.
  *
  * Card objects are shaped like the API's (`fixOld` and `cardImage` are read for
  * the fields they use): `set` + `number` make the image URL, and the image host
@@ -28,43 +31,19 @@ import { createServer } from 'node:http'
 const PORT = Number(process.env.FAKE_DECK_API_PORT || 6391)
 const HOST = '127.0.0.1'
 
-/* names that read like a real deck, with the sets they really come from */
-const CARDS = [
-   { name: 'Charizard ex', set: 'OBF', number: '125', card_type: 'pokemon' },
-   { name: 'Pidgeot ex', set: 'OBF', number: '164', card_type: 'pokemon' },
-   { name: 'Charmander', set: 'OBF', number: '26', card_type: 'pokemon' },
-   { name: 'Pidgey', set: 'OBF', number: '162', card_type: 'pokemon' },
-   { name: 'Rotom V', set: 'LOR', number: '58', card_type: 'pokemon' },
-   { name: 'Manaphy', set: 'BRS', number: '41', card_type: 'pokemon' },
-   { name: 'Radiant Greninja', set: 'ASR', number: '46', card_type: 'pokemon' },
-   { name: 'Lumineon V', set: 'BRS', number: '40', card_type: 'pokemon' },
-   { name: 'Iono', set: 'PAL', number: '185', card_type: 'trainer' },
-   { name: 'Professor\'s Research', set: 'SVI', number: '189', card_type: 'trainer' },
-   { name: 'Boss\'s Orders', set: 'PAL', number: '172', card_type: 'trainer' },
-   { name: 'Arven', set: 'SVI', number: '166', card_type: 'trainer' },
-   { name: 'Rare Candy', set: 'SVI', number: '191', card_type: 'trainer' },
-   { name: 'Ultra Ball', set: 'SVI', number: '196', card_type: 'trainer' },
-   { name: 'Nest Ball', set: 'SVI', number: '181', card_type: 'trainer' },
-   { name: 'Super Rod', set: 'PAL', number: '188', card_type: 'trainer' },
-   { name: 'Switch Cart', set: 'ASR', number: '154', card_type: 'trainer' },
-   { name: 'Forest Seal Stone', set: 'SIT', number: '156', card_type: 'trainer' },
-   { name: 'Artazon', set: 'PAL', number: '229', card_type: 'trainer' },
-   { name: 'Fire Energy', set: 'SVE', number: '2', card_type: 'energy' }
-]
+const CARDS = []
+for (let i = 1; i <= 60; i++) {
+   CARDS.push({
+      name: 'Card' + String(i).padStart(2, '0'),
+      set: 'TST',
+      number: String(i),
+      card_type: i % 3 === 0 ? 'energy' : (i % 2 === 0 ? 'trainer' : 'pokemon')
+   })
+}
 
-/* four of each until the deck is 60: the last few drop to three */
+/* one of each, in deck order: the deck's order is what these checks are about */
 function deck () {
-   const cards = []
-   let left = 60
-
-   for (const card of CARDS) {
-      if (left <= 0) break
-      const count = Math.min(4, left)
-      cards.push({ ...card, count, region: 'int' })
-      left -= count
-   }
-
-   return cards
+   return CARDS.map(card => ({ ...card, count: 1, region: 'int' }))
 }
 
 /*

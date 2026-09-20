@@ -159,12 +159,20 @@ export function shuffle () {
    Shuffle first, then place. The other order reaches the same deck, but only if
    the chosen cards were the whole deck: a shuffle of an empty rest is no shuffle
    at all, and the cards would go back in the order they were picked in.
+
+   `shuffleFirst: false` is the same move without the shuffle, which is what
+   reordering the cards already on top of the deck is: they are going back where
+   they came from, so there is nothing to shuffle them into - and shuffling would
+   destroy an order an earlier search put there.
+
+   `search` is only what the log says: a placement that came out of a search says
+   so, and one that did not is booked as the placement it is.
 */
-export function lookAndPlace (ordered, { bottom = false, shuffleFirst = true } = {}) {
+export function lookAndPlace (ordered, { bottom = false, shuffleFirst = true, search = true } = {}) {
    if (isSpectator()) return
    if (!ordered?.length) return
 
-   publishLog('Searched deck')
+   if (search) publishLog('Searched deck')
 
    if (shuffleFirst) deck.shuffle()
 

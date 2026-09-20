@@ -24,8 +24,27 @@
    let order = []
    let shuffleFirst = true
 
-   /* top of the deck first, which is how the deck is read (see Inspection.svelte) */
-   $: topFirst = $deck.slice().reverse()
+   /*
+      How many cards from the top of the deck this dialog is about: 0 for the
+      whole deck.
+
+      An *Order Top X* opens it at the top X cards only, which is the same dialog
+      over a shorter list - reordering the top of a deck is the placement with the
+      shuffle switched off, since those cards are already at the top and shuffling
+      them is not what was asked for.
+   */
+   let topX = 0
+   /*
+      What the grid shows: the deck top card first - the way a pile is read, and
+      the way `Inspection` reads one - or just the top X cards of it.
+
+      Top first means the *last* cell of the grid is the card that leaves next,
+      which is worth knowing when reading the code: the array's end is the top of
+      the deck (`pop` is a draw), so this reverses it for showing. Card 1 - the
+      first card clicked, and the first one drawn - is therefore the last cell of
+      the grid, and the first card of the sequence the strip names.
+   */
+   $: cards = (topX > 0 ? $deck.slice(-topX) : $deck).slice().reverse()
 
    /*
       A card clicked is a card added to the end of the order, or taken out of it.
@@ -43,17 +62,18 @@
    }
 
    /*
-      Ctrl+A takes the whole deck, in the order it is already in - the same
-      shortcut, meaning the same thing, as the inspection dialog's select-all: it
-      is how a player answers a card that searches for *any* number of cards, and
-      how a deck that is already in the right order is placed without clicking
-      sixty times.
+      Ctrl+A takes everything on show, top of the deck first - the same shortcut,
+      meaning the same thing, as the inspection dialog's select-all: it is how a
+      player answers a card that searches for *any* number of cards, and how a
+      deck that is already in the right order is placed without clicking sixty
+      times. Card 1 is the card that was already on top.
    */
    function markAll () {
-      order = topFirst.slice()
+      order = cards.slice()
    }
 
-   export function open () {
+   export function open (_topX = 0) {
+      topX = Math.max(0, Number(_topX) || 0)
       order = []
       /* the board's selection is left for the board: this dialog has its own */
       resetSelection()
@@ -68,14 +88,30 @@
       Nothing is written until one of these is clicked. The deck is not touched
       while the dialog is open, so closing it - or Escape, or a click outside -
       needs no cleanup at all: no cards have to be put back anywhere.
+
+      What is placed is the cards that were marked, in the order they were marked
+      in, and only those. An *Order Top X* is therefore "these first, in this
+      order, and the rest of the block keeps the order it had": marking one card
+      of the top five brings it to the top and shuffles nothing, and marking none
+      of them is not an action. It is the whole of what an order can say - the
+      dialog fixes *which* cards are in the block and lets the player decide their
+      sequence, rather than asking for an arrangement of cards they did not name.
    */
    function place (bottom = false) {
       if (!order.length) return
 
-      const cards = [ ...order ]
+      const placing = [ ...order ]
       popup.close()
       order = []
-      lookAndPlace(cards, { bottom, shuffleFirst })
+      /*
+         An *Order Top X* is not a search and shuffles nothing: the cards are
+         already on top of the deck and are going back there.
+      */
+      lookAndPlace(placing, {
+         bottom,
+         shuffleFirst: topX > 0 ? false : shuffleFirst,
+         search: topX === 0
+      })
    }
 
    function closeAndClear () {
@@ -91,7 +127,9 @@
 <Popup bind:this={popup} on:closed={onClosed}>
    <div class="p-2 border-b border-black">
       <div class="font-bold">
-         {#if order.length}
+         {#if topX > 0}
+            Putting the top {cards.length} {cards.length === 1 ? 'card' : 'cards'} of the deck back in this order:
+         {:else if order.length}
             Putting {order.length} {order.length === 1 ? 'card' : 'cards'} on the deck, in this order:
          {:else}
             Click cards in the order they should sit on the deck. 1 is the top.
@@ -99,10 +137,10 @@
       </div>
 
       {#if order.length}
-         <!-- the last card is the top of the deck, so it is the one named first -->
+         <!-- card 1 is the first of them, which is the order they were clicked in -->
          <div class="flex flex-wrap gap-x-2 gap-y-1 mt-1">
-            {#each order.slice().reverse() as card, i (card._id)}
-               <span class="step"><span class="n">{order.length - i}</span>{card.name}</span>
+            {#each order as card, i (card._id)}
+               <span class="step"><span class="n">{i + 1}</span>{card.name}</span>
             {/each}
          </div>
       {/if}
@@ -111,7 +149,7 @@
    <div class="flex flex-wrap gap-1 p-2 focus:outline-none inspection"
       tabindex="0" use:ctrlA on:ctrlA={markAll}>
 
-      {#each topFirst as card (card._id)}
+      {#each cards as card (card._id)}
          <Card
             {card}
             pile={deck}
@@ -124,20 +162,28 @@
 
    <svelte:fragment slot="buttons">
       <!--
-         Three actions, one per line (the panel's own rule), so the grid keeps as
-         much of the window as it can: the placement either end, and the shuffle
-         the search asks for between the two.
+         One action per line (the panel's own rule), so the grid keeps as much of
+         the window as it can, and no more of them than the job needs: an *Order
+         Top X* is a rearrangement of cards that are already at the top, so it
+         has no bottom to send them to and nothing to shuffle - the shuffle is
+         the other mode's.
       -->
-      <button class="action" disabled={!order.length || $spectating} on:click={() => place(false)}>
-         Put on Top in This Order
-      </button>
-      <button class="action" disabled={!order.length || $spectating} on:click={() => place(true)}>
-         Put on Bottom in This Order
-      </button>
-      <label class="shuffle">
-         <input type="checkbox" bind:checked={shuffleFirst}>
-         Shuffle the rest of the deck first
-      </label>
+      {#if topX > 0}
+         <button class="action" disabled={!order.length || $spectating} on:click={() => place(false)}>
+            Arrange the Top {cards.length} in This Order
+         </button>
+      {:else}
+         <button class="action" disabled={!order.length || $spectating} on:click={() => place(false)}>
+            Put on Top in This Order
+         </button>
+         <button class="action" disabled={!order.length || $spectating} on:click={() => place(true)}>
+            Put on Bottom in This Order
+         </button>
+         <label class="shuffle">
+            <input type="checkbox" bind:checked={shuffleFirst}>
+            Shuffle the rest of the deck first
+         </label>
+      {/if}
       <button class="action" on:click={closeAndClear}>Close</button>
    </svelte:fragment>
 </Popup>

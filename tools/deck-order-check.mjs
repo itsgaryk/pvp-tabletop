@@ -132,6 +132,31 @@ const openDeckOrder = async () => {
    return { menu, clicked }
 }
 
+/*
+   *Order Top X* asks how many cards with the browser's own prompt. Headless
+   Chrome's `Page.handleJavaScriptDialog` cannot type an answer into one, so the
+   prompt is stubbed in the page: the same call the app makes, answered with what
+   the check wants, and put back afterwards.
+*/
+const stubPrompt = (answer) => page.evaluate(`(() => {
+   globalThis.__realPrompt = globalThis.__realPrompt || window.prompt
+   window.prompt = () => ${JSON.stringify(String(answer))}
+   return true
+})()`)
+
+const unstubPrompt = () => page.evaluate(`(() => {
+   if (globalThis.__realPrompt) window.prompt = globalThis.__realPrompt
+   return true
+})()`)
+
+async function openOrderTopX (x) {
+   await stubPrompt(x)
+   await fire('.deck .count', 'contextmenu')
+   await clickMenu('Order Top X')
+   await sleep(400)
+   await unstubPrompt()
+}
+
 /* the grid, without the dialog: what the deck looks like now */
 const closeDialog = async () => {
    await page.clickText('Close', { settle: 350, kinds: 'button' })
@@ -203,40 +228,80 @@ check('the player has a deck to arrange', deckSize > 0,
 await fire('.deck .count', 'contextmenu')
 const deckMenu = await menuText()
 await closeMenus()
-check('the deck menu offers arranging a search',
-   /Search & Order Deck/.test(String(deckMenu)), String(deckMenu).slice(0, 120))
+check('the deck menu offers arranging a search, and reordering the top of the deck',
+   /Search & Order Deck/.test(String(deckMenu)) && /Order Top X/.test(String(deckMenu)),
+   String(deckMenu).slice(0, 140))
 
 /* ---------------------------------------------------------------------------
-   The dialog: a look at the whole deck, top first, and nothing written yet
+   The dialog: the whole deck, bottom of it first, and nothing written yet
 --------------------------------------------------------------------------- */
 
+const logBeforeOpen = await soloLog()
 const opened = await openDeckOrder()
+const openLog = (await soloLog()).slice(logBeforeOpen.length)
 check('it opens the arranging dialog', Array.isArray(await grid()) && (await grid()).length === deckSize,
    `${(await grid() || []).length} cards in the panel, ${deckSize} in the deck`)
 
+check('and opening it says the deck was looked through', /Viewed deck/.test(openLog), openLog.slice(0, 120))
+
 const before = await grid()
-check('the grid shows the deck, top card first', before !== null && before.length > 3,
+check('the grid shows the deck, top card first, so a card reads 1, 2, 3', before !== null && before.length > 3,
    `${before.length} shown`)
+
+/*
+   Which end is which, asserted rather than assumed, and asserted *here* - before
+   anything has been placed - so the deck is still the 60 cards the rest of the
+   check counts on: the grid is top card first, so its **first** cell is the card
+   a draw takes. This is the reading a placement has to agree with, and the one a
+   check that only measures counts cannot see: the dialog, the draw and the array
+   can all be wrong in the same direction and only a draw shows it.
+*/
+const topBefore = before[0]
+await fire('.deck .count', 'contextmenu')
+await clickMenu('Draw')
+await sleep(400)
+const drawnBefore = await page.evaluate(`(() => {
+   const h = document.querySelectorAll('.hand img.card')
+   return h.length ? h[h.length - 1].alt : null
+})()`)
+check('the first card of the grid is the card a draw takes', drawnBefore === topBefore,
+   `drew ${drawnBefore}, the grid's first cell was ${topBefore}`)
+
+/* that draw took one, so the deck is 59 from here: read how many, rather than assume */
+const deckNow = await deckCount()
+check('and drawing one leaves one fewer in the deck', deckNow === before.length - 1,
+   `${deckNow} in the deck after drawing, ${before.length} shown before it`)
+
+/*
+   Mark the three cards from the top of the grid, deepest first, so that card 1 -
+   the first one clicked - is the card that was already on top of the deck. The
+   deck's names are all different, so a cell, a name and a position are the same
+   statement and every assertion below can be about one of them.
+
+   Read the grid again rather than working from `before`: a card has been drawn
+   since it was taken, so every cell below the top one has moved up.
+*/
+const held = await grid()
+const chosen = [ held[2], held[1], held[0] ]
+const chosenAt = [ 2, 1, 0 ]
 
 const disabled = await buttonsDisabled()
 check('and placing is not an action until a card is chosen',
    disabled.length >= 2 && disabled.every((b) => b.disabled), JSON.stringify(disabled))
 
 /* ---------------------------------------------------------------------------
-   Choosing cards: click order is the placement order
+   Choosing cards: the click order is the order, and the badge says where
 --------------------------------------------------------------------------- */
-
-const chosen = await distinctTop(before, 3)
-const chosenAt = chosen.map((name) => before.indexOf(name))
 
 await clickCard(chosenAt[0])
 await clickCard(chosenAt[1])
 await clickCard(chosenAt[2])
 
 const stepped = await steps()
-check('the strip names the order, the last card chosen being the top of the deck',
-   JSON.stringify(stepped.map((s) => s.name)) === JSON.stringify([ chosen[2], chosen[1], chosen[0] ]),
-   `${JSON.stringify((stepped || []).map((s) => s.name))} for clicks ${JSON.stringify(chosen)}`)
+check('the strip names the order card 1 first, which is the order they were clicked in',
+   JSON.stringify(stepped.map((s) => s.name)) === JSON.stringify(chosen) &&
+   JSON.stringify(stepped.map((s) => s.n)) === JSON.stringify([ 1, 2, 3 ]),
+   `${JSON.stringify(stepped)} for clicks ${JSON.stringify(chosen)}`)
 
 const marked = await badges()
 check('each card wears its place in that order, wherever it sits in the grid',
@@ -244,18 +309,23 @@ check('each card wears its place in that order, wherever it sits in the grid',
    marked.every((m, i) => m.n === null || chosenAt.includes(i)),
    JSON.stringify(marked.filter((m) => m.n !== null)))
 
+const rerendered = await grid()
+check('and marking moves nothing: the grid stays the deck, in the deck\'s order',
+   JSON.stringify(rerendered) === JSON.stringify(held), 'grid is stable while cards are marked')
+
 check('a card clicked again leaves the order',
-   await clickCard(chosenAt[2]) && JSON.stringify((await steps()).map((s) => s.name)) === JSON.stringify([ chosen[1], chosen[0] ]),
+   await clickCard(chosenAt[2]) && JSON.stringify((await steps()).map((s) => s.name)) === JSON.stringify([ chosen[0], chosen[1] ]),
    JSON.stringify((await steps() || []).map((s) => s.name)))
 
 /* put it back, so the placement below is the three-card one */
 await clickCard(chosenAt[2])
 const threeAgain = await steps()
-check('and clicked again it returns - to the end of the order, where the next click puts it',
-   threeAgain.length === 3, JSON.stringify(threeAgain.map((s) => s.name)))
+check('and clicked again it returns, at the end of the order where the next click puts it',
+   JSON.stringify(threeAgain.map((s) => s.name)) === JSON.stringify([ chosen[0], chosen[1], chosen[2] ]),
+   JSON.stringify(threeAgain.map((s) => s.name)))
 
 /* ---------------------------------------------------------------------------
-   The placement itself: on top, in this order
+   The placement itself: on top, card 1 first
 --------------------------------------------------------------------------- */
 
 const logBefore = await soloLog()
@@ -265,9 +335,18 @@ check('the dialog closes behind the placement', (await grid()) === null)
 
 const log = await soloLog()
 const logged = log.slice(logBefore.length)
-check('the search and the placement are both in the log, and neither names a card',
-   /Searched deck/.test(logged) && /Put 3 cards on top of Deck in order/.test(logged),
+check('the placement is in the log, and does not name a card',
+   /Put 3 cards on top of Deck in order/.test(logged),
    logged.slice(0, 160))
+
+/*
+   The look that came first is its own line, and the placement is the line the
+   dialog writes when a card is actually placed - so opening a dialog and closing
+   it again leaves a "Viewed deck" and nothing else. (The log read here predates
+   the reopen below, which adds another one.)
+*/
+check('and the look is in the log as its own line', /Viewed deck/.test(log),
+   `${(log.match(/Viewed deck/g) || []).length} "Viewed deck" line(s) so far`)
 
 const after = await (async () => {
    await openDeckOrder()
@@ -276,18 +355,24 @@ const after = await (async () => {
    return g
 })()
 
-check('the three cards are the top three, in the order they were chosen',
-   JSON.stringify(after.slice(0, 3)) === JSON.stringify([ chosen[2], chosen[1], chosen[0] ]),
-   `${JSON.stringify(after.slice(0, 3))} wanted ${JSON.stringify([ chosen[2], chosen[1], chosen[0] ])}`)
+/*
+   The grid is the deck top card first, so the top of the deck is the *start* of
+   what it shows: the three placed cards are its first three cells, in the order
+   they were marked. Card 1 is the cell wearing the "1", and it is the card drawn
+   next - which is the only place that claim can be checked from.
+*/
+check('the three cards are the top three, card 1 being the one drawn first',
+   JSON.stringify(after.slice(0, 3)) === JSON.stringify(chosen),
+   `${JSON.stringify(after.slice(0, 3))} wanted ${JSON.stringify(chosen)}`)
 
-check('and the deck still holds every one of its cards', after.length === deckSize,
-   `${after.length} of ${deckSize}`)
+check('and the deck still holds every card it did', after.length === before.length - 1,
+   `${after.length} after drawing one and placing three, ${before.length - 1} expected`)
 
 /*
-   And the same thing said the way the game says it: the card drawn next is the
-   card the dialog showed at the top. A count cannot tell these apart, which is
-   why the check draws. (It draws one, so what the deck holds from here on is one
-   card fewer - the check below reads the deck for itself rather than assuming.)
+   And the same thing said the way the game says it: the card drawn next is card
+   1 - the card the dialog drew a "1" on. A count cannot tell a placement from a
+   shuffle, which is why the check draws. (It draws one, so what the deck holds
+   from here on is one card fewer - the check below reads the deck for itself.)
 */
 await fire('.deck .count', 'contextmenu')
 await clickMenu('Draw')
@@ -296,8 +381,8 @@ const drawn = await page.evaluate(`(() => {
    const hand = document.querySelectorAll('.hand img.card')
    return hand.length ? hand[hand.length - 1].alt : null
 })()`)
-check('drawing takes the card the dialog showed on top', drawn === after[0],
-   `drew ${drawn}, the grid's first card was ${after[0]}`)
+check('drawing takes card 1, the card the dialog marked first', drawn === chosen[0],
+   `drew ${drawn}, card 1 was ${chosen[0]}`)
 
 /* the rest of the deck was shuffled underneath: this is not the deck it was */
 check('the rest of the deck is not the order it was left in',
@@ -313,8 +398,11 @@ check('reopening the dialog starts from no choice at all',
    (await steps()).length === 0, JSON.stringify(await steps()))
 
 const bottomGrid = await grid()
-/* two cards from the middle of the deck, so they cannot already be at its bottom */
-const bottomChosen = await distinctTop(bottomGrid.slice(5), 2)
+/*
+   Two cards from the top half, so neither can already be at the bottom: the grid
+   is top card first, so its *end* is the bottom of the deck.
+*/
+const bottomChosen = await distinctTop(bottomGrid.slice(0, 10), 2)
 const bottomAt = bottomChosen.map((name) => bottomGrid.indexOf(name))
 
 await clickCard(bottomAt[0])
@@ -322,7 +410,7 @@ await clickCard(bottomAt[1])
 
 const steppedBottom = await steps()
 check('the bottom placement is chosen the same way',
-   JSON.stringify(steppedBottom.map((s) => s.name)) === JSON.stringify([ bottomChosen[1], bottomChosen[0] ]),
+   JSON.stringify(steppedBottom.map((s) => s.name)) === JSON.stringify(bottomChosen),
    JSON.stringify((steppedBottom || []).map((s) => s.name)))
 
 await page.clickText('Put on Bottom in This Order', { settle: 600 })
@@ -337,16 +425,101 @@ const afterBottom = await (async () => {
 const heldNow = await deckCount()
 
 /*
-   The grid is the deck top first, so the bottom of the deck is the *end* of what
-   it shows. The pair goes there in the order chosen: `bottomChosen[0]` was chosen
-   first and sits below `bottomChosen[1]`, so in a top-first view it comes last.
+   The grid is the deck top card first, so the bottom of the deck is the *end* of
+   what it shows - and the two cards are there in the order chosen, in the same
+   sense as a top placement: card 1 of the pair is the first of them to be drawn,
+   and a card drawn from the bottom is the last. So `bottomChosen[1]`, chosen
+   second and therefore deeper, is the very last cell; `bottomChosen[0]` sits just
+   above it, and is the first of the pair to come out.
 */
-check('cards put on the bottom are the last cards of the deck, the first chosen below the second',
+check('cards put on the bottom are the last cards of the deck, the first chosen above the second',
    JSON.stringify(afterBottom.slice(-2)) === JSON.stringify([ bottomChosen[1], bottomChosen[0] ]),
    `${JSON.stringify(afterBottom.slice(-2))} wanted ${JSON.stringify([ bottomChosen[1], bottomChosen[0] ])}`)
 
 check('the deck is still whole after a placement at the bottom', afterBottom.length === heldNow,
    `${afterBottom.length} of ${heldNow}`)
+
+/* ---------------------------------------------------------------------------
+   Order Top X: the top of the deck rearranged, and nothing shuffled
+--------------------------------------------------------------------------- */
+
+const orderCount = 3
+const beforeScopeDeck = await (async () => {
+   await openDeckOrder()
+   const g = await grid()
+   await closeDialog()
+   return g
+})()
+/* the top X of the deck is the *start* of the grid */
+const beforeTop = beforeScopeDeck.slice(0, orderCount)
+
+await openOrderTopX(orderCount)
+
+const scoped = await grid()
+check('Order Top X opens on the top X cards and no others',
+   Array.isArray(scoped) && scoped.length === orderCount && JSON.stringify(scoped) === JSON.stringify(beforeTop),
+   `${(scoped || []).length} cards shown, ${JSON.stringify(scoped)}`)
+
+const scopedButtons = await page.evaluate(`(() => {
+   const b = [ ...document.querySelectorAll('div button') ].filter((el) => /Arrange the Top|Put on|Shuffle the rest|Close/.test(el.textContent))
+   return b.map((el) => el.textContent.trim().replace(/\\s+/g, ' '))
+})()`)
+check('and offers no bottom and no shuffle: a rearrangement of what is already there',
+   scopedButtons.some((t) => /^Arrange the Top 3/.test(t)) &&
+   !scopedButtons.some((t) => /Put on|Shuffle/.test(t)),
+   JSON.stringify(scopedButtons))
+
+/* the first cell of the block is the top of the deck, and clicking is what names card 1 */
+await clickCard(1)
+await clickCard(2)
+await clickCard(0)
+
+const wantedTop = [ beforeTop[1], beforeTop[2], beforeTop[0] ]
+
+const scopedSteps = await steps()
+check('the order chosen is the order the strip names, card 1 first',
+   JSON.stringify(scopedSteps.map((s) => s.name)) === JSON.stringify(wantedTop),
+   JSON.stringify((scopedSteps || []).map((s) => s.name)))
+
+const logBeforeScope = await soloLog()
+await page.clickText(`Arrange the Top ${orderCount} in This Order`, { settle: 600 })
+
+const scopedLog = (await soloLog()).slice(logBeforeScope.length)
+check('reordering the top says what it did, and does not claim a search',
+   /Put 3 cards on top of Deck in order/.test(scopedLog) && !/Searched deck/.test(scopedLog),
+   scopedLog.slice(0, 140))
+await openDeckOrder()
+const afterScope = await grid()
+check('the rearranged cards are the top of the deck, card 1 drawn first',
+   JSON.stringify(afterScope.slice(0, orderCount)) === JSON.stringify(wantedTop),
+   `${JSON.stringify(afterScope.slice(0, orderCount))} wanted ${JSON.stringify(wantedTop)}`)
+
+/*
+   The point of no shuffle, and the only thing that can tell it from one: the
+   cards *below* the block are exactly the cards that were below it, in the same
+   order. A shuffle of the rest would have left them a different sequence, and
+   the block itself would have been indistinguishable either way.
+*/
+check('and the rest of the deck is exactly as it was, untouched by a shuffle',
+   JSON.stringify(afterScope.slice(orderCount)) === JSON.stringify(beforeScopeDeck.slice(orderCount)),
+   'nothing under the rearranged block moved')
+
+check('and the deck still holds every card it did', afterScope.length === heldNow,
+   `${afterScope.length} of ${heldNow}`)
+
+/*
+   Closing a dialog without placing anything is a look that ended in nothing: the
+   deck is not touched, so the log carries the look and nothing else - which is
+   what makes "Viewed deck" and "Put 3 cards ... in order" together say exactly
+   what happened.
+*/
+const logBeforeClose = await soloLog()
+await openOrderTopX(orderCount)
+await closeDialog()
+const closeLog = (await soloLog()).slice(logBeforeClose.length)
+check('opening and closing it again logs the look, and no placement',
+   /Viewed deck/.test(closeLog) && !/Put \d+ cards/.test(closeLog) && !/Searched deck/.test(closeLog),
+   closeLog.slice(0, 140))
 
 /*
  * The mirror's own handling of an ordered move is not covered here. It is a
@@ -389,10 +562,32 @@ const shape = await page.evaluate(`(() => {
 
 check('the panel fits the window rather than running off it',
    shape.panelBottom <= shape.windowHeight, JSON.stringify(shape))
-check('its body scrolls, so the whole deck is reachable',
-   shape.scrolls === true, `${shape.bodyHeight}px of body, scrolls: ${shape.scrolls}`)
-check('and the actions stay at the panel\'s foot, not down the page',
+check('and its actions stay at the panel\'s foot, not down the page',
    shape.actionsAtFoot === true, JSON.stringify(shape))
+
+/*
+   Whether the body has overflow depends on how big the deck is and how big the
+   window is - not on anything this feature does. The overflow itself is what PR
+   #122 is about and was verified there; what matters here is that the cards are
+   in a scroll container at all, which is what makes a sixty-card grid reachable
+   past a footer that cannot move.
+*/
+const scrollable = await page.evaluate(`(() => {
+   const body = document.querySelector('.popup-body')
+   if (!body) return null
+   const style = getComputedStyle(body)
+   const panel = getComputedStyle(document.querySelector('.popup'))
+   return {
+      overflowY: style.overflowY,
+      minHeight: style.minHeight,
+      maxHeight: panel.maxHeight,
+      height: Math.round(document.querySelector('.popup').getBoundingClientRect().height)
+   }
+})()`)
+check('with the cards in a body that scrolls, under a panel capped to the window',
+   scrollable && /auto|scroll/.test(scrollable.overflowY) &&
+   parseInt(scrollable.maxHeight, 10) > 0 && parseInt(scrollable.maxHeight, 10) < 636,
+   JSON.stringify(scrollable))
 
 await browser.setViewport(1277, 821)
 await closeDialog()
