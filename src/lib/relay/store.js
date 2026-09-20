@@ -61,8 +61,9 @@ export const CLOSED_TTL_S = 120
    how you would expect a stale room to go.
 
    Note this means an in-flight game does not survive a deploy. That is the
-   intended trade (see the README), and the members of those rooms are told the
-   game closed rather than being left on a board nothing will update.
+   intended trade (see docs/rooms.md, "A deploy closes the rooms it replaces"),
+   and the members of those rooms are told the game closed rather than being left
+   on a board nothing will update.
 */
 function newEpoch () {
    if (process.env.VERCEL_GIT_COMMIT_SHA) return `sha:${process.env.VERCEL_GIT_COMMIT_SHA}`

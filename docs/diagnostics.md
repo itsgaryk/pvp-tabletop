@@ -1,0 +1,292 @@
+# Troubleshooting and diagnostics
+
+Five tools, for the five questions that are expensive to answer by hand. Each of
+them exists because the hand-written version of it produced a wrong answer at
+least once.
+
+| Question | Where the answer is |
+| --- | --- |
+| "What actually happened in that room?" | `node tools/room-log.mjs <ROOM>` |
+| "Is it the state or the client?" | Settings -> Diagnostics (also at `/diagnostics`) |
+| "Has my change actually shipped?" | `node tools/deployed.mjs --url <app> <marker>` |
+| "Does the relay still enforce its own rules?" | `node tools/relay-check.mjs` |
+| "Does the app really do that, in a browser?" | `node tools/browser-check.mjs` |
+| "Is the clock still smooth and still shared?" | `node tools/clock-check.mjs` |
+| "Did those cards land in the order that was chosen?" | `node tools/deck-order-check.mjs` (see [below](#is-the-deck-in-the-order-that-was-chosen)) |
+
+## Verifying a change: `tools/relay-check.mjs` and `tools/browser-check.mjs`
+
+`relay-check.mjs` asks the relay directly about the things this project has
+got wrong before — leaving, the two waits, restarts, the idle prompt and the
+stale-member sweep — and prints a line per check. It needs no browser and no
+network beyond the deployment, so it runs against a Vercel preview as happily as
+against `vite dev`:
+
+```sh
+node tools/relay-check.mjs                              # against localhost:3005
+BASE=https://your-app.vercel.app node tools/relay-check.mjs
+```
+
+It reads the windows out of `/api/relay/health` and, against a deployment
+running the production ten- and fifteen-minute ones, **skips** the timing checks
+and says so rather than either failing or pretending to have run them. Point it
+at a server started with second-scale windows and it exercises the whole
+lifecycle:
+
+```sh
+node tools/fake-redis.mjs &
+RELAY_IDLE_MS=3000 RELAY_PROMPT_MS=5000 RELAY_MEMBER_STALE_MS=8000 \
+RELAY_HOST_WAIT_MS=3000 RELAY_REJOIN_WAIT_MS=10000 \
+RELAY_POLL_WAIT_MS=1000 RELAY_POLL_INTERVAL_MS=300 \
+KV_REST_API_URL=http://127.0.0.1:6390 KV_REST_API_TOKEN=local npm run dev &
+node tools/relay-check.mjs
+```
+
+`browser-check.mjs` drives the same behaviours through **three real browsers** —
+two players and a spectator, the arrangement that caught the spectator bugs — and
+checks what is actually on screen: the centred dialogs, the board behind them,
+the watcher count in the header, the countdown. It attaches to browsers you
+started yourself, one per page on ports 9222/9223/9224, because a helper that
+spawns its own browsers has twice put an error dialog on somebody's screen. Its
+header comment has the commands.
+
+Its `panel` section covers the board panel's own changes, which nothing else can
+see because none of them cross the wire — the Hide Pokémon glow that stays until
+it is clicked, the clock in both directions, the Chat tab lit by a message that
+arrived while the log was showing, the zone names that come with the zone
+outlines and the number the table does not carry, and both markers at once, each
+with its own click, its own used state and its own log line:
+
+```sh
+node tools/browser-check.mjs --only panel     # just that section
+```
+
+It answers the relay's "Still playing?" while it works. The idle windows are the
+room's clock rather than one section's, and they are set in seconds for the idle
+section's sake — and this is the section that spends longer than that reading the
+board without appending anything to the relay. Unanswered, the prompt closed the
+room halfway through and every check after it read the main menu: eighteen
+failures with one dialog behind them, and three that passed because an empty list
+satisfies "none of them do X". Its checks that assert an absence — the deck is
+shut, nobody has been told the time is up, no marks are left — now ask for the
+board as well, so a room that has gone cannot pass them.
+
+Its `lobby` section covers the way in — the **main menu**. The menu is the logo and
+the four buttons and nothing else on the window: the board, the settings cog and
+Edit Deck all stand aside while it is up. The logo sits to the left of the buttons,
+the buttons are a column of equal widths evenly spaced down it, and the pair is
+centred in the window. There is no name field and no Room ID field either, so every
+button opens a centred prompt for whatever that button needs — the name, and for
+joining or spectating the room code.
+
+```sh
+node tools/browser-check.mjs --only lobby     # just that section
+```
+
+## Is the deck in the order that was chosen?
+
+```sh
+node tools/fake-deck-api.mjs                            # terminal 1: a stand-in deck API
+VITE_LIMITLESS_WEB=http://127.0.0.1:6391 npm run dev    # terminal 2
+node tools/deck-order-check.mjs                         # terminal 3
+```
+
+A placed card is only *placed* if the player draws it next, so this check reads the
+order off the dialog — which shows the deck top card first — and then **draws**.
+That is the whole method, and it is the only one that works: a count cannot tell a
+placement from a shuffle, and a card's *name* cannot tell a placement from a
+lookalike, because a real deck holds four copies of it. Both of those were traps
+here, and both are answered by the same thing — the stand-in deck's 60 cards all
+have different names, so a grid cell, a name and a position are one statement, and
+the card that comes out of a draw is compared to the cell wearing the badge for it.
+
+The convention it is really testing is stated in the check itself rather than
+assumed: **the grid is top card first, so its first cell is the card a draw takes.**
+Verified against a draw before anything is placed, and again after — a placement
+that lands upside down reads perfectly in the dialog, and this is the only place
+that shows it.
+
+Ordering inside the deck is checked three ways, because the three are different
+claims: placing on the top, placing on the bottom (where card 1 of the pair is the
+first of them drawn and the deck is read from its other end), and *Order Top X*,
+which additionally asserts that **the cards under the block are untouched** — the
+one thing that can tell a rearrangement from a shuffle, since the block itself
+looks the same either way.
+
+`fake-deck-api.mjs` is to the deck import what `fake-redis.mjs` is to the relay: a
+stand-in for somebody else's API, so a browser check does not depend on
+limitlesstcg.com being up, answering, and answering the same way twice. Its deck is
+deterministic and its 60 card names are all **different** — `Card01` to `Card60` —
+which is what makes an order assertable at all. Point the dev server at it with
+`VITE_LIMITLESS_WEB`, or leave it out and "Import Random Deck" reaches the real API.
+(A duplicate-name deck is the harder case and the one a real game hands you; it is
+deliberately *not* what this stand-in serves, because a check about order cannot say
+where a card went while four cards answer to the same name.)
+
+## Is the clock smooth, and the same on both boards?
+
+The clock is the one thing here that is about *time*, so it gets its own tool
+rather than a section of `browser-check`: it needs twenty quiet seconds on two
+browsers, and it makes the room it uses itself. A section that continued in
+whatever room another section left open was a check that could be skipped for the
+wrong reason — and the fault it exists for, a client-side crash while a board is
+being built, shows up as *every* later section failing instead.
+
+```sh
+node tools/clock-check.mjs
+```
+
+It says whether the room opened at all (which is what a crash in the clock
+component looks like from outside), then samples both boards every 700 ms for
+twelve seconds of a running clock: never counting up, never stuck, never dropping
+several seconds at once, and the two players never drifting apart. Then it moves
+one browser's wall clock +8 s and then −9 s underneath it and checks that nothing
+on screen moved — a machine clock being corrected by NTP is not time passing on
+the table.
+
+Its dev server needs idle windows longer than the run (two minutes is
+comfortable), since a clock sits still for twenty seconds at a time on purpose.
+
+## A room's story: `tools/room-log.mjs`
+
+The relay keeps a room as an ordered event log, so every question about a broken
+game is really a question about that log. Reading it by hand - fetch
+`/api/relay/poll?since=0`, scan for the last `boardState`, look for a
+`boardReset` - is easy to do badly, and a bad read is how a wrong conclusion gets
+drawn.
+
+```sh
+node tools/room-log.mjs ABC123                       # against the dev server
+node tools/room-log.mjs ABC123 --tail 40             # just the end of the log
+node tools/room-log.mjs ABC123 --json > room.json    # attach it to a bug report
+BASE=https://your-app.vercel.app node tools/room-log.mjs ABC123
+```
+
+It prints the seats in join order, a timeline with the seconds since the first
+event, the counts per event name and per sender, and then a **verdict**:
+
+```
+what this log says
+  [ok] the last full board state (#6) holds 67 cards (deck 45, hand 7, prizes 6, discard 4, active 2, bench 3)
+  [ok] the last full board state (#6) is newer than the last spectator change (#5)
+  [-] 11 events over 0s (first #1 at 2026-09-18 17:44:21Z, last #11 at 2026-09-18 17:44:21Z)
+
+verdict: no problem visible in the log - if the board is wrong, suspect the client
+```
+
+That last line is the point. `[x]` findings mean the **state** is wrong and the log
+says so - a board reset with nothing published after it, a full state that is
+empty, a sequence gap, an event burst from two clients echoing each other. No
+`[x]` at all means the relay's own record is sound, which moves the suspicion to
+the client - and that is what `/diagnostics` is for.
+
+It is **read-only**, and deliberately so: it never sends a `memberId`, so the
+relay records no presence for it and spends no writes. Reading a small room costs
+four commands (two `GET`, one `LRANGE`, one `HGETALL`) and a room larger than one
+poll page costs one extra round.
+
+## The diagnostics panel
+
+Open it from **Settings -> Diagnostics**. It appears as a dialog over the board,
+which is deliberate: diagnostics are wanted while a game looks wrong, and going to
+another page reloads the app and rebuilds the board - so the thing being diagnosed
+would be gone. Pressing the cog, Escape or a click outside closes it.
+
+The same panel is also served at `/diagnostics` as a standalone page, which is
+handy for a bug report or for looking at things with no game open. Both render one
+component, so they cannot drift apart.
+
+It is a live snapshot of *this browser*: relay health and the poll settings the
+deployment is running, the room and its role, the seats in join order, the
+spectator count, the clock skew against the relay, the boards' zone counts, and
+the last events the transport delivered.
+
+The section that earns its place is the event list:
+
+```
+age   seq   event              from          handled
+2s    41    boardState         Alice         yes
+2s    42    damageUpdated      Bob           yes
+1s    43    prizeToggle        relay         IGNORED
+```
+
+`IGNORED` means the relay delivered that event and **no handler in this client
+was listening for it**. That is the shape of the spectator bugs: the log was
+healthy, the poll delivered everything, the board stayed empty and nothing on
+screen or in the console said why. An event with no listener used to disappear
+without a trace; now it is a line here.
+
+The zone counts are read through `exportBoard()`, the same shape a player sends
+the relay - so "deck 45, hand 7, bench 3" here is the number this client is
+*publishing*, not a second opinion about the board. If that disagrees with what
+the other half shows, the fault is in between.
+
+There is also a **Copy report** button, which puts the whole snapshot on the
+clipboard as JSON.
+
+## Claiming a deploy: `tools/deployed.mjs`
+
+Merged is not deployed. A build can lag a merge by minutes, and checking by eye
+twice is how "deployed" gets claimed when it is not. This asks the deployment
+itself:
+
+```sh
+node tools/deployed.mjs --url https://your-app.vercel.app
+node tools/deployed.mjs --url https://your-app.vercel.app "some literal from your change"
+node tools/deployed.mjs --local            # just this build, no network
+```
+
+It answers two ways, because either alone can mislead:
+
+- **the fingerprint** - SvelteKit writes `/_app/version.json`, and each asset
+  carries a content hash in its filename. It prints both versions and compares the
+  module graph file by file. Assets are discovered the way a browser discovers
+  them, by following `import()` from the served HTML, so a route chunk that is not
+  preloaded still counts as present.
+- **the marker** - a literal string you know is in your change, searched in both
+  the local build and the served bundle. `local yes, deployment no` is the exact
+  answer to "has my merge shipped?":
+
+```
+verdict: NOT DEPLOYED - "last relay error" is in the local build but not in the
+served bundle, so the deployment is behind this build.
+```
+
+A marker must survive minification, so pick a string literal, a route path, an
+event name or a CSS class - not an identifier you invented, which the minifier may
+rename.
+
+Three answers are refused deliberately, because each would otherwise be a
+confident guess:
+
+- **a marker in neither build** - it proves nothing, so the tool says so rather
+  than reporting "not deployed" from no evidence
+- **a deployment that cannot be read** - a wrong URL, a 404, or a login wall
+  produces "cannot tell", naming what actually came back. Reading a login page
+  and calling it an empty deployment is the mistake this avoids
+- **a fingerprint that differs** - a deployment built somewhere else (Vercel, CI)
+  compiles the same source into different content hashes, so its fingerprint can
+  never match a local build and the asset diff is noise. When every marker is
+  present the answer is "deployed", with the differing hashes explained rather
+  than reported as drift:
+
+```
+verdict: deployed - every marker is in the served bundle, so this change is live.
+The fingerprint differs (local 1789755944145, live 1789756230756) because the
+deployment was built separately, which is normal and not a sign of drift.
+```
+
+The version fingerprint is most useful for comparing **one deployment against
+itself over time** - before and after a release, or two preview URLs - rather than
+a local build against a remote one.
+
+## Failures that used to be silent
+
+A relay fault used to end at `console.error` and nowhere else, so a board could
+sit there quietly wrong with nothing to explain it. The transport now keeps the
+last 40 faults - failed sends, failed polls, handlers that threw, and events
+dropped with nowhere to send them - and the connection panel shows the most
+recent one as `relay: <kind> - <reason>`. The full list is on `/diagnostics`.
+
+Solo mode is excluded from "dropped event" reports on purpose: having no room is
+the design there, so it is not a fault.
