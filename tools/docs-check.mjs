@@ -25,10 +25,12 @@
    It is read-only: no browser, no network, no store, nothing to configure.
    Exits non-zero when a link is broken, so it can gate a check.
 
-   Note it implements the slug rules for the headings this project actually has,
-   which are ASCII. A heading with an accent or a typographic dash would need
-   GitHub's own slugger, and the check would under-report rather than over-report
-   its anchors - so it never fails a link that GitHub would resolve.
+   Note the slug is computed the simple way, which is right for the headings this
+   project has - they are ASCII, and the punctuation between them and GitHub's own
+   slugger is the same set. A heading carrying an accent or a typographic dash
+   would slug differently here than on GitHub, and this would then report a link
+   that GitHub resolves. If a heading ever grows one, this needs GitHub's slugger
+   rather than a cleverer regex.
 */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
@@ -70,7 +72,9 @@ function unfenced (text) {
    }).join('\n')
 }
 
-const LINK = /(!?)\[[^\]]*\]\(([^)\s]+)\)/g
+/* the title a markdown link may carry is part of neither half we check, and a
+   link that has one must not be skipped rather than checked */
+const LINK = /(!?)\[[^\]]*\]\(\s*([^)\s]+?)(?:\s+"[^"]*")?\s*\)/g
 const EXTERNAL = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i
 
 const isDir = (path) => {
