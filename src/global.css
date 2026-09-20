@@ -116,6 +116,16 @@ img.card {
       taking all of it.
    */
    --slot-card-share: calc(105 / 139);
+
+   /*
+      The bar a sideways-scrolling zone draws at its own bottom edge (`Horizontal.svelte`,
+      which styles it). It is part of the box a zone hands its row, so a row that fills
+      its zone has to leave it room the way it leaves room for a padding - otherwise the
+      row is 10px past the bottom of the zone the moment it starts to scroll. The hand's
+      row is the bottom row of the board, so 10px past it is a scrollbar on the whole
+      board (see Board.svelte).
+   */
+   --scrollbar: 10px;
 }
 
 .primary {

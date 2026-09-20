@@ -39,7 +39,7 @@
    }
 
    .horizontal::-webkit-scrollbar {
-      height: 10px;
+      height: var(--scrollbar, 10px);
       background-color: #f5f5f5;
    }
 
