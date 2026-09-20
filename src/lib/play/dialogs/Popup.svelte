@@ -73,13 +73,23 @@
 
 {#if isOpen}
    <!-- as wide as what is in it, and centred rather than pinned to a corner -->
-   <div class="m-8 z-20 bg-[var(--popup-color)] rounded-md border border-black w-max max-w-[calc(100vw-4rem)]"
+   <div class="popup m-8 z-20 bg-[var(--popup-color)] rounded-md border border-black w-max max-w-[calc(100vw-4rem)]"
       class:anchored
       class:centered
       use:clickOutside on:outclick={closed}
       use:escape on:esc={closed}>
 
-      <slot></slot>
+      <!--
+         What the panel was opened to show, and the only part of it that scrolls: a pile
+         inspection is a grid of cards taller than any window (see Inspection.svelte), and
+         a panel that runs off the bottom of the window has nothing to scroll it with -
+         the wheel over it does nothing at all. The actions below stay at its foot, where
+         the buttons of a panel belong.
+      -->
+      <div class="popup-body">
+         <slot></slot>
+      </div>
+
       <!--
          One action per line: a panel is not a toolbar. Rendered only when a panel
          actually has actions, so the settings menu - which has none, since the cog,
@@ -99,12 +109,39 @@
       The inspection and detail panels sit in the middle of the window. They used
       to span its full width from the top left, so narrowing them to their content
       left them looking pinned to the corner.
+
+      On the panel itself, by class: this was a bare `div` rule, and a Svelte
+      component scopes that to every `div` in its own markup - which caught the row of
+      actions above and fixed it to the top of the window, over the cards, instead of
+      leaving it at the foot of the panel where it is written.
    */
-   div {
+   .popup {
       position: fixed;
       top: 2rem;
       left: 50%;
       transform: translateX(-50%);
+      /*
+         Taller than the window is not a height a panel can have. It takes what the
+         window gives it and hands the rest to its body, which scrolls: without this the
+         panel simply ran off the bottom of the window, and a fixed box that is off the
+         bottom is a box nothing can scroll to.
+
+         The 6rem is the panel's own margins: `m-8` above and below it (2rem each), on top
+         of the `top: 2rem` it is placed at, so the panel keeps the gap from the bottom of
+         the window that it keeps from the top.
+      */
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - 6rem);
+   }
+
+   /*
+      `min-height: 0` is load-bearing: a flex child defaults to `min-height: auto`, so a
+      scroll container among them grows to its content instead of scrolling it.
+   */
+   .popup-body {
+      min-height: 0;
+      overflow-y: auto;
    }
 
    /*
@@ -119,6 +156,7 @@
       right: 0.75rem;
       transform: none;
       margin: 0;
+      max-height: calc(100vh - 4rem);
    }
 
    /*
@@ -134,5 +172,6 @@
       top: 50%;
       margin: 0;
       transform: translate(-50%, -50%);
+      max-height: calc(100vh - 4rem);
    }
 </style>
