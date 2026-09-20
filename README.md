@@ -629,6 +629,15 @@ Deck, hand, prizes, discard and lost zone carry one; the stadium, the active spo
 the bench never did — the first because two cards are read by looking at them, the
 other two because they are slots.
 
+**Reading a pile** — *View All* on a deck, discard or lost zone — is a grid of every card
+in it, which is taller than any window: fifty cards at 136px each is four rows. The panel
+is therefore the window's height at most and its *body* scrolls (`Popup.svelte`), with the
+panel's own actions at its foot; a panel that simply runs off the bottom of the window
+cannot be scrolled at all, because a fixed box that is off the bottom is not part of
+anything's scrollable area — the wheel over it does nothing, and there is no bar to drag.
+The panel takes its share of the window the same way the board does (see the zones), and
+the same is true of the multi-card selection dialog, which is the same grid.
+
 ### A card on the board is the size of the zone it is in
 
 Not a setting: **every zone of the board is a size container**
