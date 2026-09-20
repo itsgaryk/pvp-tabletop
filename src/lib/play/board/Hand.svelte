@@ -102,8 +102,19 @@
       height: 100%;
    }
 
-   /* a card is the height of the hand, less a few pixels so it does not touch the bar */
+   /*
+      A card is the height of the hand, less what has to fit around it: the row's own
+      `padding`, the pile's `p-1` under that (which `100cqh` knows nothing about, the
+      same 8px the prizes work with), the bar a hand that does not fit draws under it
+      (`--scrollbar`), and the card's own 2px border top and bottom - drawn outside the
+      image, so it is the card's height rather than its width that the formula has to
+      be shortened by.
+
+      All of it used to be missed, which left the row over the bottom of the zone: this
+      is the board's last row, and 2px past it is a scrollbar on the whole board (see
+      Board.svelte).
+   */
    .hand-cards :global(img.card) {
-      width: calc((100cqh - 2 * var(--card-gap)) * var(--card-ratio));
+      width: calc((100cqh - 8px - 2 * var(--card-gap) - var(--scrollbar)) * var(--card-ratio) - 4px);
    }
 </style>

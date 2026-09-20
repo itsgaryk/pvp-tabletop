@@ -61,6 +61,8 @@
    }
 
    .hand-cards :global(img.card) {
-      width: calc((100cqh - 2 * var(--card-gap)) * var(--card-ratio));
+      /* the zone, less the row's padding, the pile's `p-1`, the scrollbar and the card's
+         border: the near half's note, in board/Hand.svelte, in full */
+      width: calc((100cqh - 8px - 2 * var(--card-gap) - var(--scrollbar)) * var(--card-ratio) - 4px);
    }
 </style>

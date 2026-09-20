@@ -648,6 +648,20 @@ three prizes by three. The hand is
 the other arrangement: its cards lie *along* it, so they are sized by the zone's height
 and the row scrolls sideways once twenty of them no longer fit.
 
+**The bar a row scrolls with is part of the zone as well.** `--scrollbar` (in
+`global.css`) is the height `Horizontal.svelte` draws that bar at, and a row that fills
+its zone leaves room for it the way it leaves room for a padding — the hand's row is the
+board's *last* row, so a row 10px past the bottom of the zone is a scrollbar down the side
+of the whole board. The hand's cards leave room for two more things the same way: the
+pile's own `p-1`, which `100cqh` knows nothing about (the arithmetic the prizes work
+around too), and the 2px border a card carries on each side, which is drawn outside the
+image.
+
+That is a card a little smaller than the zone alone would allow, and it is what keeps the
+board exactly the window: nothing on it overflows a zone in either direction, at any
+window, with any number of cards in hand or on a bench — which is what `Board.svelte`'s
+`h-screen` wrapper scrolling would mean.
+
 This is why `--card-width` is only what a card is where no zone has sized it: in an
 inspection, in the deck list, in a dialog, and on the table's stack — and it is what a
 slot's cards fall back to if one is ever put outside the two zones that hold them.
