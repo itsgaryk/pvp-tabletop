@@ -385,17 +385,18 @@ export function toActive () {
    resetSelection()
 }
 
+/*
+   The whole of what this player has in play in the Stadium, to their discard. Used
+   when they play a card while already at the limit, so the whole of their own is
+   replaced by the card just played, and for the answer to the other player's play,
+   which clears whatever this player held there however many that is.
+*/
 export function discardStadium () {
    if (isSpectator()) return 0
 
    const cards = stadium.get()
    if (!cards.length) return 0
 
-   /*
-      All of them, not the top one: the Stadium holds up to two of a player's own
-      cards, and a card the other player plays clears the whole of what this
-      player had in play there.
-   */
    const ids = cards.map(card => card._id)
    discard.merge(cards)
    stadium.clear()
@@ -407,13 +408,14 @@ export function discardStadium () {
 /*
    Playing a card into this player's Stadium.
 
-   A card of the other half's is never what this plays: a player may have two of
-   their own in play there, and playing a third replaces the oldest of their own
-   two - the way playing a Stadium replaces the one already in play. The *other*
-   player's cards go to their discard, which is answered on their own client: the
-   relay delivers `stadiumPlayed` to them, and the mirror there clears what its
-   own player had in play (see opponent.js). In solo both halves are this board
-   and nothing is relayed, so that answer is made here instead - solo.js
+   A card of the other half's is never what this plays: a player may place two of
+   their own in play there, and a card played while they are already at those two
+   replaces the whole of what they had - the way playing a Stadium replaces the one
+   already in play - so the card just played is the only one of theirs left in it.
+   The *other* player's cards go to their discard, which is answered on their own
+   client: the relay delivers `stadiumPlayed` to them, and the mirror there clears
+   what its own player had in play (see opponent.js). In solo both halves are this
+   board and nothing is relayed, so that answer is made here instead - solo.js
    registers it, rather than this module importing a board that imports it back.
 */
 const stadiumAnswers = new Set()
@@ -435,14 +437,18 @@ export function toStadium () {
 
    selectionPile.remove(card)
 
-   /* a third card is the stadium being replaced, so the oldest of our own goes */
-   while (stadium.get().length >= STADIUM_LIMIT) {
-      const replaced = stadium.shift()
-      if (!replaced) break
-      discard.push(replaced)
-      share('cardsMoved', { cards: [ replaced._id ], from: 'stadium', to: 'discard' })
-      logMove([ replaced ], 'stadium', 'discard')
-   }
+   /*
+      A card played while this player is already at the limit is the stadium being
+      replaced, and the whole of what they had in play there goes with it - not
+      just the oldest of the two.
+
+      Below the limit nothing is cleared and the card simply joins what is there -
+      which is the one state the two-card Stadium is reached from, since playing
+      onwards from it always replaces it (see STADIUM_LIMIT).
+   */
+   const replaced = stadium.get().length >= STADIUM_LIMIT
+   const cleared = replaced ? discardStadium() : 0
+   if (cleared) logMove(stadium.get(), 'stadium', 'discard')
 
    stadium.push(card)
 

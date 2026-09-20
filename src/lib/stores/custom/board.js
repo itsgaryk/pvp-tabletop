@@ -12,10 +12,12 @@ import { DEFAULT_TIMER_MS, timer } from '../timer.js'
 export { DEFAULT_TIMER_MS, timer }
 
 /*
-   How many cards one player may have in the Stadium at once. The Stadium is the
-   one cell both players play into, and each of them may keep two cards in play
-   there; a third replaces the oldest of that player's own two, the way playing a
-   Stadium replaces the one already in play.
+   How many cards one player may hold in the Stadium before playing there replaces
+   what they have. The Stadium is the one cell both players play into, and a player
+   may place up to two of their own cards in play there one at a time; a card played
+   while they are already at the limit is the stadium being replaced, so the whole
+   of their own is discarded and the new card is the only one left in play - not the
+   oldest of the two (see toStadium in ../player.js).
 */
 export const STADIUM_LIMIT = 2
 
@@ -32,8 +34,9 @@ export function board () {
    const active = writable(null)
    /*
       The Stadium is a list rather than the single card it used to be: a player
-      may have two cards in play in it at once (see STADIUM_LIMIT), and they are
-      drawn side by side.
+      may place two cards in play in it one at a time (see STADIUM_LIMIT), and they
+      are drawn side by side. A card played while they are already at that limit
+      replaces the whole of their own there rather than joining it.
 
       It is still one zone per player - the opponent's cards in it are their own,
       on the same board's other half - so a card played by either player kicks the

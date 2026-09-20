@@ -832,17 +832,19 @@ Two things are not sized this way, and each is deliberate:
 
 ### The Stadium holds two cards, and a play clears the other player's
 
-The Stadium is the one zone both players play into, and each of them may keep **two
+The Stadium is the one zone both players play into, and each of them may place **two
 cards** in it (`STADIUM_LIMIT`, in `src/lib/stores/custom/board.js`). Both are drawn
 side by side, each taking half of what one card used to, so the pair fits the band the
 single card did.
 
-- **A third card is the stadium being replaced.** The oldest of that player's own two
-  goes to their discard, and the new card joins the one that is left. Nothing is
-  refused: a drop that did nothing would be worse than a rule with a name.
-- **A card one player plays clears the other player's out of it**, all of them, into
-  that player's discard. So the two players' cards are only ever in it together for
-  the moment a play takes to cross the wire.
+- **A card played while that player is already at two is the stadium being replaced.**
+  The whole of that player's own is discarded — both cards, not the oldest of them —
+  and the card just played is the only one they have left in play. Below two the card
+  simply joins what is there, which is the only way the pair is ever reached. Nothing
+  is refused: a drop that did nothing would be worse than a rule with a name.
+- **A card one player plays clears the other player's out of it**, all of them
+  whatever they held — one or two — into that player's discard. So the two players'
+  cards are only ever in it together for the moment a play takes to cross the wire.
 
 That second rule is the one with a shape worth knowing, because the client that
 answers it is not the client that plays the card. Playing a card shares

@@ -11,10 +11,10 @@
  *   leaving    a player leaving ends the game for the one still sitting there,
  *              who gets the centred "Room closed: player left the room" dialog
  *              and an emptied board behind it; the leaver is not shown it
- *   stadium    the one zone both players play into: two cards each, drawn side by
- *              side, a third replacing that player's own oldest, and a card one
- *              player plays sending the other player's cards to that player's
- *              discard
+ *   stadium    the one zone both players play into: two cards each placed one at a
+ *              time and drawn side by side, a card played at that limit replacing
+ *              the whole of that player's own, and a card one player plays sending
+ *              the other player's cards to that player's discard
  *   beacon     a spectator whose TAB CLOSES drops out of the count, with no
  *              button pressed - the pagehide beacon
  *   restart    a room stamped by another deployment closes on the next poll
@@ -569,7 +569,7 @@ if (want('leave')) {
 /* ------------------------------------------- 2. two cards in the Stadium --- */
 
 if (want('stadium')) {
-   const room = await seatGame('the Stadium: two cards each, and a play clears the other player\'s')
+   const room = await seatGame('the Stadium: two cards each, a play at the limit clearing that player\'s own, and a play clearing the other player\'s')
    console.log(`  room ${room}`)
 
    /*
@@ -670,20 +670,26 @@ if (want('stadium')) {
       (await stadium(bob)).far.count === 2 && (await stadium(bob)).far.overlap === false,
       JSON.stringify((await stadium(bob)).far))
 
-   /* a third card replaces the oldest of that player's own, into their discard */
-   check('a third card is played too', await playToStadium(alice))
-   const three = await stadium(alice)
-   check('the Stadium still holds two, not three', three.own.count === 2, JSON.stringify(three.own))
-   check('and the one it replaced went to that player\'s discard',
-      (await badges(alice)).own.discard === 1, JSON.stringify((await badges(alice)).own))
+   /*
+      A further card, played while that player is already at two: the whole of what
+      they had in play there goes to their discard - both of them, not just the
+      oldest - and the card just played is the only one they have left in it.
+   */
+   check('a further card is played too', await playToStadium(alice))
+   const replaced = await stadium(alice)
+   check('the Stadium holds the card just played and neither of the others',
+      replaced.own.count === 1, JSON.stringify(replaced.own))
+   check('and both of the ones it replaced went to that player\'s discard',
+      (await badges(alice)).own.discard === 2, JSON.stringify((await badges(alice)).own))
 
    /*
-      The other player plays: everything the first player had in the Stadium goes
-      to the first player's discard, and the card played is the only one there.
+      The other player plays: whatever the first player held in the Stadium - one
+      card here, or two - goes to the first player's discard, and the card played is
+      the only one left in play.
    */
    check('the opponent can play into the Stadium as well', await playToStadium(bob))
    await sleep(2500)
-   check('and the player\'s cards in it went to the player\'s discard',
+   check('and the player\'s card in it went to the player\'s discard',
       (await stadium(alice)).own.count === 0 && (await badges(alice)).own.discard === 3,
       JSON.stringify({ stadium: (await stadium(alice)).own, badges: (await badges(alice)).own }))
    check('the opponent\'s own discard is untouched by playing',
