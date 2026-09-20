@@ -141,17 +141,25 @@ function takeFrom (source, card) {
 function putInto (target, card, bottom = false) {
    if (isStadium(target)) {
       /*
-         The far half's own two: a third replaces the oldest of theirs, the way
-         playing a Stadium replaces the one already in play. It does not clear the
-         near half's - a card played there is what does that, and it is played
-         from the other side of the table (see soloCardToStadium).
+         The far half's own cards there, replaced wholesale once they are at the
+         limit: a card played while they hold two sends both to their discard and
+         is the only one left in play, the same rule the near half plays by (see
+         toStadium in player.js). Below the limit it joins what is there and
+         nothing is discarded.
+
+         It does not clear the near half's - a card played there is what does
+         that, and it is played from the other side of the table (see
+         soloCardToStadium).
       */
-      while (target.get().length >= STADIUM_LIMIT) {
-         const replaced = target.shift()
-         if (!replaced) break
-         defaultOpponent.discard.push(replaced)
-         logForOpponent(`Discarded ${replaced.name || 'a card'} from their Stadium`)
+      const replaced = target.get().length >= STADIUM_LIMIT
+      const cleared = replaced ? [ ...target.get() ] : []
+
+      if (cleared.length) {
+         target.clear()
+         defaultOpponent.discard.merge(cleared)
+         for (const gone of cleared) logForOpponent(`Discarded ${gone.name || 'a card'} from their Stadium`)
       }
+
       target.push(card)
    } else if (bottom) target.unshift(card)
    else target.push(card)
@@ -211,9 +219,13 @@ export function soloCardAttach (pile, card) {
    A card off that half goes onto that half's Stadium, and the near half's cards
    in the Stadium go to the near half's discard.
 
-   That second half is the rule for the shared zone, and in a room it is not this
-   side's to make: the relay delivers `stadiumPlayed` to the player being cleared,
-   and their own client discards what they had in play there. Solo relays
+   The far half's own follow the same rule as the near half's: they are placed one
+   at a time up to two, and a card played once they are at two replaces the whole of
+   what they had there (see putInto above).
+
+   Clearing the near half is the rule for the shared zone, and in a room it is not
+   this side's to make: the relay delivers `stadiumPlayed` to the player being
+   cleared, and their own client discards what they had in play there. Solo relays
    nothing, so the answer is made here instead - and the mirror image of it, a
    card played into the *near* half's Stadium clearing the far half's, is
    registered with player.js (see onStadiumPlay there).

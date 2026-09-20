@@ -12,9 +12,10 @@
 
    /*
       A card of the player's own may land here from any pile but the Stadium
-      itself, and the Stadium holds two of them (see STADIUM_LIMIT): a third is
-      the stadium being replaced rather than a drop to refuse, so `toStadium`
-      sends the oldest of the two to the discard.
+      itself, and the Stadium holds two of them (see STADIUM_LIMIT): a card played
+      while they are already at two is the stadium being replaced rather than a
+      drop to refuse, so `toStadium` sends the whole of what they had there to the
+      discard.
 
       The Stadium's cell is shared, and each half plays into *its own* Stadium in
       it - so this one stands aside while a card of the far half's is being
