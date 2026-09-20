@@ -7,7 +7,7 @@
    import { logMove } from '$lib/stores/logger.js'
 
    import { deck, discard, lz, prizes, draw, shuffle } from '$lib/stores/player.js'
-   const { openPile, openSelection } = getContext('boardActions')
+   const { openPile, openDeckOrder, openSelection } = getContext('boardActions')
 
    let menu
 
@@ -28,6 +28,18 @@
    function pickX (bottom = false) {
       let x = parseInt(prompt('Look at how many cards?'))
       if (x) openSelection(deck, x, { bottom })
+   }
+
+   /*
+      Looking through the deck to put cards back on top of it - or under it - in a
+      chosen order: a search that ends with the player deciding what they draw
+      next. Opening it says nothing, the way picking cards up says nothing: what
+      the log records is the search itself, and that is written when the cards are
+      actually placed (see lookAndPlace). A player who opens this and closes it
+      again has done nothing to the deck and nothing worth telling anyone.
+   */
+   function arrangeDeck () {
+      openDeckOrder()
    }
 
    /*
@@ -56,6 +68,7 @@
       <ContextMenuOption click={viewDeck} text="View All" shortcut="v" />
       <ContextMenuOption click={() => pickX()} text="View Top X" shortcut="Alt+1...9" disabled={$spectating} />
       <ContextMenuOption click={() => pickX(true)} text="View Bottom X" disabled={$spectating} />
+      <ContextMenuOption click={arrangeDeck} text="Search & Order Deck" disabled={$spectating} />
       <ContextMenuOption click={() => moveTop(discard)} text="Discard Top Card" disabled={$spectating} />
       <ContextMenuOption click={() => moveTop(lz)} text="Lost Zone Top Card" disabled={$spectating} />
       <ContextMenuOption click={() => moveTop(prizes)} text="Prize Top Card" disabled={$spectating} />

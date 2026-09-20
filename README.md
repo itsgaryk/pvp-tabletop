@@ -238,7 +238,7 @@ dashboard (a new deployment is still needed, since the functions restart).
 | Variable | What it controls | Default |
 | --- | --- | --- |
 | `VITE_PVP_SERVER` | Base URL for the relay. Leave unset to use the relay in this same project (`/api/relay`). Set it only to serve the relay from another origin, which must implement the same three routes. | unset (same origin) |
-| `VITE_LIMITLESS_WEB` | Limitless TCG API used by "Import Deck" / "Import Random Deck". | `https://limitlesstcg.com` |
+| `VITE_LIMITLESS_WEB` | Limitless TCG API used by "Import Deck" / "Import Random Deck". A browser check that needs a deck should point this at `node tools/fake-deck-api.mjs` instead: the real API is somebody else's, needs the network, and answers differently every time. | `https://limitlesstcg.com` |
 | `VITE_ENV` | `dev` logs every relayed event to the browser console. | `dev` locally, `prod` in a build |
 | `RELAY_POLL_WAIT_MS` | Server-side long-poll window in ms. Larger = fewer requests but more billed function time. | `20000` |
 | `RELAY_POLL_INTERVAL_MS` | How often a waiting poll re-reads the room's event cursor, in ms. This is the relay's main cost dial: the store sees one cheap read per turn, per waiting client, whether or not anything happens. Larger = fewer store commands, at the price of up to that long before an opponent's or a spectator's view catches up. | `2000` |
@@ -638,6 +638,42 @@ anything's scrollable area — the wheel over it does nothing, and there is no b
 The panel takes its share of the window the same way the board does (see the zones), and
 the same is true of the multi-card selection dialog, which is the same grid.
 
+**Putting cards back in a chosen order** — *Search & Order Deck* on the deck — is the
+other half of a search: *Ciphermaniac's Codebreaking* is "search your deck for 2 cards,
+shuffle your deck, then put those cards on top of it in any order", and the order is the
+whole of what the player is deciding, because it is what they draw next.
+
+The dialog is the deck, top card first, and clicking a card marks it: **the click order is
+the placement order**, the last card clicked being the top, and each marked card wears its
+position as a badge (`Card.svelte`, which is the one component both dialogs share). The
+strip over the grid names the order back, top first, and clicking a marked card again takes
+it out — so the whole of the editing is one gesture, and no drag is involved: a grid with
+sixty cards in it scrolls, and nothing that has to be scrolled to can be dragged to.
+
+One of the two actions places the marked cards on the **top** of the deck and the other on
+its **bottom**, in the same order; *Shuffle the rest of the deck first* is the shuffle the
+search asks for, and it is checked by default. The marked cards never leave the deck while
+the dialog is open — the search is a look and the placement is one move — so closing the
+dialog needs no cleanup at all, and a shuffle cannot carry a card that is being held
+somewhere else.
+
+Where the cards land is the one convention worth knowing here, and it is the deck's rather
+than this feature's: **a deck is drawn from the end of its array** (`pop`), a pile's own
+view reverses the array so the first card on screen is the card that leaves first, and so
+`placeOrdered` puts a "top" placement at the *end* and a bottom one at the front
+(`custom/cards.js`, where the whole of it is written down).
+
+Nothing in the log names the cards. A search is private however it ends, and this one ends
+with a face-down deck: the log says `Searched deck` and then `Put 2 cards on top of Deck in
+order`, which says what the opponent is entitled to know happened without saying what the
+player went and got (`logPlacement`, and the same rule `logPickup` follows).
+
+Placements travel as the `cardsMoved` event with two optional fields — `position`
+(`top`/`bottom`) and `ordered` — rather than as an event of their own, because a placement
+*is* a move of cards from the deck to the deck. The opponent's mirror reads them: the
+per-card loop it used before pushed the top card in first and left it at the wrong end of
+the array, and no list of ids can carry an order unless the whole list is put back at once.
+
 ### A card on the board is the size of the zone it is in
 
 Not a setting: **every zone of the board is a size container**
@@ -984,6 +1020,7 @@ least once.
 | "Does the relay still enforce its own rules?" | `node tools/relay-check.mjs` |
 | "Does the app really do that, in a browser?" | `node tools/browser-check.mjs` |
 | "Is the clock still smooth and still shared?" | `node tools/clock-check.mjs` |
+| "Did those cards land in the order that was chosen?" | `node tools/deck-order-check.mjs` (see below) |
 
 ### Verifying a change: `tools/relay-check.mjs` and `tools/browser-check.mjs`
 
@@ -1053,6 +1090,35 @@ joining or spectating the room code.
 ```sh
 node tools/browser-check.mjs --only lobby     # just that section
 ```
+
+### Is the deck in the order that was chosen?
+
+```sh
+node tools/fake-deck-api.mjs                            # terminal 1: a stand-in deck API
+VITE_LIMITLESS_WEB=http://127.0.0.1:6391 npm run dev    # terminal 2
+node tools/deck-order-check.mjs                         # terminal 3
+```
+
+A placed card is only *placed* if the player draws it next, and the deck is face
+down, so this check reads the order off the dialog that shows it — top card first
+— and then **draws**: the card that comes out is the card the dialog put on top.
+A count cannot tell a placement from a shuffle, and neither can a card's name on
+its own, because a deck holds four copies of it: the cards chosen are always cards
+with different names, and the order asserted is the order the clicks were made in.
+
+Two other things about the deck are checked here, because they are the reasons the
+order is decidable at all: the deck is drawn from the *end* of its array, and a
+pile's grid reverses that array so its first card is the card that leaves first.
+Get that convention backwards and every placement lands at the wrong end of the
+deck while the dialog still reads correctly — which is exactly the bug this check
+was written against.
+
+`fake-deck-api.mjs` is to the deck import what `fake-redis.mjs` is to the relay: a
+stand-in for somebody else's API, so a browser check does not depend on
+limitlesstcg.com being up, answering, and answering the same way twice. Its deck is
+deterministic and full of duplicate names on purpose. Point the dev server at it
+with `VITE_LIMITLESS_WEB`, or leave it out and "Import Random Deck" reaches the
+real API.
 
 ### Is the clock smooth, and the same on both boards?
 
@@ -1221,6 +1287,43 @@ recent one as `relay: <kind> - <reason>`. The full list is on `/diagnostics`.
 
 Solo mode is excluded from "dropped event" reports on purpose: having no room is
 the design there, so it is not a fault.
+
+### Things that cost somebody an afternoon
+
+**A deck's top is the *end* of its array.** Nothing in the code says so anywhere:
+it is implied by three things at once — `draw` takes a card with `pop`, a pile's
+own view reverses the array so its first card on screen is the card that leaves
+first (`Inspection.svelte`), and so a `push` adds to the top while an `unshift`
+adds to the bottom. Get it backwards and a placement of cards at the top lands
+them at the bottom while the dialog still reads perfectly, and every check that
+reads the deck *through the dialog* still passes, because the dialog and the draw
+are consistently wrong together. What catches it is a check that **draws**: the
+card that comes out when the placement says it should be on top. `placeOrdered` in
+`custom/cards.js` carries the long version of this note.
+
+**`npm run check` does not run in this repository.** `svelte-check` is in neither
+`dependencies` nor `devDependencies`, so the script fails with *"'svelte-check' is
+not recognized"* and `npx svelte-check` will not help offline. What CI gates on is
+`npm run build` (the same command Vercel runs) plus `tools/relay-check.mjs`, and
+everything else is a browser check run by hand — so a component can be wrong in a
+way only a browser shows, and the build will not say a word about it.
+
+**A browser check that imports a deck needs `tools/fake-deck-api.mjs`.** "Import
+Deck" and "Import Random Deck" post to `VITE_LIMITLESS_WEB`
+(`https://limitlesstcg.com`), which is somebody else's API: it can be slow,
+rate-limited, or unreachable, which in a browser shows up as an *empty* board with
+nothing in the console — the request is a cross-origin `fetch`, and a stand-in has
+to answer the `OPTIONS` preflight and send `access-control-allow-origin` or the
+status arrives as 200 and the body is refused. Both failure modes look identical
+from the app's side, and both were met here while writing the deck-order check.
+
+**A `Popup`'s body scrolls; its actions do not.** `Popup.svelte` gives the panel
+the window's height at most and hands what is left to `.popup-body`, which
+overflows — so anything that has to stay visible while the cards are scrolled
+belongs in the `buttons` slot, and the actions are **one per line**, which on a
+636px-tall window is 20% of the deck per button. Anything inside the body is
+clipped horizontally too (`overflow-y: auto` does not leave the other axis
+visible), so a badge hung off the corner of a card is simply not drawn.
 
 ## Server (optional, self-hosted)
 

@@ -167,10 +167,41 @@ export function createOpponent () {
       boardState: (data) => applyBoardState(data),
       deckLoaded: ({ deck: list }) => reload(list),
       boardReset: () => reset(),
-      cardsMoved: ({ cards: ids, from, to }) => {
+      cardsMoved: ({ cards: ids, from, to, position, ordered }) => {
          const pile1 = getPile(from)
          const pile2 = getPile(to)
          if (!pile2) return
+
+         /*
+            An ordered move is one placement, not a list of cards that happen to
+            travel together: `ids` is the deck order the other player chose, and
+            it has to land as that order. So the cards are taken out together and
+            put back by the same `placeOrdered` the placing client used - the
+            per-card loop below would push the top card in first and leave it at
+            the wrong end of the array - and one convention covers both sides:
+            `ordered[0]` is the top of the deck, which is the end the deck is
+            drawn from.
+
+            This is the placement at the end of a search: the ids arrive in the
+            order they were chosen, and the rest of the deck shuffles underneath
+            them, which no mirror can mirror and none needs to - a deck's order
+            is unreadable to everyone but its owner, and a full board state
+            carries the order that matters.
+
+            `ids` names cards in the source pile, which is where an ordered move
+            takes them from: the list is not in the destination yet, so
+            `placeOrdered` finds nothing to relocate and simply puts the block
+            where it belongs.
+         */
+         if (ordered) {
+            const list = ids.map(id => removeCard(id, pile1)).filter(Boolean)
+            if (!list.length) return
+
+            pile2.placeOrdered(list, { bottom: position === 'bottom' })
+
+            return
+         }
+
          for (const id of ids) {
             const card = removeCard(id, pile1)
             if (card) pile2.push(card)

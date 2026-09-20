@@ -79,6 +79,34 @@ export function logSlotMove (slots, to, options) {
    }
 }
 
+/*
+   Cards put back on a deck in a chosen order - the last step of a search, and
+   the one place a player decides what the top of their deck is.
+
+   The names are said only when the cards are *named*, which no caller does yet:
+   a search is private however it ends, and naming the cards would tell the
+   opponent what the player went and got, which is exactly the information a
+   face-down deck withholds. So a placement is counted, the way a picked-up card
+   is (see logPickup), and the wording still says which end of the deck the cards
+   went to - that part is not information the deck hides, since the opponent sees
+   the deck get shorter and sees it shuffled.
+
+   `declared` is there for a card whose own text reveals what it searched for:
+   the search itself is public then, and naming the cards is the card's doing
+   rather than the board leaking.
+*/
+export function logPlacement (cards, { bottom = false, deckSize = 0, declared = false } = {}) {
+   const count = cards.length
+   const end = bottom ? `bottom of Deck (${deckSize})` : 'top of Deck'
+
+   if (declared && cards.every(card => card.name)) {
+      publishLog(`Put [${names(cards)}] on ${end} in order`)
+      return
+   }
+
+   publishLog(`Put ${count} ${s('card', count)} on ${end} in order`)
+}
+
 export function logPickup (count, from, options) {
    publishLog(`Picked up ${count} ${s('card', count)} from ${options.bottom ? 'bottom of ' : ''}${pileName(from)}`)
 }
