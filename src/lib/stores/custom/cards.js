@@ -59,6 +59,41 @@ export function pile (name = null) {
             return v
          })
       },
+      /*
+         Put a list of cards at one end of the pile as one move, in the order
+         given: `ordered[0]` is the topmost, or the last card if the placement is
+         at the bottom.
+
+         Which end of the array is the top is the one convention this store does
+         not state anywhere, and it is the *end* of it: a deck is drawn from with
+         `pop`, a card taken off the top of a pile is a `pop`, and a pile's own
+         view reverses the array so that the first card on screen is the card that
+         leaves first (see Inspection.svelte). So the top is index 0 of that
+         reversed view, which is the last index here - and a `push` adds to the
+         top while an `unshift` adds to the bottom.
+
+         That is why a placement puts the cards at the end for the top and at the
+         front for the bottom, rather than the other way round.
+
+         The cards are taken out before they are put back, so a card already in
+         the pile is relocated rather than duplicated and the move can be repeated
+         without changing anything - which is what a relay replay and a duplicated
+         call both need.
+
+         Cards that are in `ordered` but not in the pile are simply added, so a
+         caller working from a stale read of the deck still lands the list it says
+         it landed.
+      */
+      placeOrdered: (ordered, { bottom = false } = {}) => {
+         const ids = new Set(ordered.map(card => card._id))
+
+         update(v => {
+            const kept = v.filter(card => !ids.has(card._id))
+            const next = bottom ? [ ...ordered, ...kept ] : [ ...kept, ...ordered ]
+            v.splice(0, v.length, ...next)
+            return v
+         })
+      },
       swap: (rem, add) => {
          update(v => {
             v.splice(v.indexOf(rem), 1, add)

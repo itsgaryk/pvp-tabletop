@@ -10,7 +10,7 @@ import { statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } fr
 import { normalizeMarkerUsed } from '$lib/util/markers.js'
 import { logStatus, logStatusCleared } from './logger.js'
 import {
-   logMove, logSlotMove, logPickup,
+   logMove, logSlotMove, logPickup, logPlacement,
    logBenched, logPromoted, logStadium,
    logAttachment, logEvolve, logAbilityUsed
 } from './logger.js'
@@ -143,6 +143,42 @@ export function shuffle () {
 
    deck.shuffle()
    publishLog('Shuffled Deck')
+}
+
+/*
+   Putting cards back on the deck in a chosen order - what a search that ends
+   "then put those cards on top of it in any order" needs (Ciphermaniac's
+   Codebreaking). `ordered[0]` becomes the top of the deck, or the last card if
+   the placement is at the bottom.
+
+   The chosen cards never leave the deck: the search is a look, and the placement
+   is one move. So there is nothing to put back if the player closes the dialog
+   without choosing, and the shuffle cannot carry a held card away - it is a
+   shuffle of the deck the cards are still part of.
+
+   Shuffle first, then place. The other order reaches the same deck, but only if
+   the chosen cards were the whole deck: a shuffle of an empty rest is no shuffle
+   at all, and the cards would go back in the order they were picked in.
+*/
+export function lookAndPlace (ordered, { bottom = false, shuffleFirst = true } = {}) {
+   if (isSpectator()) return
+   if (!ordered?.length) return
+
+   publishLog('Searched deck')
+
+   if (shuffleFirst) deck.shuffle()
+
+   deck.placeOrdered(ordered, { bottom })
+
+   share('cardsMoved', {
+      cards: ordered.map(card => card._id),
+      from: 'deck',
+      to: 'deck',
+      position: bottom ? 'bottom' : 'top',
+      ordered: true
+   })
+
+   logPlacement(ordered, { bottom, deckSize: deck.get().length })
 }
 
 export let cardSelection = pile()

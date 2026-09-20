@@ -35,6 +35,7 @@
    import OppTable from './opponent/Temp.svelte'
 
    import Inspection from './dialogs/Inspection.svelte'
+   import DeckOrder from './dialogs/DeckOrder.svelte'
    import Selection from './dialogs/Selection.svelte'
    import SlotDetails from './dialogs/SlotDetails.svelte'
    import CardDetails from './dialogs/CardDetails.svelte'
@@ -171,6 +172,7 @@
    const activeLabel = 'Active'
 
    let inspectionModal
+   let deckOrderModal
    let selectionModal
    let slotModal
    let detailsModal
@@ -185,6 +187,17 @@
 
    function openPile (pile) {
       inspectionModal.open(pile)
+   }
+
+   /*
+      Looking through the deck in order to put cards back on top of it (or under
+      it) in a chosen order: a search that ends with the player deciding what
+      their next draw is (Ciphermaniac's Codebreaking). It is its own dialog
+      rather than a mode of the inspection one, because that one only reads the
+      deck and this one is a placement.
+   */
+   function openDeckOrder () {
+      deckOrderModal.open()
    }
 
    function openOppPile (pile) {
@@ -254,6 +267,7 @@
 
    setContext('boardActions', {
       openPile, openOppPile,
+      openDeckOrder,
       openSelection,
       openSlotDetails, openOppSlotDetails,
       openDetails, showMessage,
@@ -385,6 +399,7 @@
       <SlotMenu bind:this={slotMenu} selection={slotSelection} />
 
       <Inspection bind:this={inspectionModal} />
+      <DeckOrder bind:this={deckOrderModal} />
       <Selection bind:this={selectionModal} />
       <SlotDetails bind:this={slotModal} />
       <CardDetails bind:this={detailsModal} />
