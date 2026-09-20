@@ -195,9 +195,14 @@
       their next draw is (Ciphermaniac's Codebreaking). It is its own dialog
       rather than a mode of the inspection one, because that one only reads the
       deck and this one is a placement.
+
+      `topX` opens it at the top X cards only, which is the same dialog over a
+      shorter list and the same rearrangement with nothing shuffled - and with
+      the deck itself as the default: placing cards from the whole deck on top of
+      it is how a deck that has just been searched is put back in a chosen order.
    */
-   function openDeckOrder () {
-      deckOrderModal.open()
+   function openDeckOrder (topX = 0) {
+      deckOrderModal.open(topX)
    }
 
    function openOppPile (pile) {

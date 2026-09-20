@@ -643,30 +643,55 @@ other half of a search: *Ciphermaniac's Codebreaking* is "search your deck for 2
 shuffle your deck, then put those cards on top of it in any order", and the order is the
 whole of what the player is deciding, because it is what they draw next.
 
-The dialog is the deck, top card first, and clicking a card marks it: **the click order is
-the placement order**, the last card clicked being the top, and each marked card wears its
-position as a badge (`Card.svelte`, which is the one component both dialogs share). The
-strip over the grid names the order back, top first, and clicking a marked card again takes
-it out — so the whole of the editing is one gesture, and no drag is involved: a grid with
-sixty cards in it scrolls, and nothing that has to be scrolled to can be dragged to.
+The dialog is the deck, read top card first, and clicking a card marks it: **the click order
+is the placement order, and the badge says where each card sits — 1 is the card drawn
+first.** The strip over the grid names that order back as `1 → 2 → 3`, so the sequence reads
+the way a sequence does, and clicking a marked card again takes it out. The whole of the
+editing is one gesture, and no drag is involved: a grid with sixty cards in it scrolls, and
+nothing that has to be scrolled to can be dragged to.
 
-One of the two actions places the marked cards on the **top** of the deck and the other on
-its **bottom**, in the same order; *Shuffle the rest of the deck first* is the shuffle the
-search asks for, and it is checked by default. The marked cards never leave the deck while
-the dialog is open — the search is a look and the placement is one move — so closing the
-dialog needs no cleanup at all, and a shuffle cannot carry a card that is being held
-somewhere else.
+Two ends of one deck, and the dialog shows one of them: the grid is **top card first** — the
+same way the inspection dialog reads a pile — while `placeOrdered` puts a top placement at
+the *end* of the array **reversed**, because the card drawn next is the array's last. So the
+**first cell of the grid is the card that leaves next**, and card 1 is drawn first. The badge
+is what makes that readable: the grid is where the cards are, the strip is the sequence
+being built, and the number on a card is its place in both.
 
-Where the cards land is the one convention worth knowing here, and it is the deck's rather
-than this feature's: **a deck is drawn from the end of its array** (`pop`), a pile's own
-view reverses the array so the first card on screen is the card that leaves first, and so
-`placeOrdered` puts a "top" placement at the *end* and a bottom one at the front
-(`custom/cards.js`, where the whole of it is written down).
+*Order Top X* is the same dialog over the top X cards of the deck instead of all of them,
+for reordering what is already at the top — which is what a search of 2 cards out of 60 is
+really doing, putting them back where they came from in a chosen order. It is opened from
+the deck's own menu, asks how many cards with the browser's prompt, **shuffles nothing**
+and offers no bottom: those cards are already at the top, and shuffling the rest would
+throw away an order an earlier search put there. Its action is *Arrange the Top X in This
+Order* rather than a placement, and the cards under the block are left exactly as they
+were — which is the one thing that can tell "rearranged" from "shuffled", so it is what the
+browser check asserts.
 
-Nothing in the log names the cards. A search is private however it ends, and this one ends
-with a face-down deck: the log says `Searched deck` and then `Put 2 cards on top of Deck in
-order`, which says what the opponent is entitled to know happened without saying what the
-player went and got (`logPlacement`, and the same rule `logPickup` follows).
+What is placed, in either mode, is **the cards that were marked, in the order they were
+marked in, and only those** — so an *Order Top X* reads as *these first, and the rest of the
+block keeps the order it had*. Marking one card of the top five brings it to the top and
+moves nothing else; marking none of them is not an action, since there is no order to write.
+That is the whole of what the dialog can say: it fixes *which* cards are in the block off
+the deck itself and lets the player decide their sequence, rather than asking for an
+arrangement of cards they never named.
+
+One of the two actions of the full dialog places the marked cards on the **top** of the deck
+and the other on its **bottom**, in the same order; *Shuffle the rest of the deck first* is
+the shuffle the search asks for, and it is checked by default. The marked cards never leave
+the deck while the dialog is open — the search is a look and the placement is one move — so
+closing the dialog needs no cleanup at all, and a shuffle cannot carry a card that is being
+held somewhere else.
+
+**Opening either dialog writes `Viewed deck` to the log**, the same line View All writes and
+for the same reason: it is a look through the one pile the opponent cannot see, and that is
+what they are entitled to know happened. A player who opens the dialog and closes it again
+has left one `Viewed deck` behind and nothing else.
+
+Nothing else in the log names the cards. A search is private however it ends, and this one
+ends with a face-down deck: after the look, the placement says `Put 2 cards on top of Deck
+in order`, which says what happened without saying what the player went and got
+(`logPlacement`, and the same rule `logPickup` follows). An *Order Top X* writes the
+placement line and no `Searched deck`, because it is a rearrangement rather than a search.
 
 Placements travel as the `cardsMoved` event with two optional fields — `position`
 (`top`/`bottom`) and `ordered` — rather than as an event of their own, because a placement
@@ -1099,26 +1124,37 @@ VITE_LIMITLESS_WEB=http://127.0.0.1:6391 npm run dev    # terminal 2
 node tools/deck-order-check.mjs                         # terminal 3
 ```
 
-A placed card is only *placed* if the player draws it next, and the deck is face
-down, so this check reads the order off the dialog that shows it — top card first
-— and then **draws**: the card that comes out is the card the dialog put on top.
-A count cannot tell a placement from a shuffle, and neither can a card's name on
-its own, because a deck holds four copies of it: the cards chosen are always cards
-with different names, and the order asserted is the order the clicks were made in.
+A placed card is only *placed* if the player draws it next, so this check reads the
+order off the dialog — which shows the deck top card first — and then **draws**.
+That is the whole method, and it is the only one that works: a count cannot tell a
+placement from a shuffle, and a card's *name* cannot tell a placement from a
+lookalike, because a real deck holds four copies of it. Both of those were traps
+here, and both are answered by the same thing — the stand-in deck's 60 cards all
+have different names, so a grid cell, a name and a position are one statement, and
+the card that comes out of a draw is compared to the cell wearing the badge for it.
 
-Two other things about the deck are checked here, because they are the reasons the
-order is decidable at all: the deck is drawn from the *end* of its array, and a
-pile's grid reverses that array so its first card is the card that leaves first.
-Get that convention backwards and every placement lands at the wrong end of the
-deck while the dialog still reads correctly — which is exactly the bug this check
-was written against.
+The convention it is really testing is stated in the check itself rather than
+assumed: **the grid is top card first, so its first cell is the card a draw takes.**
+Verified against a draw before anything is placed, and again after — a placement
+that lands upside down reads perfectly in the dialog, and this is the only place
+that shows it.
+
+Ordering inside the deck is checked three ways, because the three are different
+claims: placing on the top, placing on the bottom (where card 1 of the pair is the
+first of them drawn and the deck is read from its other end), and *Order Top X*,
+which additionally asserts that **the cards under the block are untouched** — the
+one thing that can tell a rearrangement from a shuffle, since the block itself
+looks the same either way.
 
 `fake-deck-api.mjs` is to the deck import what `fake-redis.mjs` is to the relay: a
 stand-in for somebody else's API, so a browser check does not depend on
 limitlesstcg.com being up, answering, and answering the same way twice. Its deck is
-deterministic and full of duplicate names on purpose. Point the dev server at it
-with `VITE_LIMITLESS_WEB`, or leave it out and "Import Random Deck" reaches the
-real API.
+deterministic and its 60 card names are all **different** — `Card01` to `Card60` —
+which is what makes an order assertable at all. Point the dev server at it with
+`VITE_LIMITLESS_WEB`, or leave it out and "Import Random Deck" reaches the real API.
+(A duplicate-name deck is the harder case and the one a real game hands you; it is
+deliberately *not* what this stand-in serves, because a check about order cannot say
+where a card went while four cards answer to the same name.)
 
 ### Is the clock smooth, and the same on both boards?
 
@@ -1290,16 +1326,28 @@ the design there, so it is not a fault.
 
 ### Things that cost somebody an afternoon
 
-**A deck's top is the *end* of its array.** Nothing in the code says so anywhere:
-it is implied by three things at once — `draw` takes a card with `pop`, a pile's
-own view reverses the array so its first card on screen is the card that leaves
-first (`Inspection.svelte`), and so a `push` adds to the top while an `unshift`
-adds to the bottom. Get it backwards and a placement of cards at the top lands
-them at the bottom while the dialog still reads perfectly, and every check that
-reads the deck *through the dialog* still passes, because the dialog and the draw
-are consistently wrong together. What catches it is a check that **draws**: the
-card that comes out when the placement says it should be on top. `placeOrdered` in
-`custom/cards.js` carries the long version of this note.
+**A deck's top is the *end* of its array, and a list placed there goes in backwards.**
+Nothing in the code says either half of that anywhere. The first is implied by two things at
+once — `draw` takes a card with `pop`, and a pile is read from that same end (`Inspection`
+reverses the array so its first card on screen is the card that leaves first). The second
+follows from the first and is the one that catches people: `ordered[0]` is the card the
+player wants drawn *first*, and the card drawn first is at the **end** of the array, so a
+top placement is `ordered` **reversed** at the end — the bottom placement is the one that
+goes in as it is, at the front. The two ends are mirror images:
+
+```js
+next = bottom ? [ ...ordered, ...kept ]                // deepest card first
+              : [ ...kept, ...ordered.slice().reverse() ]   // ordered[0] drawn first
+```
+
+This was got wrong twice here, and the interesting part is *how* it hid. A dialog that shows
+the order the player chose reads perfectly with the cards landing upside down; a deck is
+face down, so nothing on the board looks wrong either; and a check that reads the deck
+**through that same dialog** passes, because the view and the placement agree with each
+other and disagree only with the draw. What catches it is a check that **draws** the card
+and asks whether it is the one the player put first. `tools/deck-order-check.mjs` does that
+before it checks anything about counts, and `placeOrdered` in `custom/cards.js` carries the
+note.
 
 **`npm run check` does not run in this repository.** `svelte-check` is in neither
 `dependencies` nor `devDependencies`, so the script fails with *"'svelte-check' is
