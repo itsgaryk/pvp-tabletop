@@ -89,15 +89,33 @@ img.card {
    --card-gap: 4px;
 
    /*
-      A card attached to a Pokemon in play is fanned out to the right of the card it
-      is under and lifted off that card's bottom edge by one of these. The two cards
-      are the same size, so the lift is also how far the attached card reaches *above*
-      the top of the card it is under - which is why a zone that scrolls has to spend
-      it as room above the slot: `overflow-x: auto` makes the other axis `auto` too,
-      and the overhang was drawn with its top cut off (see the bench).
+      A card attached to a Pokemon in play is fanned out to the right of the card it is
+      under and lifted off that card's bottom edge. Both are **shares of the card**
+      rather than pixels - 25px, 35px, 17px and 34px of the 105px card they were
+      measured on - because the cards in a slot are the size of the zone they are in,
+      the same as every other card on the board (see the bench and the active spot),
+      and a fan that kept its pixels while its cards shrank would be a fan of a
+      different size than the card it is behind.
+
+      The lift is also how far an attached card reaches *above* the top of the card it
+      is under, the two being the same size, which is why a zone has to spend it as room
+      for the whole slot: the row of a bench does, the scroll container clipping at its
+      own box otherwise, and both slot zones size their cards to leave it (see
+      `--slot-card-share`).
    */
-   --attach-lift-energy: 17px;
-   --attach-lift-tool: 34px;
+   --attach-step-energy: calc(25 / 105);
+   --attach-step-tool: calc(35 / 105);
+   --attach-lift-energy: calc(17 / 105);
+   --attach-lift-tool: calc(34 / 105);
+
+   /*
+      What a zone's height leaves for a slot's own card when the tallest fan - a tool's -
+      has to fit above it: the card and its lift together are the card times
+      `1 + 34/105`, so a card that fits with its fan is this share of the room there is.
+      A zone whose slots are laid out along it divides its height by this rather than
+      taking all of it.
+   */
+   --slot-card-share: calc(105 / 139);
 }
 
 .primary {

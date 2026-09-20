@@ -43,7 +43,7 @@
 </script>
 
 <div use:dnd={dndConfig}>
-   <div class="h-full flex justify-center items-center">
+   <div class="active-slot h-full flex justify-center items-center">
       {#if $active}
          {#key $active.id}
             <Slot bind:slot={$active} />
@@ -51,3 +51,33 @@
       {/if}
    </div>
 </div>
+
+<style>
+   /*
+      The card in this zone is the size of the zone, the same as every other card on the
+      board - and less the room a fan takes above it (`--slot-card-share`), so a Pokemon
+      carrying tools is drawn whole inside the zone rather than over the Pokemon Power
+      band above it. The zone is not wide enough for a fan of any length - a fan of a
+      card is wider than the card - so what it can give a card is what it has with
+      nothing else in it.
+
+      `100cqw` and `100cqh` are this half of the active area (`.active1` / `.active2`,
+      which Board.svelte makes a size container), not the whole cell.
+   */
+   .active-slot {
+      --slot-card-width: min(
+         calc(100cqw - 2 * var(--card-gap)),
+         calc((100cqh - 2 * var(--card-gap)) * var(--slot-card-share) * var(--card-ratio))
+      );
+   }
+
+   /*
+      What the slot declares about itself (see Slot.svelte) is spent as room above it
+      here, the way the bench's row spends it: this container centres the *margin* box of
+      what is in it, so a Pokemon with a fan is centred with its fan - and without this
+      the fan reached over the band above the zone while the card sat in the middle of it.
+   */
+   .active-slot > :global(.slot) {
+      margin-top: var(--attach-lift, 0px);
+   }
+</style>

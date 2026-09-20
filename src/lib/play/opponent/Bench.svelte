@@ -75,6 +75,7 @@
    .bench-zone {
       display: grid;
       align-items: center;
+      --slot-card-width: calc((100cqh - 2 * var(--card-gap)) * var(--slot-card-share) * var(--card-ratio));
    }
 
    .bench-row {

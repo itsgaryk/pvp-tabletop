@@ -27,7 +27,8 @@
       padding: 0.15em 0;
       background: #00ffe6;
       color: #000;
-      font-size: calc(var(--card-width) * 0.135);
+      /* the width of the card it crosses: a slot's is the zone's (see Slot.svelte) */
+      font-size: calc(var(--slot-width, var(--card-width)) * 0.135);
       font-weight: 700;
       line-height: 1.5;
       letter-spacing: 0.02em;

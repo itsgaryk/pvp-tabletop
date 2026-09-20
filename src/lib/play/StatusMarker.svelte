@@ -47,9 +47,10 @@
       /*
          Small enough that a corner's markers stay in the top half of the card:
          the ability stripe crosses its middle, and a marker that reached it would
-         cover the words.
+         cover the words. The card it sits on is a slot's, which is the zone's
+         (see Slot.svelte).
       */
-      --size: calc(var(--card-width) / 4);
+      --size: calc(var(--slot-width, var(--card-width)) / 4);
       width: var(--size);
       height: var(--size);
       font-size: calc(var(--size) / 2);
