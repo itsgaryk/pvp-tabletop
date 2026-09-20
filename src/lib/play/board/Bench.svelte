@@ -73,18 +73,25 @@
 
 <style>
    /*
-      The zone places the row, and centres it between the top of the zone and the
-      bottom of it - where a card in every other zone of the board sits. A grid item
-      is what does it here rather than a flex one, for two reasons that were measured:
-      a bench card is a fixed size rather than the zone's, so at an ordinary window the
-      row is taller than the zone and a column flex item would be shrunk to fit,
-      clipping the card inside the row's own scroll container; and a half-empty bench's
-      row is narrower than the zone, which a row flex item would narrow further, to its
-      own contents, taking the row off the width of the drop target (see .bench-row).
+      The zone places the row, and centres it between the top of the zone and the bottom
+      of it - where a card in every other zone of the board sits. A grid item is what does
+      it here rather than a flex one: a row flex item is fit-content, so a half-empty
+      bench's row would be as wide as the cards on it rather than as wide as the zone
+      (see .bench-row).
+
+      The cards are the size of the zone, as every other card on the board is, and the
+      zone gives them what is left of its height once a fan's worth has been kept above
+      them (`--slot-card-share`, see global.css). A bench whose cards no longer fit is
+      then a bench too long for its zone rather than one holding cards of the wrong size:
+      the row scrolls sideways. The width the zone has is not the cards', for the same
+      reason.
+
+      `100cqh` is this zone's height - the cell Board.svelte makes a size container.
    */
    .bench-zone {
       display: grid;
       align-items: center;
+      --slot-card-width: calc((100cqh - 2 * var(--card-gap)) * var(--slot-card-share) * var(--card-ratio));
    }
 
    .bench-row {
@@ -103,9 +110,8 @@
          keeps a half-empty bench filling its zone's width for the drop target.
 
          Its height is its cards' plus the room the fan above them takes (see
-         --attach-lift), rather than the zone's - the zone is what places the row, and
-         centres it (see .bench-zone) - so the group a slot draws is centred as a whole,
-         and a bench taller than the zone overflows it evenly instead of downwards only.
+         --attach-lift), which is what the zone sized those cards to leave - so the group
+         a slot draws is centred as a whole, and the row is as tall as what it draws.
       */
       width: max-content;
       min-width: 100%;
@@ -113,16 +119,16 @@
 
    /*
       What each slot declares about itself (see Slot.svelte): how far the cards attached
-      to it reach above its top - 34px for a tool, 17px for an energy, nothing for a
-      Pokemon carrying neither. The row spends it as room above that slot, so that the
-      row is as tall as the group a slot draws.
+      to it reach above its top - a tool's lift, an energy's, or nothing for a Pokemon
+      carrying neither (see global.css). The row spends it as room above that slot, so
+      that the row is as tall as the group a slot draws.
 
-      The slot cannot spend it itself: a slot is in the active spot and on the table as
-      well, where nothing scrolls and the fan is drawn whole, and it is only the bench
-      that scrolls - a scroll container clipping at its own box, `overflow-x: auto`
-      making the other axis `auto` too, whatever it says. Unspent, an attached card that
-      reached above the row was drawn from the row's top edge down: the top 34px of it,
-      the part that says which card it is, was cut off.
+      The slot cannot spend it itself: a slot is in the active spot as well, where nothing
+      scrolls and the fan is drawn whole, and it is only the bench that scrolls - a scroll
+      container clipping at its own box, `overflow-x: auto` making the other axis `auto`
+      too, whatever it says. Unspent, an attached card that reached above the row was
+      drawn from the row's top edge down: the top of it, the part with the card's name on
+      it, was cut off.
    */
    .bench-row > :global(.slot) {
       margin-top: var(--attach-lift, 0px);

@@ -45,9 +45,23 @@
 </script>
 
 <div use:dnd={dndConfig}>
-   <div class="h-full flex justify-center items-center">
+   <div class="active-slot h-full flex justify-center items-center">
       {#if $active}
          <Slot bind:slot={$active} {store} />
       {/if}
    </div>
 </div>
+
+<style>
+   /* the near half's active spot, and the arithmetic for it: board/Active.svelte */
+   .active-slot {
+      --slot-card-width: min(
+         calc(100cqw - 2 * var(--card-gap)),
+         calc((100cqh - 2 * var(--card-gap)) * var(--slot-card-share) * var(--card-ratio))
+      );
+   }
+
+   .active-slot > :global(.slot) {
+      margin-top: var(--attach-lift, 0px);
+   }
+</style>

@@ -33,13 +33,13 @@
    /*
       How far the cards attached to this Pokemon reach above the top of it, as a length
       a zone can spend - the row of a bench does, because a slot draws outside its own
-      box and a zone that scrolls clips at its own (see Bench.svelte). A tool is lifted
-      34px off the bottom edge and an energy 17px (see global.css), the cards being the
-      same size, so the tallest attached card is what has to fit; a Pokemon carrying
-      neither needs none of it.
+      box and a zone that scrolls clips at its own (see Bench.svelte). The lifts are
+      shares of the card (see global.css), the two cards being the same size, so the
+      tallest attached card is what has to fit; a Pokemon carrying neither needs none
+      of it.
    */
-   $: attachLift = $trainer.length ? 'var(--attach-lift-tool)'
-      : ($energy.length ? 'var(--attach-lift-energy)' : '0px')
+   $: attachLift = $trainer.length ? 'var(--slot-lift-tool)'
+      : ($energy.length ? 'var(--slot-lift-energy)' : '0px')
 
    /* DnD */
 
@@ -153,7 +153,7 @@
    })
 </script>
 
-<div class="slot relative w-max z-15" style="--attach-lift: {attachLift}; margin-right: calc({$energy.length * 25 + $trainer.length * 35}px)"
+<div class="slot relative w-max z-15" style="--attach-lift: {attachLift}; margin-right: calc({$energy.length} * var(--slot-step-energy) + {$trainer.length} * var(--slot-step-tool))"
    class:dragged={$dragging && $selection.includes(slot)}
    on:click|stopPropagation={onClick}
    on:contextmenu={onCtx}
@@ -179,7 +179,7 @@
 
    {#each $energy as nrg, i (nrg._id)}
       <img src="{cardImage(nrg, 'xs')}" alt="{nrg.name}" class="card absolute" draggable=false
-         style="bottom: var(--attach-lift-energy); left: calc({(i + 1)* 25}px); z-index: {$cardSelection.includes(nrg) ? 12 : 9 - i}"
+         style="bottom: var(--slot-lift-energy); left: calc({i + 1} * var(--slot-step-energy)); z-index: {$cardSelection.includes(nrg) ? 12 : 9 - i}"
          data-attached="energy"
          class:card-attached-selected={$cardSelection.includes(nrg)}
          on:click={(e) => onCardClick(e, nrg, energy)}
@@ -189,7 +189,7 @@
 
    {#each $trainer as tool, i (tool._id)}
       <img src="{cardImage(tool, 'xs')}" alt="{tool.name}" class="card absolute" draggable=false
-         style="bottom: var(--attach-lift-tool); left: calc({$energy.length * 25 + (i + 1) * 35}px); z-index: {$cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
+         style="bottom: var(--slot-lift-tool); left: calc({$energy.length} * var(--slot-step-energy) + {i + 1} * var(--slot-step-tool)); z-index: {$cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
          data-attached="trainer"
          class:card-attached-selected={$cardSelection.includes(tool)}
          on:click={(e) => onCardClick(e, tool, trainer)}
@@ -199,7 +199,26 @@
 </div>
 
 <style>
+   .slot {
+      /*
+         A slot's cards are the size of the zone it is in, the same as every other card
+         on the board: the zone a slot is in says what that is (`--slot-card-width`, set
+         by the active spot and the bench), and a slot outside one - none is, today -
+         keeps the size the dialogs use.
+
+         The steps the cards attached to it keep are shares of it (see global.css): the
+         fan grows and shrinks with the card, and a bench can spend the lift as room
+         (--attach-lift, read by the bench).
+      */
+      --slot-width: var(--slot-card-width, var(--card-width));
+      --slot-step-energy: calc(var(--slot-width) * var(--attach-step-energy));
+      --slot-step-tool: calc(var(--slot-width) * var(--attach-step-tool));
+      --slot-lift-energy: calc(var(--slot-width) * var(--attach-lift-energy));
+      --slot-lift-tool: calc(var(--slot-width) * var(--attach-lift-tool));
+   }
+
    img.card {
+      width: var(--slot-width);
       @apply box-content border-2 border-transparent rounded-md;
    }
 
@@ -238,7 +257,7 @@
    }
 
    .counter {
-      width: calc(var(--card-width) / 2.5);
-      height: calc(var(--card-width) / 2.5);
+      width: calc(var(--slot-width) / 2.5);
+      height: calc(var(--slot-width) / 2.5);
    }
 </style>

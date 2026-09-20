@@ -648,8 +648,9 @@ three prizes by three. The hand is
 the other arrangement: its cards lie *along* it, so they are sized by the zone's height
 and the row scrolls sideways once twenty of them no longer fit.
 
-This is why `--card-width` is only what a card is *outside* a zone now — in an
-inspection, in the deck list, in a dialog.
+This is why `--card-width` is only what a card is where no zone has sized it: in an
+inspection, in the deck list, in a dialog, and on the table's stack — and it is what a
+slot's cards fall back to if one is ever put outside the two zones that hold them.
 
 **There is no card size setting any more.** It was a slider over `--card-scale`, and
 once the cards were the zones' it did nothing useful and one thing that was worse than
@@ -675,10 +676,10 @@ whole pile is sized by how many rows it makes.
 
 **The bench keeps its card size and scrolls.** A bench is five Pokémon, which fits, and
 solo can put any number on one — so a bench that no longer fits is *navigated* rather
-than shrunk, the way the hand is: the row scrolls sideways, and every Pokémon on it
-stays the size it was played at. A card that shrinks as the bench fills up is a card
-that has to be looked at twice, and a second row would have shrunk the whole bench to
-make room for itself.
+than shrunk, the way the hand is: the row scrolls sideways, and every Pokémon on it stays
+the size the zone gives it. A card that shrinks as the bench fills up is a card that has
+to be looked at twice, and a second row would have shrunk the whole bench to make room
+for itself.
 
 The row fills from its near edge and is **centred up and down in its zone**, which is
 where a card in every other zone of the board sits. Keeping its own card size is what
@@ -689,34 +690,43 @@ zone is not, so a card sat in the corner of one.
 Both benches are placed by their own box (`.bench-zone`, in the near half's component and
 in the far half's): `display: grid` with `align-items: center`. The row cannot centre
 *itself* inside its scroll container — that container is already the height of the row,
-so centring within it would move nothing — and of the two ways of having the zone do it,
-a grid item is the one that leaves the row what it was. `flex flex-col justify-center`
-makes the row the flex item, and a flex item is *shrunk* to its container: a bench card
-is a fixed size rather than the zone's, so it is taller than its zone at the 821px window
-the browser checks run at and at anything shorter, and a shrunk row is a card cut off
-inside the row's own scroll container. `flex items-center` gets the height right, by
-centring the row as a cross-axis item, but takes the row off the width of the zone: the
-scroll container becomes a fit-content flex item, so a half-empty bench's row is only as
-wide as the cards on it and an empty one has no width at all. Grid neither shrinks nor
-narrows it, so the row keeps the zone's full width and a card taller than the zone now
-overflows it evenly rather than downwards only.
+so centring within it would move nothing — and a grid item is what leaves the row what it
+was: `flex items-center` would make the row a fit-content flex item, so a half-empty
+bench's row would be only as wide as the cards on it and an empty one would have no width
+at all, and the zone's whole width is the row's drop target.
 
-**A card attached to a bench Pokémon is drawn whole.** A card attached to a Pokémon in
-play stands off that card's bottom edge — 34px for a tool, 17px for an energy
-(`--attach-lift-tool` and `--attach-lift-energy`, in `global.css`) — and the two cards are
-the same size, so the attached card reaches exactly that far above the top of the card it
-is under. Each slot declares that distance about itself (`--attach-lift`, in
-`Slot.svelte`), and the bench's row spends it as room above that slot: the row is then as
-tall as the group a slot draws, and the zone centres the group.
+**A slot's cards are the size of the zone too, and so are the steps its fan keeps.** The
+active spot and the bench hold a Pokémon with whatever is attached to it, and both ask
+their zone for the card: `--slot-card-width` (`Active.svelte`, `Bench.svelte`, and the
+opponent halves of each), which `Slot.svelte` uses for the card *and* for the cards
+attached to it. A slot used to keep a fixed 105px card while the zone around it did not,
+so a window short enough to leave the bench zone less than a card tall — the 821px window
+the browser checks run at is one — drew cards over the bottom of the zone, and over the
+top of it as well once the row was centred in one.
 
-It has to be the row that spends it rather than the slot, and it is the bench alone that
-has to spend it at all. A slot is in the active spot and on the table as well, where
-nothing scrolls and the fan hangs over the cards beside it exactly as it should; the bench
-is the one zone of the three that scrolls, and a scroll container clips at its own box —
-`overflow-x: auto` makes the other axis `auto` too, whatever it says — so an attached card
-that reached above the row was drawn from the row's top edge down, its top 34px — the part
-that says which card it is — cut off. The row's cards also line up on their bottom edges
-rather than centred in it, since a slot carrying a tool is a taller item than one without.
+Every step the fan is laid out with is a **share of the card** rather than a pixel
+(`--attach-step-energy` and `--attach-step-tool` for the 25px and 35px a fan steps
+sideways, `--attach-lift-energy` and `--attach-lift-tool` for the 17px and 34px it is
+lifted by, in `global.css`): a fan that kept its pixels while its cards shrank is a fan of
+a different size than the card it is behind. The lift is also how far an attached card
+reaches above the top of the card it is under, the two being the same size, so a zone has
+to leave room for it: `--slot-card-share` is what is left of a zone's height for the card
+once the tallest fan fits above it, and both slot zones spend their height through it.
+
+The room is spent in each zone's own way, and each is where the zone already does its own
+placing. The bench's row spends it as `margin-top` on a slot, so the row is as tall as the
+group a slot draws, and its cards line up on their bottom edges rather than centred in it
+— a slot carrying a tool is a taller item than one without, and centring the items would
+put the Pokémon beside it half a lift higher. The active spot's own box spends it the same
+way, since that container centres the *margin* box of what is in it: without it the fan
+reached over the Pokémon Power band above the zone while the card sat in the middle of it.
+
+It has to be the zone's row or box that spends it rather than the slot, and it is the two
+slot zones alone that have to spend it at all. Nothing scrolls in the active spot, and the
+table's stack is not a slot at all; the bench is the one that scrolls, and a scroll
+container clips at its own box — `overflow-x: auto` makes the other axis `auto` too,
+whatever it says — so an attached card that reached above the row was drawn from the row's
+top edge down: the top of it, the part with the card's name on it, was cut off.
 
 **A prize stays face down while it is moved, and looking at one is said out loud.** The
 card under the pointer in a drag is drawn from the card's face, so picking a face-down
@@ -726,16 +736,15 @@ whose cards are face down. And **Show Details** on a face-down prize writes *Vie
 prize card* to the game log: it is the one private look a player takes that the opponent
 cannot see, so the log says it happened even though the card is not named.
 
-Three things are not sized this way, and each is deliberate:
+Two things are not sized this way, and each is deliberate:
 
 - **A zone's name** is sized by its own words. Nor is it a container: a size container
   is laid out as if it had no contents, which for a name whose whole size *is* its
   contents is a name that collapses to nothing.
 - **The table's stack** — its cards keep their own size and are stacked with the steps
-  they always had. Its cards are read by looking at them rather than by fitting.
-- **The slots** (the active spot and the bench) lay a Pokémon out with whatever is
-  attached to it, in fixed steps around the card. Sizing those by the zone means
-  sizing those steps too, which is a change of its own.
+  they always had. Its cards are read by looking at them rather than by fitting, and it
+  is the one place on the board holding cards that is not a slot (see the bench and the
+  active spot for what a slot does instead).
 
 ### The Stadium holds two cards, and a play clears the other player's
 

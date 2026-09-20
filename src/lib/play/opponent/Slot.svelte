@@ -165,7 +165,7 @@
    })
 </script>
 
-<div class="slot relative w-max z-15" style="--attach-lift: {attachLift}; margin-right: calc({$energy.length * 25 + $trainer.length * 35}px)"
+<div class="slot relative w-max z-15" style="--attach-lift: {attachLift}; margin-right: calc({$energy.length} * var(--slot-step-energy) + {$trainer.length} * var(--slot-step-tool))"
    class:dragged={$solo && $dragging && $slotSelection.includes(slot)}
    on:click|stopPropagation={onClick}
    on:contextmenu={onCtx}
@@ -193,7 +193,7 @@
 
    {#each $energy as nrg, i (nrg._id)}
       <img src="{cardImage(nrg, 'xs')}" alt="{nrg.name}" class="card absolute" draggable=false
-         style="bottom: var(--attach-lift-energy); left: calc({(i + 1)* 25}px); z-index: {$solo && $cardSelection.includes(nrg) ? 12 : 9 - i}"
+         style="bottom: var(--slot-lift-energy); left: calc({i + 1} * var(--slot-step-energy)); z-index: {$solo && $cardSelection.includes(nrg) ? 12 : 9 - i}"
          data-attached="energy"
          class:card-attached-selected={$solo && $cardSelection.includes(nrg)}
          on:click={(e) => onCardClick(e, nrg, energy)}
@@ -203,7 +203,7 @@
 
    {#each $trainer as tool, i (tool._id)}
       <img src="{cardImage(tool, 'xs')}" alt="{tool.name}" class="card absolute" draggable=false
-         style="bottom: var(--attach-lift-tool); left: calc({$energy.length * 25 + (i + 1) * 35}px); z-index: {$solo && $cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
+         style="bottom: var(--slot-lift-tool); left: calc({$energy.length} * var(--slot-step-energy) + {i + 1} * var(--slot-step-tool)); z-index: {$solo && $cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
          data-attached="trainer"
          class:card-attached-selected={$solo && $cardSelection.includes(tool)}
          on:click={(e) => onCardClick(e, tool, trainer)}
@@ -213,7 +213,17 @@
 </div>
 
 <style>
+   .slot {
+      /* the near half's slot, steps and all: board/Slot.svelte, in full */
+      --slot-width: var(--slot-card-width, var(--card-width));
+      --slot-step-energy: calc(var(--slot-width) * var(--attach-step-energy));
+      --slot-step-tool: calc(var(--slot-width) * var(--attach-step-tool));
+      --slot-lift-energy: calc(var(--slot-width) * var(--attach-lift-energy));
+      --slot-lift-tool: calc(var(--slot-width) * var(--attach-lift-tool));
+   }
+
    img.card {
+      width: var(--slot-width);
       @apply box-content border-2 border-transparent rounded-md;
    }
 
@@ -254,7 +264,7 @@
 
    /* rotated back by the flipped half this slot is shown in (see Board.svelte) */
    .counter {
-      width: calc(var(--card-width) / 2.5);
-      height: calc(var(--card-width) / 2.5);
+      width: calc(var(--slot-width) / 2.5);
+      height: calc(var(--slot-width) / 2.5);
    }
 </style>
