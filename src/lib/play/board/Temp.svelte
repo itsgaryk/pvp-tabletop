@@ -19,6 +19,14 @@
       *View All* is the double click and the W key, and the zone's own menu opens on
       the part of it no card is on - but nothing selects the whole table at once,
       which is why the zone asks its Pile for no Ctrl+A (see `selectAll` there).
+
+      The handlers are on the card's own `img` rather than on a wrapper around it,
+      and that is the geometry rather than a style: the offsets below *are* how the
+      stack is drawn, and a wrapper around an absolutely positioned card is a
+      shrink-to-fit box whose available width the `left` offset cuts into - the
+      card's `max-width: 100%` then follows that box down, so a wrapped stack draws
+      its cards at two different sizes. A card attached under a Pokemon is written
+      the same way, for the same reason (see docs/selection.md).
    */
 
    /* DnD */
@@ -88,26 +96,25 @@
 
          {#each $table as card, i (card._id)}
             <!--
-               One card of the stack, at the offset it is drawn at: the first is in
-               the flow and sizes the stack, and every one after it is laid over the
-               one above by a fixed step, so the stack reads as a cascade.
+               One card of the stack, drawn where the stack puts it: the first card
+               is in the flow and sizes the stack, and every card after it is lifted
+               out of the flow and laid over the one above by a fixed step, so the
+               stack reads as a cascade.
 
-               The wrapper is what carries the click, the selection and the drag,
-               and its z-index is its place in the stack (a selected card comes to
-               the front, because a ring drawn on a card the next one is painted
-               over is a ring nobody can see - see docs/selection.md).
+               The card's own image carries the click, the selection and the drag,
+               and its z-index is its place in the stack - a selected card comes to
+               the front, because a ring drawn on a card the next one is painted over
+               is a ring nobody can see (see docs/selection.md).
             -->
-            <div class="table-card"
+            <img class="card table-card"
                class:stacked={i > 0}
                class:selected={$cardSelection.includes(card)}
                class:dragged={$dragging && $cardSelection.includes(card)}
-               style="bottom: -{i * 35}px; left: {i % 2 !== 0 ? 20 : 0}px; z-index: {$cardSelection.includes(card) ? 12 : i + 1}"
+               src="{cardImage(card, 'xs')}" alt={card.name} draggable="false"
+               style="bottom: {-i * 35}px; left: {i % 2 !== 0 ? 20 : 0}px; z-index: {$cardSelection.includes(card) ? 12 : i + 1}"
                on:click={(e) => onClick(e, card)}
                on:contextmenu={(e) => onCtx(e, card)}
                use:dnd={cardDnd(card)}>
-
-               <img class="card" src="{cardImage(card, 'xs')}" alt={card.name} draggable="false">
-            </div>
          {/each}
       </div>
    </div>
@@ -119,10 +126,10 @@
 
 <style>
    /*
-      The stack's geometry: one card in the flow, the rest absolutely placed at the
-      offsets written in the markup. The wrapper is not the card's size - an `img`
-      carries the board's card width and the wrapper is only as wide as what is in
-      it - so nothing here changes how big a card on the table is (see
+      The stack's geometry, and all of it: one card in the flow, the rest absolutely
+      placed at the offsets written in the markup. The card is the element that is
+      placed, with nothing between it and the stack - so a card on the table is the
+      size it always was, and the offsets land where they always did (see
       docs/card-sizing.md: the table's cards are the one place a card keeps its own
       size rather than the zone's).
    */
@@ -135,17 +142,21 @@
    }
 
    /*
-      A selected card glows like a selected card anywhere else on the board (see
-      docs/selection.md), drawn as an *outline* rather than as the border a card in
-      the hand wears: the wrapper is placed by the offsets above, so a 2px border
-      would move the card it is drawn around - and shift the whole cascade with it.
-      An outline costs no room.
+      A selected card glows like a selected card anywhere else on the board, drawn as
+      an `outline` rather than as the border a card in the hand wears: the offsets
+      above place the card, so a 2px border would move the card it is drawn around -
+      and shift the rest of the cascade with it. An outline costs no room, and the
+      glow is the same short drop-shadow the cards attached under a Pokemon use.
 
-      The glow is the same short drop-shadow the cards attached under a Pokemon use,
-      for the same reason: this card is part of a stack, and the point of the glow
-      is to pick it out of the cards around it.
+      `img.card` in the selector is load-bearing, and is why this rule is not written
+      `.table-card.selected`: `Board.svelte` sets a `filter` of its own on `img.card`
+      (`.game img.card`, which with each component's scope class is (0,3,1)), so a
+      rule carrying three classes loses on specificity and the glow is simply not
+      drawn, in silence. `img.card.table-card.selected` is (0,4,1) and wins wherever
+      the two stylesheets land - the same trap, and the same answer, as the card's
+      size in docs/card-sizing.md.
    */
-   .table-card.selected {
+   img.card.table-card.selected {
       outline: 2px solid var(--selection-color);
       outline-offset: -2px;
       filter: drop-shadow(0 0 6px var(--selection-color));

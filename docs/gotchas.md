@@ -665,3 +665,52 @@ encoded the old rule had to change with it: `tools/solo-select-check.mjs` assert
 pressing `H` emptied the far half's whole table, which was true only while a click on one card
 of the stack picked up all of them. A check is written against the rule as it stood, and it
 will hold the old rule in place until somebody reads it.
+
+**A `div` wrapped around an absolutely positioned card is a box that resizes it, and
+`max-width: 100%` is how it reaches the card.** The table's stack needed its cards to be picked
+up one at a time, and the obvious way to hang a click handler and a `selected` class on a card
+is to wrap it:
+
+```svelte
+<div class="table-card" style="left: {i % 2 !== 0 ? 20 : 0}px" on:click={...}>
+   <img class="card" src={cardImage(card, 'xs')}>
+</div>
+```
+
+Every card in the stack drew at a **different width**, and the stack stopped looking like
+itself. Nothing threw, every card was there, the selection worked perfectly — the bug was
+purely the geometry, and it was reported as *"the appearance of the cards in the table view has
+changed"*.
+
+Why, in the order it happens:
+
+- **An absolutely positioned box with `left` set and `width: auto` is shrink-to-fit**, and its
+  available width is the containing block's width *less that offset*. The stack's container is
+  `w-max` — as wide as a card, `--card-width`, 105px — so a wrapper for the odd cards came out
+  `105 − 20 = 85px`. The old markup had the `img` itself absolutely positioned, and an `img`
+  with `width: 105px` does not care what is available: it is 105px wide.
+- **The card image wears `max-width: 100%`** (WindiCSS's preflight sets it on every `img`), so
+  the image inside the 85px wrapper became 85px wide, and `height: auto` took the height down
+  with it. Cards 0 and 2 of the same stack stayed 105px, card 1 was 85px: a cascade of two
+  different card sizes.
+- **The offsets then lie.** `bottom: -35px` positions the *wrapper's* box, which is now 30px
+  shorter than the card it holds, so a card in the middle of the stack sits at a height nothing
+  in the markup asked for. Every offset is right and the drawing is wrong.
+
+The fix is to put the handlers and the classes on the card's own `img` — which is how
+`Slot.svelte` writes a card attached under a Pokémon, and why it is written that way — so the
+element that is placed is the element that was always placed, and the stack's geometry is the
+offsets again. The general rule is worth more than the instance: **a wrapper is not free on an
+element whose box is placed by the markup.** `width: max-content` on the wrapper would have
+held the width (and left the height, the baseline and the flex centring to disagree instead) —
+restoring the box structure is what makes the picture identical rather than merely close.
+
+Nothing in this repository can see this one: the build is green, the card-sizing check measures
+`global.css` rather than a rendering, and the render check renders to a string and says nothing
+about layout. What *did* see it was a person looking at the board — and, once it was reported,
+a crop of that screenshot decoded to raw pixels and measured. The two cards of that stack came
+out **137 and 109 device pixels wide**: 109/137 is 0.795, and `(105 − 20) / 105` is 0.810, while
+the narrow one's left edge sat exactly the 20px step right of the other's (`left: 20px`, at the
+capture's scale). That is the arithmetic of the wrapper above, read off the screen — and it is
+worth doing rather than squinting at a screenshot: the numbers say *which* rule did it, and the
+same numbers in the old markup would all have been one width.

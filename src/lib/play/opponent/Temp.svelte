@@ -22,7 +22,9 @@
 
    /*
       The far half's table, drawn the same way the player's own is: a cascade, with
-      every card in it picked up on its own (see board/Temp.svelte).
+      every card in it picked up on its own and the handlers on the card's own image
+      - see board/Temp.svelte for why there is no wrapper around it, which is the
+      stack's geometry rather than a style.
 
       In solo that half is the player's too, so its cards are selectable - each one
       by itself, with Ctrl/Cmd to add, and its own menu on a right click. Online the
@@ -72,17 +74,15 @@
          on:dblclick={() => openOppPile(table)}>
 
          {#each $table as card, i (card._id)}
-            <div class="table-card"
+            <img class="card table-card"
                class:stacked={i > 0}
                class:selected={$solo && $cardSelection.includes(card)}
                class:dragged={$solo && $dragging && $cardSelection.includes(card)}
-               style="bottom: -{i * 35}px; left: {i % 2 !== 0 ? 20 : 0}px; z-index: {$solo && $cardSelection.includes(card) ? 12 : i + 1}"
+               src="{cardImage(card, 'xs')}" alt={card.name} draggable="false"
+               style="bottom: {-i * 35}px; left: {i % 2 !== 0 ? 20 : 0}px; z-index: {$solo && $cardSelection.includes(card) ? 12 : i + 1}"
                on:click={(e) => onClick(e, card)}
                on:contextmenu={(e) => onCtx(e, card)}
                use:dnd={cardDnd(card)}>
-
-               <img class="card" src="{cardImage(card, 'xs')}" alt={card.name} draggable="false">
-            </div>
          {/each}
       </div>
    </div>
@@ -93,6 +93,7 @@
 </Pile>
 
 <style>
+   /* the near half's stack, and the reasons for this, in full: board/Temp.svelte */
    .table-card {
       position: relative;
    }
@@ -102,10 +103,11 @@
    }
 
    /*
-      The same two states the player's own cards use, and the same colours: a
-      selection is `--selection-color` wherever it is (see board/Temp.svelte).
+      The same two states the player's own cards use, and the same colours - with
+      `img.card` in the selector for the same specificity reason (board/Temp.svelte
+      has the arithmetic).
    */
-   .table-card.selected {
+   img.card.table-card.selected {
       outline: 2px solid var(--selection-color);
       outline-offset: -2px;
       filter: drop-shadow(0 0 6px var(--selection-color));

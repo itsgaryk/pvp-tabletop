@@ -166,13 +166,21 @@ component:
 - **Its cards keep their own size.** Every other card on the board is the size of the zone
   it is in; the table's are the size the board gives a card with no zone to size it
   (`.game`'s `--card-width`), because a stack is read by looking at it
-  ([card-sizing.md](card-sizing.md)). The wrapper each card now has is *not* the card's size
-  — the `img` inside it is — so the wrappers cost nothing in layout.
-- **The stack's offsets are the layout.** The first card is in the flow and sizes the
-  stack; every card after it is absolutely placed at a fixed step so the stack reads as a
-  cascade. That is why a selected card's ring is an `outline` and not the border the cards
-  in the hand wear: a border on the wrapper would move the card it is drawn around, and
-  shift the whole cascade with it.
+  ([card-sizing.md](card-sizing.md)).
+- **The stack's offsets are the layout, and the card is the element they are written on.**
+  The first card is in the flow and sizes the stack; every card after it is absolutely
+  placed at a fixed step, and each of them is an `img` with the click, the selection and the
+  drag on it — the way a card attached under a Pokémon is written. That is deliberate, and
+  not only for the ring: **wrapping the card in a `div` changes its size.** An absolutely
+  positioned box with `left` set and `width: auto` is shrink-to-fit, so its available width
+  is the containing block's less that offset — the wrapper comes out `--card-width − left`
+  wide, and the card image inside it, which wears `max-width: 100%`, shrinks with it. Two
+  cards of one stack then draw at two different sizes, which is what the cascade looked like
+  the first time this was written ([gotchas.md](gotchas.md)).
+
+So a selected card's ring is an `outline` and its glow a `drop-shadow` on the image itself,
+and neither of them moves anything: a border on the card would shift it out of the cascade,
+and a wrapper to hang the ring on would resize it.
 
 ## Select all, and the one zone that does not answer it
 
@@ -205,7 +213,7 @@ dark one (`global.css`). Where a particular selection gets it:
 | a card in a pile, or a Pokémon in play | the `border` of the element the click handler is on | `board/Card.svelte` (`.selected`), `board/Slot.svelte` (`img.card.selected`), `opponent/Card.svelte`, `opponent/Slot.svelte` |
 | a prize card | the same wrapper's `outline`, and its box lifted over its neighbours | `board/Prizes.svelte`, `opponent/Prizes.svelte` |
 | a card attached under a Pokémon | an `outline` just inside the card's edge, a drop-shadow, and the fan comes to the front | `board/Slot.svelte` / `opponent/Slot.svelte` (`.card-attached-selected`, `z-index: 12`) |
-| a card in the table's stack | the same outline and glow, and that card lifted over the cards it overlaps | `board/Temp.svelte`, `opponent/Temp.svelte` (`.table-card.selected`) |
+| a card in the table's stack | the same outline and glow, and that card lifted over the cards it overlaps | `board/Temp.svelte`, `opponent/Temp.svelte` (`img.card.table-card.selected`) |
 
 The table's stack is the one that changed sides here. It used to wear a drop-shadow glow in
 `#fbbf24` — the one selection on the board that was not the selection colour — because what
@@ -224,11 +232,15 @@ wherever it is.
 Each of these has been got wrong here, and two of them produce the same symptom: a click
 that selected the card and looks like it did not.
 
-**1. The class is on the wrapper, not on the `img`.** `selected` comes from
-`class:selected` on the `div` that carries the click handler; the `img` inside it only ever
-has `card`. A rule written at `img.card.selected` therefore matches **nothing on the board**,
-however sensible it reads — which is exactly how a selected prize had no glow at all while
-the state, the menu and the keyboard all behaved.
+**1. The class goes on the element that carries the click handler, and on a pile's card that
+is the wrapper, not the `img`.** A pile's card is `Card.svelte`'s `div`, so `selected` comes
+from `class:selected` on that `div` and the `img` inside it only ever has `card`. A rule
+written at `img.card.selected` therefore matches **nothing in those zones**, however sensible
+it reads — which is exactly how a selected prize had no glow at all while the state, the menu
+and the keyboard all behaved. The table's stack is the other way round, and deliberately: it
+draws its own card, the `img` itself carries the handler, and so `selected` is a class on that
+`img` — which is also how `Slot.svelte` writes an attached card. Read the markup for the zone
+before writing the rule; the class is wherever the click is.
 
 **2. The ring must not cost any room.** A card on the board is the size of the zone it is in
 ([card-sizing.md](card-sizing.md)), so a ring drawn as a border *outside* the card's box
@@ -248,14 +260,22 @@ glow, but it is behind the cards". The `z-index` has to go on the box that is a 
 the covering boxes, not on a child of it: raising the card inside its own wrapper raises it
 only within that wrapper's stacking context. The prizes lift the `.prize` box; the attached
 fans lift the `img` directly (`z-index: 12`), because there the covering cards are siblings
-of the `img` itself; and the table's stack lifts the card's wrapper (`z-index: 12`), which
-is the box the next card in the stack is painted over.
+of the `img` itself; and the table's stack lifts the card (`z-index: 12`) the same way, since
+its cards are siblings with no wrapper between them.
 
 One more thing a zone that draws its own selection must get right: **the card is rendered by
 another component**, so a rule has to be written with `:global()` to reach it. A scoped
 `.prize > div` compiles to a class the wrapper does not carry, and matches nothing in
-silence. The table's own cards are the exception that proves it: it draws its own wrappers,
-so its rules are ordinary scoped ones.
+silence.
+
+**And a rule that names the `img` has to out-specify the board's own rule about it.** The
+table's cards are the case: `img.card.table-card.selected` carries `img.card` in it not for
+clarity but for weight, because `Board.svelte` sets a `filter` on `img.card`
+(`.game img.card`), each component's scope class adds one more to that, and a rule written at
+`.table-card.selected` therefore loses — the glow is simply not drawn, silently, while
+everything about the selection works. It is the same shape as the card's own size, which had
+to *tie* with `img.card` on specificity to win ([card-sizing.md](card-sizing.md)); a rule
+about a card's appearance lives next to a rule about the card, and has to reckon with it.
 
 **And only the card should be `:global()`.** Writing the whole selector global —
 `:global(.prizes .prize > div)`, which is how the prizes' rules were first written — makes
