@@ -7,7 +7,7 @@
    import { s } from '$lib/util/strings.js'
    import {
       deck, discard, hand, table,
-      shuffle, selectPile, cardSelection, cardPile, keepInPile,
+      shuffle, shuffleAfterViewAction, selectPile, cardSelection, cardPile, keepInPile,
       moveSelection, toBench
    } from '$lib/stores/player.js'
 
@@ -114,27 +114,45 @@
    }
 
    /*
-      The whole of what one of the four buttons does: the cards the player picked
-      go where it says, and the panel closes behind them.
+      Whether this panel is the view of that pile, and open.
 
-      The shuffle is the deck's, and it is a *shuffle* rather than a tidy-up: a card
-      taken out of a deck is a card out of a deck, and what is left of it is
-      unknown - the same reason the button below is called Close & Shuffle. Nothing
-      else is shuffled: a discard and a lost zone are public and ordered, and there
-      is nothing about them for a shuffle to say.
+      The board asks this before it lends a card's menu the way to finish a view: a
+      card right-clicked in here is a card in a pile's view, and the same card
+      right-clicked on the board is not (see `openCardMenu` in Board.svelte). The
+      popup is bound, so this answers no until the panel has been opened at all -
+      which is the right answer for the render the check makes, where nothing has
+      been clicked.
+   */
+   export function showing (_pile) {
+      return pile === _pile && Boolean(popup?.opened())
+   }
 
-      Closing is what the player means by picking a card out and naming a place for
-      it - the decision is made, so the panel gets out from in front of the table -
-      and it puts the four buttons on the same footing as the two beside them,
-      which is why the move happens first: closing is a popup call, and a popup
-      that closed first would have no pile left to read.
+   /*
+      What finishes a view once something has been done in it, whichever way it was
+      done: the four buttons below come here, and so does an entry of the card
+      menu's, which is the same decision taken from a right-click rather than from
+      the foot of the panel.
+
+      The shuffle is the deck's only, and it is a *shuffle* rather than a tidy-up -
+      see `shuffleAfterViewAction`, where that rule lives and says why.
+
+      Closing is what the player means by taking a card out and naming a place for
+      it - the decision is made, so the panel gets out from in front of the table.
+   */
+   export function finishAction () {
+      shuffleAfterViewAction(pile)
+      popup.close()
+   }
+
+   /*
+      The whole of what one of the four buttons does: the cards the player picked go
+      where it says, and the panel is finished behind them.
    */
    function moveCards (where) {
       /* the panel moves the cards it is showing, and no others: see `keepInPile` */
       keepInPile(pile)
       movesTo[where]()
-      if (isDeck) shuffle()
-      popup.close()
+      finishAction()
    }
 </script>
 

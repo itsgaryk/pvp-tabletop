@@ -146,6 +146,26 @@ export function shuffle () {
 }
 
 /*
+   What a pile's *view* does to the pile once an action has been taken out of it:
+   the deck is shuffled, and every other pile is left as it is.
+
+   A card taken out of a deck is a card out of a deck, and what is left of it is
+   unknown - which is the whole of why the view offers the move and the shuffle
+   together (the button beside it is called Close & Shuffle). A discard and a lost
+   zone are public and ordered, so shuffling one would be a pile rearranging itself
+   for no reason at all.
+
+   It is here rather than in the panel because it is a rule about a pile and not
+   about the screen: the view's four buttons and its card menu both end through it
+   (see `finishAction` in dialogs/Inspection.svelte), and it is the one part of that
+   ending that can be asked about without a browser -
+   `tools/render-check.mjs` does, by counting the log lines it writes.
+*/
+export function shuffleAfterViewAction (pile) {
+   if (pile === deck) shuffle()
+}
+
+/*
    Putting cards back on the deck in a chosen order - what a search that ends
    "then put those cards on top of it in any order" needs (Ciphermaniac's
    Codebreaking). `ordered[0]` becomes the top of the deck, or the last card if

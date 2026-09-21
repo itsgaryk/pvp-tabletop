@@ -547,6 +547,28 @@ those buttons make, which need no browser at all (`moveSelection` and `toBench`)
 Both props are off everywhere in the app, and the wrapper is deliberately not in
 `src/`: nothing on a board wants a dialog that opens itself.
 
+**A callback threaded through three components is verified by three assertions that
+each check a third of it, and that is worth saying out loud.** Taking an entry of a
+card's menu from inside a pile's view has to finish the view — the deck's view
+closes and shuffles what is left of the deck — and it reaches that ending through
+three hand-offs: a card in the view carries its pile (`board/Card.svelte`), the
+board asks that pile's view whether it is open and lends the menu a way to finish it
+(`Board.svelte`), and the menu calls it for an entry that acted and not for *Show
+Details* (`dialogs/CardMenu.svelte`). Each line reads perfectly on its own and does
+nothing at all on its own: a menu that is never handed the ending leaves the view
+open, silently, and a menu that is handed one and does not call it does the same.
+
+The *rule* is a store's and is checked for real —
+`shuffleAfterViewAction` in `stores/player.js` shuffles the deck's view and no other
+pile's, and `tools/render-check.mjs` counts the *Shuffled Deck* lines it writes, one
+for a deck's view and none for a discard's, which was verified by removing the gate
+and watching both red. The three hand-offs are asserted as source, and that is
+weaker than the rest of this file's checks: a regex can see that the callback is
+passed and used, and cannot see that the click happens. What answers it is a
+browser check in the shape of `tools/view-log-check.mjs` — open a deck's view,
+right-click a card, click *To Hand*, and ask whether the panel is gone and the log
+says *Shuffled Deck* — and that is the one thing missing here.
+
 **`tools/relay-check.mjs` used to ask the clock for an exact millisecond, which the
 relay cannot promise.** The check *and the time really left on it* compared the
 `remaining` a late spectator is handed against `RUNNING_MS - elapsedRelay(...)` with

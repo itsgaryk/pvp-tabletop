@@ -82,7 +82,13 @@
          selectCard(card, pile, false)
       }
 
-      openCardMenu(e.clientX, e.clientY, revealed)
+      /*
+         The pile goes with it, because a card in a pile's *view* is a card whose
+         menu finishes the view when one of its entries is taken (see
+         Board.svelte's openCardMenu). A card on the board passes the same pile and
+         nothing comes of it: there is no view open over the board's own zones.
+      */
+      openCardMenu(e.clientX, e.clientY, revealed, pile)
    }
 
 </script>

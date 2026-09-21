@@ -77,16 +77,16 @@ const outfile = join(work, `bundle-${buildId}.mjs`)
 */
 writeFileSync(entry, `
    import { solo, startSolo, exitSolo } from '${p('lib/stores/solo.js')}'
-   import { room } from '${p('lib/stores/connection.js')}'
+   import { room, chat } from '${p('lib/stores/connection.js')}'
    import { defaultOpponent } from '${p('lib/stores/opponent.js')}'
    import Board from '${p('lib/play/Board.svelte')}'
    import Connection from '${p('routes/Connection.svelte')}'
    import Page from '${p('routes/+page.svelte')}'
-   import { cards, cardSelection, deck, discard, bench, draw, hand, lz, moveSelection, resetBoard, resetSelection, selectCard, selectPile, stadium, table, toBench } from '${p('lib/stores/player.js')}'
+   import { cards, cardSelection, deck, discard, bench, draw, hand, lz, moveSelection, resetBoard, resetSelection, selectCard, selectPile, shuffleAfterViewAction, stadium, table, toBench } from '${p('lib/stores/player.js')}'
    import InspectionView from '${join(root, 'tools', 'pile-dialog.svelte').split(sep).join('/')}'
    /* what a decklist import does: the list of cards, then the board built from it */
    const setDeck = (cards_) => { cards.set(cards_); resetBoard() }
-   export { solo, startSolo, exitSolo, room, Board, Connection, Page, bench, cardSelection, deck, defaultOpponent, discard, draw, hand, lz, moveSelection, resetSelection, selectCard, selectPile, setDeck, stadium, table, toBench, InspectionView }
+   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, deck, defaultOpponent, discard, draw, hand, lz, moveSelection, resetSelection, selectCard, selectPile, setDeck, shuffleAfterViewAction, stadium, table, toBench, InspectionView }
 `)
 
 const svelte = {
@@ -296,14 +296,63 @@ check('and the panel keeps the base placement, centred in the window',
    /<Popup bind:this=\{popup\} \{openOnMount\}>/.test(inspectionCss))
 
 /*
-   And the one thing neither a string nor a store can see: *which* piles the four
-   buttons shuffle. A card out of a deck leaves it unknown, so the deck is shuffled;
-   a discard and a lost zone are public and ordered, and shuffling one would be a
-   pile quietly rearranging itself. The gate is one line, and it is the line a later
-   "tidy-up" would drop.
+   And the one rule about the ending of a view that can be asked without a browser:
+   *which* pile an action out of a view shuffles. A card out of a deck leaves it
+   unknown, so the deck is shuffled; a discard and a lost zone are public and
+   ordered, and shuffling one would be a pile quietly rearranging itself.
+
+   It is asked of the store rather than read off the panel, and the answer is counted
+   in the game log, which is a real consequence and not a shape: `shuffle` writes
+   *Shuffled Deck* (in solo it is written locally - see publishToChat), so the
+   assertion is that the deck's view writes one more line and a discard's view writes
+   none. The four buttons and a card menu's own entries both end through this
+   (see the wiring checks below), so this is the rule they share.
 */
-check('and only the deck is shuffled behind the cards that leave it',
-   /if\s*\(\s*isDeck\s*\)\s*shuffle\(\)/.test(inspectionCss))
+const shuffled = () => get(mod.chat).filter((line) => line.message === 'Shuffled Deck').length
+
+const beforeAction = shuffled()
+mod.shuffleAfterViewAction(mod.discard)
+check('and an action out of a discard\'s view shuffles nothing', shuffled() === beforeAction)
+
+mod.shuffleAfterViewAction(mod.deck)
+check('and an action out of the deck\'s view shuffles the deck', shuffled() === beforeAction + 1)
+
+/*
+   And the wiring that gets a card menu's entry to that ending, which is three
+   hand-offs and cannot be clicked here: the card in a view carries its pile
+   (`board/Card.svelte`), the board asks that pile's view whether it is open and
+   hands the menu a way to finish it (`Board.svelte`), and the menu calls it for an
+   entry that acted and not for *Show Details* (`dialogs/CardMenu.svelte`).
+
+   Each half is a line that reads perfectly on its own and does nothing at all on its
+   own, which is why all three are here: a card menu that is never handed the ending
+   is a menu that leaves the view open, and nothing in the tree would say so.
+*/
+const cardSource = readFileSync(join(src, 'lib', 'play', 'board', 'Card.svelte'), 'utf8')
+const boardSource = readFileSync(join(src, 'lib', 'play', 'Board.svelte'), 'utf8')
+const menuSource = readFileSync(join(src, 'lib', 'play', 'dialogs', 'CardMenu.svelte'), 'utf8')
+
+/* the body of one function, up to the next function or the end of the script */
+const bodyOf = (source, name) => {
+   const start = source.indexOf(`function ${name} `)
+   if (start === -1) return ''
+   const rest = source.slice(start + 1)
+   const end = rest.search(/\n   (?:export )?function |\n<\/script>/)
+   return end === -1 ? rest : rest.slice(0, end)
+}
+
+check('and a card in a view carries its pile to the menu',
+   /openCardMenu\(e\.clientX, e\.clientY, revealed, pile\)/.test(cardSource))
+check('and the board asks the view before lending the menu its ending',
+   /inspectionModal\.showing\(fromPile\)/.test(boardSource) && /view\.finishAction\(\)/.test(boardSource))
+check('and every menu entry that acted ends through it',
+   [ 'moveTo', 'callThenClose', 'attachEvolve' ].every((fn) => bodyOf(menuSource, fn).includes('done()')))
+check('and Show Details is not one of them - it acts on nothing',
+   bodyOf(menuSource, 'showDetails') !== '' && !bodyOf(menuSource, 'showDetails').includes('done()'))
+check('and the four buttons end the view the same way',
+   bodyOf(inspectionCss, 'moveCards').includes('finishAction()'))
+check('and the panel is the only thing that knows it is open',
+   /export function showing \(_pile\)/.test(inspectionCss) && /popup\?\.opened\(\)/.test(inspectionCss))
 
 /*
    And which piles get the four buttons at all. They are the four places a *search*
