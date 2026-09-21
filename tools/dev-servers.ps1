@@ -101,6 +101,17 @@ function Wait-Port([int]$port, [string]$what, [int]$tries = 120) {
    return $false
 }
 
+# is the app serving? This is the authority on readiness, not a port probe: on some
+# hosts a TCP connect to the dev server fails while the app serves fine.
+function Test-Health([int]$port = 3005) {
+   try {
+      $res = Invoke-WebRequest -Uri "http://localhost:$port/api/relay/health" -UseBasicParsing -TimeoutSec 3
+      return $res.StatusCode -eq 200
+   } catch {
+      return $false
+   }
+}
+
 if (-not (Test-Path $Chrome)) {
    throw "Chrome not found at $Chrome - pass -Chrome <path>"
 }
@@ -168,23 +179,22 @@ if (Test-Port 3005) {
 } else {
    Write-Host 'starting the dev server on 3005'
    $envLines = $devEnv.GetEnumerator() | ForEach-Object { "`$env:$($_.Key)='$($_.Value)'" }
-   $log = Join-Path $root '.dev-server.log'
+   $log = Join-Path $root '.tmp-dev-server.log'
    Start-Process -FilePath $shell -WorkingDirectory $root -WindowStyle Hidden -ArgumentList @(
       '-NoProfile', '-Command', (($envLines -join '; ') + "; npm run dev *> `"$log`"")
    )
 
-   # the app is up when its health route answers, which also proves the relay loaded
+   # The app is up when its health route answers, which also proves the relay loaded.
+   # The port probe is not allowed to gate this: on some hosts TcpClient cannot reach
+   # the app on 3005 on any address while the app is serving happily, so waiting on
+   # Test-Port first would spend the whole loop and then warn about an app that had
+   # been up the entire time. Ask the app instead; treat the port as a courtesy.
    $ok = $false
    for ($i = 0; $i -lt 180; $i++) {
-      if (Test-Port 3005) {
-         try {
-            $res = Invoke-WebRequest -Uri 'http://localhost:3005/api/relay/health' -UseBasicParsing -TimeoutSec 3
-            if ($res.StatusCode -eq 200) { Write-Host '  up: the app on 3005 (health answered)'; $ok = $true; break }
-         } catch { }
-      }
+      if (Test-Health) { Write-Host '  up: the app on 3005 (health answered)'; $ok = $true; break }
       Start-Sleep -Milliseconds 500
    }
-   if (-not $ok) { Write-Warning '  the app never answered /api/relay/health - see .dev-server.log' }
+   if (-not $ok) { Write-Warning "  the app never answered /api/relay/health - see $log" }
 }
 
 # one browser per page: a single CDP connection cannot multiplex them (see browser.mjs)
