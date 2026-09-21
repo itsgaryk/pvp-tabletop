@@ -35,6 +35,14 @@ suffix on the far half's class names is the whole of the difference between the 
 halves' markup, and `play2` and `stadium2` deliberately resolve to the *same* grid
 area as `play` and `stadium`.
 
+A zone is named in three vocabularies — the store's field, the grid area, and the
+name a log line uses — and they are not the same set. The log's name for the
+Pokémon in play is `play`, which is not a store: the bench and the active spot are
+`bench` and `active`, and `play` is also the *grid area* of the table's cell, whose
+store is `table`. Renaming those keys to match is how a log line starts naming
+cards it is meant to count. [gotchas.md](gotchas.md) has the full mapping; it is
+worth reading before touching `logger.js`.
+
 **Pokemon Power** holds the player's VSTAR / GX marker, the tokens a deck's own power
 is tracked with — and **no Pokémon**. It is deliberately not a card zone: nothing is
 played into it and no card is ever drawn there, so `PowerZone.svelte` is a single
@@ -66,7 +74,12 @@ Four cells are not one zone to one component:
   watermark (`:before`) belonging to the cell rather than to either zone.
 - **The veil is not a zone at all.** It is the shading drawn while Hide Pokémon is
   on (`pokemonHidden`), placed by named lines rather than declared as an area, so it
-  is deliberately outside both the zone outlines and the zone names.
+  is deliberately outside both the zone outlines and the zone names. `pokemonHidden`
+  is one of three per-zone visibility flags — with `handRevealed` and `prizesFlipped`
+  — and each one both hides its zone's cards and decides whether a move involving
+  them is logged by name or by count (see [gotchas.md](gotchas.md)); it is also the
+  flag behind the log's `play` key, which is the bench and the active spot together
+  rather than any grid area.
 
 The grid is seven columns by six rows, with every track floored at `minmax(0, …)`:
 plain `fr` has an automatic minimum, so a zone with more in it — a full hand, a pile
