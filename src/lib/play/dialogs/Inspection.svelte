@@ -7,7 +7,7 @@
    import { s } from '$lib/util/strings.js'
    import {
       deck, discard, hand, table,
-      shuffle, shuffleAfterViewAction, selectPile, cardSelection, cardPile, keepInPile,
+      shuffle, shuffleAfterLeavingDeck, selectPile, cardSelection, cardPile, keepInPile,
       moveSelection, toBench
    } from '$lib/stores/player.js'
 
@@ -134,13 +134,16 @@
       the foot of the panel.
 
       The shuffle is the deck's only, and it is a *shuffle* rather than a tidy-up -
-      see `shuffleAfterViewAction`, where that rule lives and says why.
+      see `shuffleAfterLeavingDeck`, where that rule lives and says why.
 
       Closing is what the player means by taking a card out and naming a place for
       it - the decision is made, so the panel gets out from in front of the table.
+      An attach and an evolve are the one pair of entries that does not come here:
+      the card has not gone anywhere until a Pokemon takes it, and that happens at a
+      later moment in a place this panel is not (see `attachSelection`).
    */
    export function finishAction () {
-      shuffleAfterViewAction(pile)
+      shuffleAfterLeavingDeck([ pile ])
       popup.close()
    }
 

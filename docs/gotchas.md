@@ -558,16 +558,29 @@ Details* (`dialogs/CardMenu.svelte`). Each line reads perfectly on its own and d
 nothing at all on its own: a menu that is never handed the ending leaves the view
 open, silently, and a menu that is handed one and does not call it does the same.
 
-The *rule* is a store's and is checked for real —
-`shuffleAfterViewAction` in `stores/player.js` shuffles the deck's view and no other
-pile's, and `tools/render-check.mjs` counts the *Shuffled Deck* lines it writes, one
-for a deck's view and none for a discard's, which was verified by removing the gate
-and watching both red. The three hand-offs are asserted as source, and that is
-weaker than the rest of this file's checks: a regex can see that the callback is
-passed and used, and cannot see that the click happens. What answers it is a
-browser check in the shape of `tools/view-log-check.mjs` — open a deck's view,
+The *rule* is a store's and is checked for real — `shuffleAfterLeavingDeck` in
+`stores/player.js` shuffles the deck when the deck is one of the piles the cards
+left, and `tools/render-check.mjs` counts the *Shuffled Deck* lines it writes: one
+for a move out of the deck and none for a discard's, and for an attach, one when the
+card lands under a Pokémon and none when it was in hand all along. Each was verified
+by removing the gate and watching the assertion go red. The hand-offs are asserted as
+source, and that is weaker than the rest of this file's checks: a regex can see that
+the callback is passed and used, and cannot see that the click happens. What answers
+it is a browser check in the shape of `tools/view-log-check.mjs` — open a deck's view,
 right-click a card, click *To Hand*, and ask whether the panel is gone and the log
 says *Shuffled Deck* — and that is the one thing missing here.
+
+**An entry that arms the board has not acted, and a side effect asked for at the
+wrong moment is the whole of the bug.** *Attach* and *Evolve* are the two entries of
+that menu that do not do what they say when they are clicked: they set
+`attaching`/`evolving` and wait for the player to click the Pokémon the card goes
+under. Firing the deck's shuffle where the entry is taken therefore shuffles a deck
+that a change of mind leaves untouched — the card never moved, and the deck is now in
+an order nobody chose. The shuffle belongs to the moment the card lands, which is a
+*different module*: `attachSelection` in `stores/player.js`, where the card actually
+leaves its pile. The shape to watch for is a side effect a menu entry asks for on
+behalf of something it has not done yet; move it to the function that does the thing,
+and the tell that it is right is that the cancelled case leaves no trace at all.
 
 **`tools/relay-check.mjs` used to ask the clock for an exact millisecond, which the
 relay cannot promise.** The check *and the time really left on it* compared the
