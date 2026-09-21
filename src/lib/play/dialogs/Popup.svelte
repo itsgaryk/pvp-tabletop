@@ -26,6 +26,16 @@
    */
    export let centered = false
 
+   /*
+      A panel is opened by a call, and a component rendered without one draws
+      nothing at all - which is every panel, in a check that has no clicks to make
+      (`tools/render-check.mjs`). This opens it without the call, so a panel's own
+      markup can be rendered and read. Off everywhere in the app.
+   */
+   export let openOnMount = false
+
+   if (openOnMount) isOpen = true
+
    export function open () {
       isOpen = true
       closeAll()
@@ -91,13 +101,22 @@
       </div>
 
       <!--
-         One action per line: a panel is not a toolbar. Rendered only when a panel
-         actually has actions, so the settings menu - which has none, since the cog,
-         Escape and a click outside all close it - does not carry an empty padded
-         strip along its foot.
+         One action per line by default: a panel is not a toolbar, so a panel
+         with one action of its own gets a full-width button on a line of it.
+
+         `flex-wrap` is what lets a panel with more to do lay its actions out in
+         groups beside each other instead - the pile inspection moves cards to a
+         zone, which is a second kind of action and reads as its own block beside
+         the ones that close the panel (see Inspection.svelte). The groups stay
+         apart and drop onto their own line when the panel is too narrow for them,
+         rather than shrinking a button until its words no longer fit.
+
+         Rendered only when a panel actually has actions, so the settings menu -
+         which has none, since the cog, Escape and a click outside all close it -
+         does not carry an empty padded strip along its foot.
       -->
       {#if $$slots.buttons}
-         <div class="flex flex-col items-center gap-2 p-2">
+         <div class="flex flex-wrap items-start justify-center gap-2 p-2">
             <slot name="buttons"></slot>
          </div>
       {/if}

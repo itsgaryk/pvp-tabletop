@@ -43,6 +43,32 @@ Two lists and a pointer, all in `src/lib/stores/player.js`:
   decide where they go — and it is the same `Card` wearing the same ring, but its own
   selection: `pickup` is a place cards wait, not a place the board's selection came from
   ([terminology.md](terminology.md)).
+- **A pile inspection selects off the pile it is showing.** The cards in
+  `dialogs/Inspection.svelte` — a deck's *View All*, a discard, a lost zone — are ordinary
+  board cards, so clicking one selects it from that pile, click again takes it back out,
+  Ctrl adds to the selection and Ctrl+A takes the whole pile. That is the same selection
+  the board has, and the same one *Search & Order Deck* uses: it is what the panel's own
+  actions move (below), and what the keyboard's `h`/`d`/`b`/`t` move once the panel is
+  closed. The actions are enabled only for a selection made *in* the pile the panel is
+  showing, because the selection outlives the panel and a card can still be selected on the
+  board behind an open one (`selectionPile === pile` in `Inspection`).
+- **Both pile dialogs say what is picked out, above the grid.** A selection is one click
+  away from leaving the pile, and the *ring on the card is not enough to read a pile by*: a
+  count and the names, on a line of their own that does not scroll away, is what makes
+  "the three I clicked" something the player can check before saying where they go.
+  `Inspection` says *N cards picked out: …* and what a click does when none is;
+  `DeckOrder` numbers its strip instead, because there the sequence is the whole of what is
+  being decided (a card put back on the deck has a *place*, and one shipped to a zone does
+  not). Both keep the line whether or not anything is selected, so the grid does not jump
+  the moment a card is clicked.
+- **A pile inspection moves cards to a zone.** Its foot carries *Add to table*, *Add to
+  hand*, *Add to bench* and *Add to discard pile* beside the buttons that close it — the
+  four places a card comes out of a deck, a discard or a lost zone into. They are the
+  board's own moves (`moveSelection`, and `toBench` for the bench, since a card put into
+  play is a slot rather than a card in a list), so the move, the log line and what the
+  opponent is told are the same as a card dragged out of the deck; the panel stays open,
+  which is what moving one card at a time out of a search needs. A spectator sees them
+  disabled, like every other action they cannot take.
 
 ## What it looks like
 
