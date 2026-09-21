@@ -126,6 +126,22 @@ to answer the `OPTIONS` preflight and send `access-control-allow-origin` or the
 status arrives as 200 and the body is refused. Both failure modes look identical
 from the app's side, and both were met here while writing the deck-order check.
 
+**Do not trust `Get-NetTCPConnection` inside the sandbox to tell you whether something is
+running.** It reports nothing as listening — `NOT REPORTED` even for a port that is answering
+HTTP — because enumerating the TCP table is denied. Two afternoons' worth of wrong conclusions
+came out of that one line, including "the store cannot start here" when it had started and was
+serving. What works is an actual connection attempt:
+
+```powershell
+$c = [System.Net.Sockets.TcpClient]::new()
+$c.ConnectAsync('127.0.0.1', $port).Wait(400)   # true / false, and trustworthy
+```
+
+Checked against knowns: it reports `true` for this session's own web host on 3080 and for a
+stand-in store on 6390, and `false` for ports with nothing on them. `tools/dev-servers.ps1`
+uses exactly this, which is why its "already up" reporting can be believed where a `Get-NetTCPConnection`
+check cannot.
+
 **A sandbox that refuses piped stdio breaks `npm run build`, `npm run dev` and `git push`,
 all in the same way.** In a confined agent session — the DSH file sandbox, a container, a
 locked-down CI runner — `child_process` may be denied creating a *new* pipe for a child. The
@@ -139,6 +155,15 @@ requested. Measured on this project's Windows host, with `node -e` as the child:
 | `stdio: [ 'ignore', 'inherit', 'inherit' ]` | runs |
 | `stdio: 'pipe'` | `EPERM` |
 | *no `stdio` key at all* | `EPERM` — the default is a pipe |
+
+What that leaves working is worth stating positively, because the answer is *not* "nothing
+can be started": a plain node server is fine. `tools/fake-redis.mjs` launched from a hidden
+detached shell inside this very sandbox bound 6390 and answered `/__stats` with `200` — its
+own log line, `fake redis (command counter) on http://127.0.0.1:6390`, is the proof. Node can
+also `listen()` on a fresh port directly. So the *store* half of a browser check can be run in
+the sandbox; what cannot is the dev server (next paragraph) and the browser (later). The one
+caveat is lifetime: a process started that way did not outlive the harness turn that started
+it, so treat it as usable within a turn rather than as a service to leave up.
 
 Two of this project's tools depend on the pipe case and therefore fail with a message that
 points at the wrong thing:
@@ -182,8 +207,11 @@ What that looks like from the outside, and why it wastes an afternoon:
 
 - **Chrome gets far enough to look healthy.** It creates its `--user-data-dir` and writes
   `component_crx_cache`, `GPUPersistentCache`, `Local State` and `Variations` into it, then
-  dies. An empty profile would say "it never started"; a populated one says "it started and
-  then something else went wrong", which is the wrong lead.
+  dies — even for a run that never opens a debug port. An empty profile would say "it never
+  started"; a populated one says "it started and then something else went wrong", which is
+  the wrong lead. The *same* `--version` probe was also seen to exit `0xFFFF7001` on one
+  launch form and `21` (`ERROR_NOT_READY`) on another, so even that single datum is not
+  stable enough to reason from.
 - **No CDP is the only symptom.** `127.0.0.1` and `[::1]` both refuse on the debugging port,
   `/json/version`, `/json/list` and `/json` all fail, and `DevToolsActivePort` is never
   written. So the check reports *"chrome did not answer on the debug port"*, which reads
