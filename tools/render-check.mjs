@@ -159,7 +159,7 @@ const menu = renders('the main menu renders', mod.Page)
 check('and it is the menu (no board, no room)', Boolean(menu) && !/class="game/.test(menu))
 
 /* starting solo is the path that broke: it is what mounts the board */
-function startSolo () {
+function beginSolo () {
    try {
       mod.startSolo()
       return true
@@ -169,7 +169,7 @@ function startSolo () {
    }
 }
 
-check('startSolo() does not throw', startSolo())
+check('startSolo() does not throw', beginSolo())
 check('and it puts the app in solo', get(mod.solo) === true, `solo = ${get(mod.solo)}`)
 
 const solo = renders('the board renders in solo', mod.Page)
