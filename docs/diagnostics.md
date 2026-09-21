@@ -35,11 +35,21 @@ The card-sizing PRs are the ledger, and five sizes were wrong in a copy rather t
 in the rule.
 
 So the check is about *where the answer lives* rather than what it is: the size is
-the one `:where(.zone-card).card` rule in `global.css`, every pile's own front
+the one `img:where(.zone-card).card` rule in `global.css`, every pile's own front
 wears the class, no zone component writes the formula out again, both benches take
 one `--bench-card-width` from `global.css`, and the two active spots keep the
 `--slot-card-width` they declare themselves, because the active spot is not the
 bench's rule — it is not wide enough for a fan of any length.
+
+**One assertion is about whether the rule still *wins*, and it is the one the check
+was missing.** The rule was written as `:where(.zone-card).card` to tie with
+`img.card` on source order; `:where()` contributes no specificity, so it was a class
+alone, `(0,1,0)`, against `img.card`'s `(0,1,1)` — and `img.card` won, leaving the
+deck, the discard and the lost zone with the board's fixed 105px while every other
+zone scaled. The check now measures both selectors' specificity and fails if the
+zone's stops reaching the cards, which is the failure that every other assertion here
+passed through. See [card-sizing.md](card-sizing.md#a-card-on-the-board-is-the-size-of-the-zone-it-is-in)
+for the rule and [gotchas.md](gotchas.md) for how it was found without a browser.
 
 Two of its assertions are about what must *not* claim the rule, and both are
 regressions it was written after: the table's stack keeps its own fixed size (its

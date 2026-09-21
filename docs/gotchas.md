@@ -1,5 +1,66 @@
 # Things that cost somebody an afternoon
 
+**A rule that means to win on source order has to *tie* on specificity first, and `:where()`
+is where the tie hides.** The change that consolidated nine copies of "a card on the board is
+the size of the zone it is in" into one rule in `global.css` wrote that rule as
+`:where(.zone-card).card`, and said so in its own comment: *`:where()` is the class at no
+specificity, so this ties with `img.card` above on source order*. It does not tie.
+`:where()` contributes nothing, so the selector was a class alone — `(0,1,0)` — against
+`img.card`'s `(0,1,1)`, and `img.card` won every time. Every pile front on the board — the
+deck, the discard and the lost zone, both halves — therefore went on taking the board's
+fixed `--card-width` (105px) instead of its zone's size, while every other card on the board
+scaled. The fix is four characters: `img:where(.zone-card).card`, a type and a class,
+`(0,1,1)` exactly like `img.card`, so the tie is real and the later rule takes it. See
+[card-sizing.md](card-sizing.md) for the rule, and `tools/card-sizing-check.mjs`, which now
+*measures* both selectors instead of recognising the shape of one.
+
+**Why nothing caught it, and why it looked like two different bugs.** The check that existed
+asserted the class was worn and the formula was stated once — both true. The build, the docs
+check, the render check and the zone-vocabulary check were all green, because none of them
+looks at a cascade. And the symptom changes direction with the window:
+
+| window | the deck zone | an undecked card of 105px |
+| --- | --- | --- |
+| small (a 1375x826 capture) | ~89 x 89 CSS px | *larger than the zone*: it hangs out over the rows above and below |
+| 1080p | ~190 x 190 CSS px | *half the zone's width*: too small, and the zone it sits in looks empty |
+
+So "the cards in the deck, discard and lost zone are wrong" reads as an overflow at one
+window size and as nothing much at another, which is how one bug survived being reported
+twice as two. Anything that is a *fixed* length on a board whose zones are all proportional
+does this, and the giveaway is not on screen at either size — it is that the card is the
+same size in both.
+
+**Measuring that with no browser, from a screenshot.** A confined session has no renderer
+(see the notes below on Chrome and on piped stdio), but a screenshot *is* a render, and its
+pixels can be read. What worked here, in this repository, on this host:
+
+1. **Get the pixels into node.** `System.Drawing` refuses WebP (`Out of memory` — it is not
+   one; the codec is missing), but WIC decodes it: `PresentationCore`'s
+   `BitmapDecoder::Create` plus a `FormatConvertedBitmap` to `Bgra32`, then `CopyPixels`
+   into a `byte[]` and write it out raw. Node then reads it as `w * h * 4` bytes, BGRA.
+2. **Do the analysis in node, not in the shell.** PowerShell 5.1 is per-pixel slow enough
+   that a connected-components pass over a 2580x1625 image was killed at two minutes; the
+   same pass in node finished in under a second.
+3. **Find the grid before the cards.** Zone borders are on in these captures, so scanning
+   for near-grey rows and columns finds them: the two lines either side of a column gap are
+   `--scaled-rem` apart, one `1fr` is the row pitch, and `minmax(0, …)` tracks make every
+   zone's rectangle follow from those. A scanline through a zone's middle then gives the
+   card's edges against the background — that is the measurement.
+4. **Use a card whose size is known as the ruler, and mind the traps.** A *cardback's* dark
+   navy is a few units from the board's background, so any brightness threshold measures the
+   Pokéball inside it and not the card: measure a face-up card (a discard's or a lost zone's
+   top) or the white title bar instead. And **never convert device pixels to CSS pixels from
+   one capture alone** — the same 105px card measured ~137 device px in a 1375x826 capture
+   and ~139 in a 2583x1623 one, which is a fixed CSS length seen at one capture scale, not a
+   card that grew. A card whose formula is known (the hand: the zone's height, less two
+   paddings and the scrollbar) is what pins the scale, and it is also what proves the point:
+   in those same two captures the hand's cards went from ~56 to ~150 device px, matching the
+   formula at both, while the three pile fronts did not move at all.
+
+The rule the ratio between them gives you is worth stating plainly: **a card that does not
+change size when the zone around it doubles is not being sized by its zone**, whatever the
+CSS looks like.
+
 **A deck's top is the *end* of its array, and a list placed there goes in backwards.**
 Nothing in the code says either half of that anywhere. The first is implied by two things at
 once — `draw` takes a card with `pop`, and a pile is read from that same end (`Inspection`

@@ -36,7 +36,7 @@ inspection, in the deck list, in a dialog, and on the table's stack — and it i
 slot's cards fall back to if one is ever put outside the two zones that hold them.
 
 **The rule is stated once, in `global.css`, and the cards in zones wear a class to claim
-it.** `:where(.zone-card).card` is the one place the size is written down; every pile's
+it.** `img:where(.zone-card).card` is the one place the size is written down; every pile's
 own front — what a zone draws, a cardback or a discard's top card — wears `zone-card`.
 Nine components used to write that same `min()` out for themselves, two benches carried a
 verbatim copy of the same `--slot-card-width`, and each copy was commented with a pointer
@@ -46,17 +46,37 @@ copy rather than in the rule (`#109` and `#110` for the prizes and the bench, `#
 the row, a slot's cards, and the bench's scroll). `tools/card-sizing-check.mjs` fails if a
 zone claims a copy again.
 
+**A rule that is stated once is worth only what it wins.** Writing the size down once did
+not, on its own, reach the deck, the discard or the lost zone: the rule was spelled
+`:where(.zone-card).card`, on the reasoning that `:where()` is at no specificity and would
+therefore *tie* with `img.card` above it and take the later place in source order. It does
+not tie. `:where()` contributes nothing, so that selector is a class alone — `(0,1,0)` —
+against `img.card`'s `(0,1,1)`, and `img.card` won every time: the three pile fronts kept
+the board's fixed `--card-width` (105px) while every other card on the board scaled with
+its zone. Nothing in the tree could see it — the class was worn, the formula was in one
+place, the build and the docs check were green — and one window size hides it completely:
+105px is *too big* for the deck zone at a small window (the card hangs out of its zone over
+the rows around it) and *too small* for the same zone at a large one. It took somebody
+looking at the board.
+
+The `img` is now outside the `:where()`: `img:where(.zone-card).card` is a type and a class,
+`(0,1,1)`, exactly what `img.card` is, so the tie is real and source order is what decides
+it. `tools/card-sizing-check.mjs` no longer recognises the selector by its shape — it
+*measures* the specificity of both rules, and fails if the zone's stops reaching the cards.
+
 Two things that look like this rule are deliberately not it:
 
 - **The size cannot be a value on the board.** `100cqw` and `100cqh` are whichever zone
   the *card* is in, and a custom property is inherited unresolved — so a `--card-width`
   holding this `min()` on `.game` would be resolved against the zone of every card on the
   board, the table's stack included, which is exactly what the next point forbids.
-- **`:where()` is doing work rather than decorating.** The class is at no specificity, so
-  the rule ties with `img.card` on source order and loses to any rule that means to
-  redirect one zone — the hand's row, which sizes its cards by the zone's height and two
-  things `100cqh` knows nothing about. At `.zone-card` specificity the hand would have
-  needed a fight to win.
+- **`:where()` and the `img` outside it are both doing work.** The class is at no
+  specificity *of its own*, which is what lets a zone redirect its own cards: the hand's
+  row sizes its cards by the zone's height and two things `100cqh` knows nothing about, and
+  `.hand-cards img.card` in `Hand.svelte` is `(0,2,1)`, so it beats this rule whatever this
+  rule says. The `img` outside the `:where()` is what keeps this one at `(0,1,1)`, high
+  enough to tie with `img.card` and no higher — see the paragraph above for what the
+  selector costs without it.
 
 **The table's stack is the one place on the board holding cards that is not sized this
 way** (the other is a zone's name, below), and it is why the class is worn per card
