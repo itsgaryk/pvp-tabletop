@@ -3,7 +3,7 @@ import { writable } from './custom/writable.js'
 import { solo } from './soloState.js'
 import {
    resetBoard, timer,
-   cardSelection, slotSelection, resetSelection, selectionPile,
+   cardSelection, slotSelection, resetSelection, selectionPile, selectionByPile,
    discardStadium, onStadiumPlay as registerStadiumAnswer
 } from './player.js'
 import { defaultOpponent, spectatorFlipped } from './opponent.js'
@@ -271,6 +271,10 @@ registerStadiumAnswer(() => discardOpponentStadium())
    the click or drop that the Attach / Evolve action asks for. Everything is the
    far half's own, so the cards come off the pile they were selected in and go
    under that Pokemon.
+
+   One pile at a time, because a selection may hold cards from several of that
+   half's zones (see selectionByPile in player.js): the log line names the zone
+   the cards came from, and a list that came from two of them has no one name.
 */
 export function soloSlotAttach (s, evolve = false) {
    if (!s) return false
@@ -278,19 +282,20 @@ export function soloSlotAttach (s, evolve = false) {
    const cards = [ ...cardSelection.get() ]
    if (!cards.length || !onOpponentHalf(selectionPile)) return false
 
-   const from = selectionPile.name
+   for (const [ from, group ] of selectionByPile(defaultOpponent.piles())) {
 
-   for (const card of cards) {
-      takeFrom(selectionPile, card)
-      if (evolve) s.pokemon.push(card)
-      else if (card.card_type === 'trainer') s.trainer.push(card)
-      else s.energy.push(card)
+      for (const card of group) {
+         takeFrom(from, card)
+         if (evolve) s.pokemon.push(card)
+         else if (card.card_type === 'trainer') s.trainer.push(card)
+         else s.energy.push(card)
+      }
+
+      const what = group.map((card) => card.name).join(', ')
+      logForOpponent(evolve
+         ? `Evolved {${s.name || 'a Pokemon'}} into [${what}] from the ${from.name}`
+         : `Attached [${what}] from the ${from.name} to {${s.name || 'a Pokemon'}}`)
    }
-
-   const what = cards.map((card) => card.name).join(', ')
-   logForOpponent(evolve
-      ? `Evolved {${s.name || 'a Pokemon'}} into [${what}] from the ${from}`
-      : `Attached [${what}] from the ${from} to {${s.name || 'a Pokemon'}}`)
 
    resetSelection()
    return true
@@ -332,11 +337,18 @@ export function soloSelectedTo (zone, options = {}) {
    if (cards.length) {
       if (!onOpponentHalf(selectionPile)) return false
 
-      for (const card of cards) {
-         if (zone === 'bench' || zone === 'active') soloCardToPlay(selectionPile, card, zone)
-         else if (zone === 'stadium') soloCardToStadium(selectionPile, card)
-         else if (zone === 'deck') soloMoveCard(selectionPile, card, o.deck, options.bottom ? 'Put on the bottom of their deck' : 'Put on top of their deck', options)
-         else soloMoveCard(selectionPile, card, o[zone], `Moved to their ${ZONE_LABEL[zone] || 'board'}`)
+      /*
+         That half's own cards, out of the pile each of them is in: a selection
+         there may hold cards from several of its zones (see selectionByPile in
+         player.js), and every one of them is taken from the list that holds it.
+      */
+      for (const [ from, group ] of selectionByPile(o.piles())) {
+         for (const card of group) {
+            if (zone === 'bench' || zone === 'active') soloCardToPlay(from, card, zone)
+            else if (zone === 'stadium') soloCardToStadium(from, card)
+            else if (zone === 'deck') soloMoveCard(from, card, o.deck, options.bottom ? 'Put on the bottom of their deck' : 'Put on top of their deck', options)
+            else soloMoveCard(from, card, o[zone], `Moved to their ${ZONE_LABEL[zone] || 'board'}`)
+         }
       }
    } else {
       /*

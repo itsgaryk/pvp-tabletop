@@ -3,7 +3,7 @@
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import { dnd } from '$lib/dnd/actions.js'
    import { source, draggedCard } from '$lib/dnd/store.js'
-   import { cardSelection, resetSelection } from '$lib/stores/player.js'
+   import { cardSelection, resetSelection, selectionByPile } from '$lib/stores/player.js'
    import { solo, soloCardToPlay, soloSlotToActive, onOpponentHalf, onOpponentSlot } from '$lib/stores/solo.js'
 
    /* which player's board this component shows */
@@ -32,11 +32,17 @@
 
       if (!onOpponentHalf($source)) return
 
-      const cards = [ ...$cardSelection ]
-      const first = cards.shift()
-      if (first) soloCardToPlay($source, first, 'active')
-      /* only one Pokemon can be Active, so the rest go to the Bench */
-      for (const card of cards) soloCardToPlay($source, card, 'bench')
+      /*
+         That half's own cards, out of the pile each of them is in: a selection
+         there can hold cards from several of its zones (see selectionByPile in
+         player.js). The first card of the selection is the one promoted - only one
+         Pokemon can be Active - and the rest go to the Bench.
+      */
+      const first = $cardSelection[0]
+
+      for (const [ from, group ] of selectionByPile(store.piles())) {
+         for (const card of group) soloCardToPlay(from, card, card === first ? 'active' : 'bench')
+      }
 
       cardSelection.clear()
    }

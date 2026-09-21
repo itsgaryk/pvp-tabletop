@@ -78,14 +78,15 @@ const outfile = join(work, `bundle-${buildId}.mjs`)
 writeFileSync(entry, `
    import { solo, startSolo, exitSolo } from '${p('lib/stores/solo.js')}'
    import { room } from '${p('lib/stores/connection.js')}'
+   import { defaultOpponent } from '${p('lib/stores/opponent.js')}'
    import Board from '${p('lib/play/Board.svelte')}'
    import Connection from '${p('routes/Connection.svelte')}'
    import Page from '${p('routes/+page.svelte')}'
-   import { cards, cardSelection, deck, discard, bench, draw, hand, lz, moveSelection, resetBoard, resetSelection, selectCard, selectPile, toBench } from '${p('lib/stores/player.js')}'
+   import { cards, cardSelection, deck, discard, bench, draw, hand, lz, moveSelection, resetBoard, resetSelection, selectCard, selectPile, stadium, table, toBench } from '${p('lib/stores/player.js')}'
    import InspectionView from '${join(root, 'tools', 'pile-dialog.svelte').split(sep).join('/')}'
    /* what a decklist import does: the list of cards, then the board built from it */
    const setDeck = (cards_) => { cards.set(cards_); resetBoard() }
-   export { solo, startSolo, exitSolo, room, Board, Connection, Page, bench, cardSelection, deck, discard, draw, hand, lz, moveSelection, resetSelection, selectCard, selectPile, setDeck, toBench, InspectionView }
+   export { solo, startSolo, exitSolo, room, Board, Connection, Page, bench, cardSelection, deck, defaultOpponent, discard, draw, hand, lz, moveSelection, resetSelection, selectCard, selectPile, setDeck, stadium, table, toBench, InspectionView }
 `)
 
 const svelte = {
@@ -358,6 +359,76 @@ mod.selectCard(benched, mod.hand, false)
 mod.toBench()
 check('and moved to the bench as a slot',
    get(mod.bench).some(s => s.pokemon.get().includes(benched)) && !get(mod.hand).includes(benched))
+
+/*
+   One selection, the player's own cards wherever they are on their side of the
+   board. A card in the hand, one on the table and one in the Stadium are three
+   different piles, and Ctrl-click adds across them: it is the same "add to what is
+   picked up" the pile views answer to, and the table's cards are picked up one at
+   a time because of it (see docs/selection.md).
+
+   The move at the end is the half of this a store cannot check on its own: each
+   card has to come out of *its own* pile, and the card already in the destination
+   is not a card to move. It is asserted one pile at a time, which is also how the
+   events travel - a `cardsMoved` names one pile to take the cards from.
+*/
+const spread = get(mod.hand).slice(0, 3)
+mod.selectCard(spread[0], mod.hand, false)
+mod.moveSelection(mod.table)
+mod.selectCard(spread[1], mod.hand, false)
+mod.moveSelection(mod.stadium)
+
+mod.selectCard(spread[0], mod.table, false)
+mod.selectCard(spread[1], mod.stadium, true)
+mod.selectCard(spread[2], mod.hand, true)
+check('Ctrl-click adds a card from another zone of the same half',
+   get(mod.cardSelection).length === 3,
+   `${get(mod.cardSelection).length} picked up from the table, the stadium and the hand`)
+check('and a click without it replaces the selection',
+   (mod.selectCard(spread[2], mod.hand, false), get(mod.cardSelection).length === 1),
+   `${get(mod.cardSelection).length} picked up after a plain click`)
+
+mod.selectCard(spread[0], mod.table, false)
+mod.selectCard(spread[1], mod.stadium, true)
+mod.selectCard(spread[2], mod.hand, true)
+mod.moveSelection(mod.discard)
+check('and a move takes each card out of the pile it is in',
+   spread.every(card => get(mod.discard).includes(card)) &&
+   !get(mod.hand).includes(spread[2]) && !get(mod.table).includes(spread[0]) && !get(mod.stadium).includes(spread[1]),
+   `discard ${get(mod.discard).length}, hand ${get(mod.hand).length}, table ${get(mod.table).length}, stadium ${get(mod.stadium).length}`)
+check('and the selection is spent', get(mod.cardSelection).length === 0, `${get(mod.cardSelection).length} still picked up`)
+
+/*
+   And the two halves are still separate boards. Both are played from this same
+   selection in solo, so a card of the far half's must start a new selection rather
+   than join one made on this half - every key that moves a selection asks which
+   half it was made on, and a selection that held both would have no one answer.
+   The far half has no deck here, so a card of its own is put in its hand.
+*/
+const farCard = { _id: 9901, name: 'Far Card' }
+mod.defaultOpponent.hand.push(farCard)
+mod.selectCard(get(mod.hand)[0], mod.hand, false)
+mod.selectCard(farCard, mod.defaultOpponent.hand, true)
+check('a card of the other half starts a new selection',
+   get(mod.cardSelection).length === 1 && get(mod.cardSelection)[0] === farCard,
+   `${get(mod.cardSelection).length} picked up`)
+mod.resetSelection()
+
+/*
+   And the one thing about the table that no store can show: the zone used to pick
+   the whole stack up on a click, and take the whole stack on Ctrl+A. Its cards are
+   each picked up on their own now - the same code path a card attached under a
+   Pokemon uses - and the select-all it no longer offers is still the zone's
+   `selectAll` prop, kept for a pile that wants it (read off the two components,
+   because what a zone does with a click is in its markup).
+*/
+for (const [ half, zone ] of [ [ 'the player', p('lib', 'play', 'board', 'Temp.svelte') ], [ 'the far half', p('lib', 'play', 'opponent', 'Temp.svelte') ] ]) {
+   const source = readFileSync(zone, 'utf8')
+   check(`and ${half}'s table no longer takes the whole stack at once`,
+      !/selectPile/.test(source) && /selectAll=\{false\}/.test(source))
+   check(`and every card of it is picked up on its own`,
+      /selectCard\(card, table, holdingCtrlOrCmd\(e\)\)/.test(source))
+}
 
 try { mod.exitSolo() } catch {}
 

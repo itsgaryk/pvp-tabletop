@@ -33,7 +33,7 @@ export const {
    powerMarker, powerMarkerUsed,
    turn,
    prizesFlipped, handRevealed, pokemonHidden,
-   exportBoard, findSlot,
+   exportBoard, findSlot, piles,
    reset: resetBoard
 } = board()
 
@@ -201,11 +201,73 @@ export let selectionPile = null
 */
 const isSpectator = () => spectating.get()
 
+/*
+   Which pile a card is in, asked of the board's own lists (see `piles()` in
+   custom/board.js). A selection can hold cards from more than one zone, so this
+   is what a move has to ask to take each card out of the pile that actually
+   holds it - the pile the last click was made in is not an answer for the rest.
+   `lists` is the board to look in, which is this one unless a caller is asking
+   about the far half (solo, where that half is played from the same keyboard).
+*/
+export function cardPile (card, lists = piles()) {
+   return lists.find(p => p.get().includes(card)) || null
+}
+
+/*
+   A selection gathered by the pile each card is in: the shape every move below
+   works from. A card that is in none of the lists - something else has moved it
+   on - is not this move's to carry, and is left out rather than removed from a
+   pile that does not hold it (a pile's `remove` takes the last card when the one
+   asked for is not in it).
+*/
+export function selectionByPile (lists = piles()) {
+   const groups = new Map()
+
+   for (const card of cardSelection.get()) {
+      const source = cardPile(card, lists)
+      if (!source) continue
+
+      if (!groups.has(source)) groups.set(source, [])
+      groups.get(source).push(card)
+   }
+
+   return groups
+}
+
+/*
+   Whether a pile is on the same half of the board as the selection already is.
+
+   A selection is the player's own cards on their side of the board, across the
+   zones of that side: Ctrl-click adds a card from another zone just as it adds
+   one from the same zone, and every move takes each card out of its own pile.
+   The two *halves* are still separate boards even in solo, where both are played
+   from this same selection - a move asks which half it was made on
+   (`onOpponentSelection`) and then acts on that half alone - so a card of the
+   other half's starts a new selection rather than joining this one. Online the
+   far half's cards are not selectable at all, so this only ever answers no in
+   solo; and a pile that is not one of this board's is by definition a far half
+   one, which is how the two are told apart without this module having to know
+   anything about the mirror.
+*/
+function sameHalf (pile) {
+   if (!selectionPile) return true
+
+   const mine = piles()
+   return mine.includes(pile) === mine.includes(selectionPile)
+}
+
+/*
+   A card is picked up on its own, and Ctrl/Cmd adds it to what is already
+   picked up: the one selection is the player's own cards wherever they are on
+   their side of the board, so adding does not ask which pile the card is in.
+   Clicking a card that is already selected takes it back out again.
+*/
 export function selectCard (card, pile, push = false) {
    if (isSpectator()) return
    slotSelection.clear() // only have 1 of the two selections active at a time
-   // allow multi select on the same pile only
-   if (!push || selectionPile !== pile) cardSelection.clear()
+
+   if (!push || !sameHalf(pile)) cardSelection.clear()
+
    if (!cardSelection.get().includes(card)) cardSelection.push(card)
    else cardSelection.remove(card)
    selectionPile = pile
@@ -221,6 +283,23 @@ export function selectPile (pile) {
    selectionPile = pile
 }
 
+/*
+   Narrow the selection to the cards that are in one pile.
+
+   A pile's own view moves *out of that pile* - the four buttons of a search, a
+   deck's view (see Inspection.svelte) - and a selection can hold cards from other
+   zones as well, since one is allowed to span the player's side of the board. The
+   panel is a view of one pile, so it moves the cards in it and leaves a card
+   selected on the board behind it alone.
+*/
+export function keepInPile (pile) {
+   for (const card of [ ...cardSelection.get() ]) {
+      if (cardPile(card) !== pile) cardSelection.remove(card)
+   }
+
+   selectionPile = cardSelection.get().length ? pile : null
+}
+
 export function selectSlot (slot, push = false) {
    if (isSpectator()) return
    cardSelection.clear()
@@ -234,56 +313,74 @@ export function selectSlot (slot, push = false) {
 export function moveSelection (pile, options = {}) {
 
    if (cardSelection.get().length) {
-      if (selectionPile === pile) return
-      if (selectionPile.get && !selectionPile.get().length) return // user cleared the pile with a shortcut while dragging cards from there, which are now not in there anymore
-
-      const ids = []
-      const swapIds = []
-
       /*
-         Where the selection came from. The Stadium answers with its own name, the
-         way every other pile does: it is a list of the cards this player has in
-         play there, so taking one off it is the same `remove` any pile takes.
+         The cards go over one pile at a time: the selection can hold cards from
+         several zones of this half, and each of them has to come out of the pile it
+         is in. A card already in the destination is not a card to move - it is the
+         destination - so a group whose pile *is* the target is left alone, and a
+         selection with nothing but those is a selection with nowhere to go (which
+         is what pressing H with a hand card picked up has always done).
+
+         Each zone's cards travel as their own `cardsMoved`, because that event
+         names one `from` and one `to`: the opponent's mirror moves a card out of
+         the pile the event names, and a list that came from two piles cannot be
+         read that way. So a selection picked up across the board crosses the wire
+         as one event per zone, which is also how the log reads - one line per
+         zone, each naming where those cards came from.
       */
-      const from = selectionPile.name
+      const groups = [ ...selectionByPile() ].filter(([ source ]) => source !== pile)
+      if (!groups.length) return
 
       let swap = []
       if (options.switch) {
          for (let i = 0; i < cardSelection.get().length; i++) {
-            let card = options.bottom ? pile.shift() : pile.pop()
+            const card = options.bottom ? pile.shift() : pile.pop()
             if (card) swap.push(card)
          }
       }
 
-      for (const card of cardSelection.get()) {
-         ids.push(card._id)
+      for (const [ source, cards ] of groups) {
 
-         let replacement = null
+         /*
+            Where this group came from. The Stadium answers with its own name, the
+            way every other pile does: it is a list of the cards this player has in
+            play there, so taking one off it is the same `remove` any pile takes.
+         */
+         const from = source.name
 
-         if (options.switch) {
-            replacement = swap.pop()
-            if (replacement) swapIds.push(replacement._id)
+         const ids = []
+         const swapIds = []
+
+         for (const card of cards) {
+            ids.push(card._id)
+
+            let replacement = null
+
+            if (options.switch) {
+               replacement = swap.pop()
+               if (replacement) swapIds.push(replacement._id)
+            }
+
+            if (replacement) source.swap(card, replacement)
+            else source.remove(card)
+
+            if (options.bottom) pile.unshift(card)
+            else pile.push(card)
          }
 
-         if (replacement) selectionPile.swap(card, replacement)
-         else selectionPile.remove(card)
-
-         if (options.bottom) pile.unshift(card)
-         else pile.push(card)
-      }
-
-      share('cardsMoved', { cards: ids, from, to: pile.name })
-      if (swapIds.length) {
-         if (from === 'stadium') {
-            /* the card swapped in is a card just played into the Stadium */
-            share('stadiumPlayed', { cardId: swapIds[0], from: pile.name })
-            answerStadiumPlay()
-         } else {
-            share('cardsMoved', { cards: swapIds, from: pile.name, to: from })
+         share('cardsMoved', { cards: ids, from, to: pile.name })
+         if (swapIds.length) {
+            if (from === 'stadium') {
+               /* the card swapped in is a card just played into the Stadium */
+               share('stadiumPlayed', { cardId: swapIds[0], from: pile.name })
+               answerStadiumPlay()
+            } else {
+               share('cardsMoved', { cards: swapIds, from: pile.name, to: from })
+            }
          }
-      }
 
-      logMove(cardSelection.get(), from, pile.name, options)
+         logMove(cards, from, pile.name, options)
+      }
 
    } else if (slotSelection.get().length) {
       const ids = []
@@ -313,22 +410,29 @@ export function toBench () {
    if (isSpectator()) return
 
    if (cardSelection.get().length) {
-      if (selectionPile.get && !selectionPile.get().length) return // see moveSelection
+      /*
+         One zone's cards at a time, for the same reason `moveSelection` moves one
+         pile at a time: `cardsBenched` names the pile its cards come out of, and
+         the opponent's mirror takes them from that pile. A card already in play is
+         not in any of these groups - it is a slot rather than a card in a list.
+      */
+      for (const [ source, cards ] of selectionByPile()) {
 
-      const ids = []
+         const ids = []
 
-      const from = selectionPile.name
+         const from = source.name
 
-      for (const card of cardSelection.get()) {
-         selectionPile.remove(card)
+         for (const card of cards) {
+            source.remove(card)
 
-         const s = slot(card)
-         bench.add(s)
-         ids.push({ cardId: card._id, slotId: s.id })
+            const s = slot(card)
+            bench.add(s)
+            ids.push({ cardId: card._id, slotId: s.id })
+         }
+
+         share('cardsBenched', { cards: ids, from })
+         logBenched(cards, from)
       }
-
-      share('cardsBenched', { cards: ids, from })
-      logBenched(cardSelection.get(), from)
 
    } else if (slotSelection.get().length) {
 
@@ -349,13 +453,16 @@ export function toActive () {
    const cs = cardSelection.get()
    if (cs.length) {
       if (cs.length !== 1) return
-      if (selectionPile.get && !selectionPile.get().length) return // see moveSelection
 
       const card = cs[0]
 
-      const from = selectionPile.name
+      /* the one card's own pile, which is what it is promoted out of */
+      const source = cardPile(card)
+      if (!source) return
 
-      selectionPile.remove(card)
+      const from = source.name
+
+      source.remove(card)
 
       if (active.get()) {
          // move the current active out of the way
@@ -432,10 +539,15 @@ function answerStadiumPlay () {
 export function toStadium () {
    if (isSpectator()) return
 
-   if (cardSelection.get().length !== 1 || selectionPile === stadium || !selectionPile.get().length) return
+   if (cardSelection.get().length !== 1) return
+
    const card = cardSelection.get()[0]
 
-   selectionPile.remove(card)
+   /* the one card's own pile: a Stadium is played from anywhere but the Stadium */
+   const source = cardPile(card)
+   if (!source || source === stadium) return
+
+   source.remove(card)
 
    /*
       A card played while this player is already at the limit is the stadium being
@@ -452,8 +564,8 @@ export function toStadium () {
 
    stadium.push(card)
 
-   share('stadiumPlayed', { cardId: card._id, from: selectionPile.name })
-   logStadium(card, selectionPile.name)
+   share('stadiumPlayed', { cardId: card._id, from: source.name })
+   logStadium(card, source.name)
 
    /* the other half of the table answers a card played here */
    answerStadiumPlay()
@@ -482,26 +594,36 @@ export function attachSelection (slot) {
    if (isSpectator()) return
    if (!cardSelection.get().length) return
 
-   const ids = []
-   const from = selectionPile.name
+   /*
+      One zone's cards at a time, as the moves above: `cardsAttached` (and
+      `cardsEvolved`) names the pile the cards come out of, and the log line names
+      it too. A card of the player's may be attached from anywhere on their side
+      of the board - the hand, the table, off another Pokemon - so the selection
+      can hold cards from several zones at once.
+   */
+   for (const [ source, cards ] of selectionByPile()) {
 
-   for (const card of cardSelection.get()) {
-      selectionPile.remove(card)
+      const ids = []
+      const from = source.name
 
-      ids.push(card._id)
+      for (const card of cards) {
+         source.remove(card)
 
-      if (evolving.get()) slot.pokemon.push(card)
-      else if (card.card_type === 'trainer') slot.trainer.push(card)
-      else slot.energy.push(card)
+         ids.push(card._id)
+
+         if (evolving.get()) slot.pokemon.push(card)
+         else if (card.card_type === 'trainer') slot.trainer.push(card)
+         else slot.energy.push(card)
+      }
+
+      share(
+         evolving.get() ? 'cardsEvolved' : 'cardsAttached',
+         { slotId: slot.id, cards: ids, from }
+      )
+
+      if (evolving.get()) logEvolve(slot, cards, from)
+      else logAttachment(slot, cards, from)
    }
-
-   share(
-      evolving.get() ? 'cardsEvolved' : 'cardsAttached',
-      { slotId: slot.id, cards: ids, from }
-   )
-
-   if (evolving.get()) logEvolve(slot, cardSelection.get(), from)
-   else logAttachment(slot, cardSelection.get(), from)
 
    resetSelection()
 }

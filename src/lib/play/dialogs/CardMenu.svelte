@@ -5,7 +5,7 @@
 
    import {
       hand, discard, deck, prizes, lz, table,
-      moveSelection, toActive, toBench, toStadium
+      cardPile, moveSelection, toActive, toBench, toStadium
    } from '$lib/stores/player.js'
    import { logPrizeLook } from '$lib/stores/logger.js'
    import { spectating } from '$lib/stores/connection.js'
@@ -22,6 +22,19 @@
 
    /* one card, and its face is known: the name is worth clicking */
    $: canShowDetails = $selection.length === 1 && revealed
+
+   /*
+      Whether every card picked up is already in one pile - which is when an entry
+      that sends them *there* is an entry that would move nothing.
+
+      It is asked of the cards rather than of `pile`, because one selection can
+      hold cards from several zones of the player's own half: right-clicking the
+      card in hand while a card on the table is picked up as well must still offer
+      *To Hand*, since that is where the table's card would go. With one card
+      picked up - the shape this menu is mostly used in - the two are the same
+      question, because that card's pile is the pile the menu was opened from.
+   */
+   $: everyIn = (target) => $selection.length > 0 && $selection.every((card) => cardPile(card) === target)
 
    /*
       Showing a card is the one thing a player does that the other player cannot
@@ -59,10 +72,10 @@
 </script>
 
 <ContextMenu bind:this={menu} {heading} headingClick={canShowDetails ? showDetails : null}>
-   {#if pile !== hand}
+   {#if !everyIn(hand)}
       <ContextMenuOption click={() => moveTo(hand)} text="To Hand" shortcut="h" disabled={$spectating} />
    {/if}
-   {#if pile !== discard}
+   {#if !everyIn(discard)}
       <ContextMenuOption click={() => moveTo(discard)} text="To Discard" shortcut="d" disabled={$spectating} />
    {/if}
 
@@ -72,19 +85,19 @@
       <ContextMenuOption click={() => callThenClose(toStadium)} text="To Stadium" shortcut="g" disabled={$spectating} />
    {/if}
 
-   {#if pile !== deck}
+   {#if !everyIn(deck)}
       <ContextMenuOption click={() => moveTo(deck, { shuffle: true })} text="Shuffle Into Deck" shortcut="s" disabled={$spectating} />
       <ContextMenuOption click={() => moveTo(deck)} text="To Top of Deck" shortcut="t" disabled={$spectating} />
       <ContextMenuOption click={() => moveTo(deck, { bottom: true })} text="To Bottom of Deck" shortcut="m" disabled={$spectating} />
    {/if}
 
-   {#if pile !== lz}
+   {#if !everyIn(lz)}
       <ContextMenuOption click={() => moveTo(lz)} text="To Lost Zone" shortcut="l" disabled={$spectating} />
    {/if}
-   {#if pile !== prizes}
+   {#if !everyIn(prizes)}
       <ContextMenuOption click={() => moveTo(prizes)} text="To Prizes" shortcut="p" disabled={$spectating} />
    {/if}
-   {#if pile !== table}
+   {#if !everyIn(table)}
       <ContextMenuOption click={() => moveTo(table)} text="To Table" shortcut="x" disabled={$spectating} />
    {/if}
 
@@ -92,7 +105,7 @@
    <ContextMenuOption click={() => attachEvolve(true)} text="Evolve" shortcut="e" disabled={$spectating} />
 
    {#if $selection.length === 1}
-      {#if $deck.length && pile !== deck}
+      {#if $deck.length && !everyIn(deck)}
          <ContextMenuOption click={() => moveTo(deck, { switch: true })} text="Switch With Top of Deck" disabled={$spectating} />
       {/if}
       <!--

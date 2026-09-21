@@ -7,7 +7,7 @@
    import { s } from '$lib/util/strings.js'
    import {
       deck, discard, hand, table,
-      shuffle, selectPile, cardSelection, selectionPile,
+      shuffle, selectPile, cardSelection, cardPile, keepInPile,
       moveSelection, toBench
    } from '$lib/stores/player.js'
 
@@ -28,20 +28,25 @@
    $: sortedPile = reversedPile.slice().sort((a, b) => a._id - b._id)
 
    /*
-      The cards this panel is holding, if the selection is its own.
+      The cards this panel is holding: the ones picked up that are *in this pile*.
 
       A pile inspection is a read of a pile, so clicking a card in it selects that
       card off the pile - the same selection a click on the board makes, with the
       same Ctrl to add to it and Ctrl+A for the whole pile (see Popup's ctrlA and
       player.js's selectCard). What this asks is whether that selection is *this*
       pile's, because the selection outlives the panel: it is cleared when the
-      board's own click is not stopped, and a card can still be selected on the
-      board behind an open panel. The four buttons below are only ever offered for
-      the pile the panel is showing, so they cannot move a card the player selected
-      somewhere else and then opened a pile over.
+      board's own click is not stopped, and cards can still be selected on the board
+      behind an open panel.
+
+      The cards themselves answer it rather than `selectionPile` does, because one
+      selection can now hold cards from several zones of the player's own half (see
+      docs/selection.md): a card selected on the board behind the panel is not one
+      of "the cards picked out" of this pile, and the four buttons below must not
+      carry it out of the panel with them - which is what `keepInPile` is for, at
+      the moment one of them is pressed.
    */
-   $: selected = $cardSelection.length > 0 && selectionPile === pile
-   $: selectedCards = selected ? $cardSelection : []
+   $: selectedCards = $cardSelection.filter(card => cardPile(card) === pile)
+   $: selected = selectedCards.length > 0
    $: moves = !$spectating && selected
 
    /*
@@ -125,6 +130,8 @@
       that closed first would have no pile left to read.
    */
    function moveCards (where) {
+      /* the panel moves the cards it is showing, and no others: see `keepInPile` */
+      keepInPile(pile)
       movesTo[where]()
       if (isDeck) shuffle()
       popup.close()
