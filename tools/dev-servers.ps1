@@ -31,6 +31,10 @@
 #   3005  the app                        BASE, and what `npm run dev` binds
 #   9222+ one Chrome per page           CDP_PORTS, one per player/spectator
 #
+# -Stop closes what this script started and nothing else: the vite process by its
+# command line, one browser per `--user-data-dir` under $env:TEMP, and the two
+# stand-ins by name. It does not need the ports to be reachable to do it.
+#
 # Everything is started with Start-Process and left running, so this script's own
 # exit does not take the servers with it. -Stop closes what it started, found by
 # the ports above rather than by process name, so it cannot reach anything else.
@@ -62,22 +66,103 @@ $ports = @(6390, 3005)
 if (-not $NoDeckApi) { $ports += 6391 }
 for ($i = 0; $i -lt $Browsers; $i++) { $ports += ($BasePort + $i) }
 
+# ---------------------------------------------------------------- cleanup --
+#
+# Closing a run is deliberately *not* done by listening port, which is how this
+# started and why it did nothing on this host: Get-NetTCPConnection reports no
+# listener for the dev server even while it is serving. Its port probe has the same
+# blind spot. So a run is identified by facts that do not depend on the network - the
+# vite process by its command line, and each browser by the `--user-data-dir` this
+# script gave it - and the ports are only a fallback.
+#
+# The matching itself lives in tools/dev-servers.lib.mjs, not here, because it cannot
+# be tested where the script runs: a confined session can neither read a command line
+# nor write a browser profile. What is left here touches real processes only.
+# tools/dev-servers-check.mjs proves the matcher stops what this started and nothing
+# else; run it after touching either file.
+
+function Get-OursNode {
+   $script = Join-Path $PSScriptRoot 'dev-servers.pids.mjs'
+   if (-not (Test-Path $script)) { return $null }
+   if (-not (Get-Command node -ErrorAction SilentlyContinue)) { return $null }
+
+   try {
+      $json = (& node $script 2>$null) -join "`n"
+      if (-not $json) { return $null }
+      return $json | ConvertFrom-Json
+   } catch {
+      return $null
+   }
+}
+
+function Stop-Pids([int[]]$pids) {
+   $stopped = 0
+   foreach ($id in ($pids | Sort-Object -Unique)) {
+      try {
+         Stop-Process -Id $id -Force -ErrorAction Stop
+         Write-Host "  stopped pid $id"
+         $stopped++
+      } catch {
+         # already gone, or not ours to stop - neither is a failure here
+      }
+   }
+   return $stopped
+}
+
 function Stop-ByPort([int]$port) {
-   $owners = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
-      Select-Object -ExpandProperty OwningProcess -Unique
+   $stopped = 0
+   $owners = @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty OwningProcess -Unique)
    foreach ($id in $owners) {
       try {
          Stop-Process -Id $id -Force -ErrorAction Stop
-         Write-Host "  stopped pid $id on $port"
-      } catch {
-         Write-Warning "  could not stop pid $id on $port"
-      }
+         Write-Host "  stopped pid $id (was listening on $port)"
+         $stopped++
+      } catch { }
    }
+   return $stopped
+}
+
+function Clear-Ours {
+   $ours = Get-OursNode
+   $total = 0
+
+   if ($ours) {
+      Write-Host 'the app (vite), the browsers this script started, and the stand-ins'
+      $total += Stop-Pids @($ours.devServer) + @($ours.browsers) + @($ours.standins)
+   } else {
+      # the matcher is unreachable - no node, no module, or a command line we cannot
+      # read - so say so, and fall back to ports, which may find nothing at all
+      Write-Warning '  cannot match on command lines here (node or the module is unavailable), falling back to ports'
+      $total += Stop-ByPort 3005
+      for ($i = 0; $i -lt $Browsers; $i++) { $total += Stop-ByPort ($BasePort + $i) }
+      $total += Stop-ByPort 6390
+      $total += Stop-ByPort 6391
+   }
+
+   return $total
 }
 
 if ($Stop) {
    Write-Host 'closing what a previous run started'
-   foreach ($port in ($ports | Sort-Object -Unique)) { Stop-ByPort $port }
+   $total = Clear-Ours
+
+   if ($total -eq 0) {
+      Write-Host 'nothing of ours was running'
+   } else {
+      Write-Host "closed $total process(es)"
+   }
+
+   # the browsers' profiles are ours, and a run leaves one per page behind
+   foreach ($dir in @(Get-ChildItem -Path $env:TEMP -Directory -Filter 'pvp-chrome-*' -ErrorAction SilentlyContinue)) {
+      try {
+         Remove-Item $dir.FullName -Recurse -Force -ErrorAction Stop
+         Write-Host "  removed profile $($dir.Name)"
+      } catch {
+         Write-Host "  profile $($dir.Name) is still in use - it can be deleted once the browser has exited"
+      }
+   }
+
    exit 0
 }
 
