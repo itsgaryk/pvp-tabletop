@@ -19,10 +19,10 @@ asserted the class was worn and the formula was stated once — both true. The b
 check, the render check and the zone-vocabulary check were all green, because none of them
 looks at a cascade. And the symptom changes direction with the window:
 
-| window | the deck zone | an undecked card of 105px |
+| capture | that zone | a card the zone never sized (the fixed `--card-width`) |
 | --- | --- | --- |
-| small (a 1375x826 capture) | ~89 x 89 CSS px | *larger than the zone*: it hangs out over the rows above and below |
-| 1080p | ~190 x 190 CSS px | *half the zone's width*: too small, and the zone it sits in looks empty |
+| 1375x826 | ~90 x 89 CSS px | *larger than the zone*: it hangs out over the rows above and below |
+| 2583x1623 | ~190 x 190 CSS px | about half the zone's width: too small, and the zone it sits in looks empty |
 
 So "the cards in the deck, discard and lost zone are wrong" reads as an overflow at one
 window size and as nothing much at another, which is how one bug survived being reported
@@ -42,20 +42,22 @@ pixels can be read. What worked here, in this repository, on this host:
    that a connected-components pass over a 2580x1625 image was killed at two minutes; the
    same pass in node finished in under a second.
 3. **Find the grid before the cards.** Zone borders are on in these captures, so scanning
-   for near-grey rows and columns finds them: the two lines either side of a column gap are
-   `--scaled-rem` apart, one `1fr` is the row pitch, and `minmax(0, …)` tracks make every
-   zone's rectangle follow from those. A scanline through a zone's middle then gives the
-   card's edges against the background — that is the measurement.
-4. **Use a card whose size is known as the ruler, and mind the traps.** A *cardback's* dark
-   navy is a few units from the board's background, so any brightness threshold measures the
-   Pokéball inside it and not the card: measure a face-up card (a discard's or a lost zone's
-   top) or the white title bar instead. And **never convert device pixels to CSS pixels from
-   one capture alone** — the same 105px card measured ~137 device px in a 1375x826 capture
-   and ~139 in a 2583x1623 one, which is a fixed CSS length seen at one capture scale, not a
-   card that grew. A card whose formula is known (the hand: the zone's height, less two
-   paddings and the scrollbar) is what pins the scale, and it is also what proves the point:
-   in those same two captures the hand's cards went from ~56 to ~150 device px, matching the
-   formula at both, while the three pile fronts did not move at all.
+   for near-grey rows and columns finds them: the pair of lines that straddles a column gap
+   is `--scaled-rem` apart (the gap, near enough — each outline is drawn 1px inside its own
+   zone), one `1fr` is the row pitch, and the grid's own areas give every zone's rectangle
+   from those two. A scanline through a zone's middle then gives the card's edges against
+   the background — that is the measurement.
+4. **Use a card whose size is known as the ruler, and mind the traps.** A cardback's dark
+   field is a few units from the board's background (measured: `(25,35,70)` against
+   `(31,38,49)`), so a brightness threshold can sit inside its edge and measure the Pokéball
+   rather than the card: measure a face-up card (a discard's or a lost zone's top) instead.
+   And **never read a CSS length out of one capture's pixel count** — the three pile fronts
+   measured ~137x189 device px in a 1375x826 capture and ~139x189 in a 2583x1623 one, which
+   is one length seen through two capture scales, not a card that grew. A card whose formula
+   *is* known is what pins the scale — the hand's: the zone's height, less two paddings and
+   the scrollbar — and it is also what proves the point, because in those same two captures
+   the hand's cards went from ~56 to ~150 device px, matching the formula at both, while the
+   three pile fronts did not move at all.
 
 The rule the ratio between them gives you is worth stating plainly: **a card that does not
 change size when the zone around it doubles is not being sized by its zone**, whatever the
