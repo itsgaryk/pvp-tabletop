@@ -384,19 +384,27 @@ belongs in the `buttons` slot, and the actions are **one per line**, which on a
 clipped horizontally too (`overflow-y: auto` does not leave the other axis
 visible), so a badge hung off the corner of a card is simply not drawn.
 
-**`tools/relay-check.mjs` asks the clock for an exact millisecond, which the relay
-cannot promise.** The check *and the time really left on it* compares the `remaining`
-a late spectator is handed against `RUNNING_MS - elapsedRelay(...)` with `===`, and
-both numbers are the relay's own reading of its clock, taken a moment apart — so the
-assertion fails whenever the two land either side of a millisecond:
+**`tools/relay-check.mjs` used to ask the clock for an exact millisecond, which the
+relay cannot promise.** The check *and the time really left on it* compared the
+`remaining` a late spectator is handed against `RUNNING_MS - elapsedRelay(...)` with
+`===`, and both numbers are the relay's own reading of its clock, taken a moment
+apart — so the assertion failed whenever the two landed either side of a
+millisecond:
 
 ```
 FAIL  and the time really left on it - 298772 left, 1227ms into the clock
 ```
 
-300000 - 1227 is 298773, and the check three lines above it measures the same quantity
-with the tolerance it needs (`Math.abs(drift) <= 1`), so the file already contains the
-slack the failing one lacks. It is a flake rather than a fault: **it turns a push's CI
-red with nothing changed**, and re-running the job is what clears it — which is worth
-knowing before going looking for a cause in a diff that has nothing to do with the
-clock. The fix, if it is wanted, is that same `<= 1`.
+300000 - 1227 is 298773, and the check four lines above it measures the same quantity
+with the tolerance it needs (`Math.abs(drift) <= 1`), so the file already contained
+the slack the failing one lacked. It was a flake rather than a fault: **it turned a
+push's CI red with nothing changed**, and re-running the job is what cleared it —
+which was the advice worth having before going looking for a cause in a diff that had
+nothing to do with the clock.
+
+**That is now fixed rather than documented**: both readings are the same clock and 1ms
+is the worst the two stamps can disagree by, so the assertion carries the same `<= 1`
+as its neighbour. It is worth keeping the story because it is the one piece of red CI
+in this repository's history that was *not* about the change being tested — the merge
+that tripped it touched one document, a workflow file and two lines of `logger.js`.
+The next flake to appear will look just as much like somebody's fault.
