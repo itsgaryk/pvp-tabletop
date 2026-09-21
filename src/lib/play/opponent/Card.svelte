@@ -78,9 +78,17 @@
 </div>
 
 <style>
-   /* the same two states the player's own cards use */
+   /*
+      The same two states the player's own cards use, and the same colours: a
+      selection is `--selection-color` wherever it is (see board/Card.svelte), which
+      is what every other selected thing on either half draws with. This used to be
+      `--primary-color` here - the accent the board uses for a *marked* card, a
+      different idea - so a card selected on the far half was picked out in the
+      wrong colour, and did so under a comment claiming the two halves matched.
+   */
    .selected {
-      border-color: var(--primary-color);
+      @apply border-[var(--selection-color)];
+      --shadow-color: transparent;
    }
 
    .dragged {

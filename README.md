@@ -52,10 +52,15 @@ The technical documentation is in [`docs/`](docs/), one file per topic:
 ## Verifying a change
 
 CI runs `tools/relay-check.mjs` against a dev server started with second-scale
-idle windows, then `npm run build` — the same command Vercel runs. Everything
-else is a browser check run by hand, and **`npm run check` does not run in this
-repository** (`svelte-check` is not one of its dependencies), so a component can
-be wrong in a way only a browser shows.
+idle windows, then `npm run build` — the same command Vercel runs — plus the two
+checks that need nothing but the tree: `tools/docs-check.mjs` and
+`tools/render-check.mjs`. Everything else is a browser check run by hand, and
+**`npm run check` does not run in this repository** (`svelte-check` is not one of
+its dependencies), so a component can be wrong in a way only a browser shows.
+
+`render-check.mjs` is the exception worth knowing about: it is a renderer without a
+browser, so it catches a component that throws on mount — which is how the board was
+once dead while the build stayed green (see [docs/gotchas.md](docs/gotchas.md)).
 
 The tools, what each one answers, and the traps they exist for are in
 [docs/diagnostics.md](docs/diagnostics.md) and [docs/gotchas.md](docs/gotchas.md).

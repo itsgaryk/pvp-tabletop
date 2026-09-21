@@ -1,4 +1,4 @@
-<script>
+﻿<script>
    import { setContext, onMount } from 'svelte'
    import { dragging } from '$lib/dnd/pointer.js'
    import { source as dragSource } from '$lib/dnd/store.js'
@@ -74,6 +74,20 @@
       Same control, same store as a spectator's flip.
    */
    $: soloSwapped = $solo && $spectatorFlipped
+
+   /*
+      Whether the far half is drawn the right way up, and so whether the near half
+      is turned over.
+
+      A player sees the far half rotated - its cards face them across the table - so
+      the two are opposites, and there are three states behind them: a player (flip,
+      not upright), a spectator (upright: it is looking at a board rather than
+      sitting at one), and solo (upright, for the same reason). Named once because
+      the far half's nine zones each ask, and two of them had spelled the pair
+      differently: a change to the rule is a change to all nine.
+   */
+   $: topUpright = $spectating || $solo
+   $: topFlipped = !topUpright
 
    /*
       Whether the thing under the pointer belongs to the half played from the top of
@@ -470,31 +484,31 @@
             The hand's pile menu is portalled out of the rotated subtree (see
             ContextMenu.svelte), so turning the half does not turn the menu with it.
          -->
-         <div class="hand2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
+         <div class="hand2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<Hand />{:else}<OppHand store={topStore} />{/if}
          </div>
 
-         <div class="prizes2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
+         <div class="prizes2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<Prizes />{:else}<OppPrizes store={topStore} />{/if}
          </div>
 
-         <div class="deck2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
+         <div class="deck2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<Deck />{:else}<OppDeck store={topStore} />{/if}
          </div>
 
-         <div class="discard2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
+         <div class="discard2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<Discard />{:else}<OppDiscard store={topStore} />{/if}
          </div>
 
-         <div class="lz2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
+         <div class="lz2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<LostZone />{:else}<OppLostZone store={topStore} />{/if}
          </div>
 
-         <div class="bench2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
+         <div class="bench2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<Bench />{:else}<OppBench store={topStore} />{/if}
          </div>
 
-         <div class="play2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
+         <div class="play2" class:flip={topFlipped} class:upright={topUpright}>
             <OppTable store={topStore} />
          </div>
 
@@ -550,7 +564,7 @@
                <PowerZone marker={$topMarker} used={$topUsed} opposite={!$spectating} />
             </div>
 
-            <div class="stadium2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
+            <div class="stadium2" class:flip={topFlipped} class:upright={topUpright}>
                <OppStadium store={topStore} />
             </div>
 
@@ -581,7 +595,7 @@
                <div class="zone-label active-label active-label-bottom">{activeLabel}</div>
             {/if}
 
-            <div class="active2" class:flip={!$spectating && !$solo} class:upright={$spectating || $solo}>
+            <div class="active2" class:flip={topFlipped} class:upright={topUpright}>
                {#if soloSwapped}<Active />{:else}<OppActive store={topStore} />{/if}
             </div>
             <div class="active1">
