@@ -30,6 +30,76 @@ not recognized"* and `npx svelte-check` will not help offline. What CI gates on 
 everything else is a browser check run by hand — so a component can be wrong in a
 way only a browser shows, and the build will not say a word about it.
 
+**A zone has three names, and the log's name for one of them is not a zone at all.**
+A zone is keyed in three vocabularies and nothing declares the mapping between them:
+
+| Vocabulary | Lives in | Names |
+| --- | --- | --- |
+| the store's field | `custom/board.js` | `deck`, `hand`, `prizes`, `discard`, `lz`, `bench`, `active`, `stadium`, `table`, `pickup` |
+| the grid area | `Board.svelte`'s `grid-template-areas` | those, plus `hand2`/`deck2`/… and the shared cells, where `play2` and `stadium2` resolve to the *same* area as `play` and `stadium` |
+| the log | `logger.js` | those, plus **`play`** — and `play` has no store behind it |
+
+`logger.js`'s `isPublicMove` reads `zones.play`, which is `!pokemonHidden.val`: it is the
+log's name for **the Pokémon in play**, i.e. the `bench` and the `active` spot, whose
+contents are hidden together by the Hide Pokémon flag. The store fields are `bench` and
+`active`; `play` exists nowhere else. It is not a bug — it has meant exactly that since
+the map was written (Nov 2023, `5271984`) — but it is a homonym, because **`play` is also
+the grid area of the table's cell**, whose store is `table`. And `logSlotMove` passes the
+literal `'play'` (`logger.js:73`), while `logBenched` and `logPromoted` pass `'play'` as
+their `to` (`:115`, `:123`).
+
+So renaming the key is never a tidy-up. `zones.play` → `zones.bench`/`zones.active` fails
+the lookup in `isPublicMove`, both sides fall through to `slotRegex`, and the log silently
+starts naming cards it is supposed to count: *"Moved 2 cards from Deck to Bench"* becomes
+*"Moved [Pikachu] from Deck to Bench"* — while Hide Pokémon is on, in front of the player
+whose board it is. The same trap sits on the other two maps: `logger.js`'s `piles` and
+`solo.js`'s `ZONE_LABEL` both carry a `play` label too, and `diagnostics.js`'s `PILE_ZONE`
+carries `table` and `pickup`, neither of which is a board cell.
+
+There are two names in this family that are *not* zones and one that is easy to confuse:
+
+- `play` — the Pokémon in play (bench + active), in log vocabulary only.
+- `table` — a real store and a real zone, but its grid area is called `play`.
+- `pickup` — a real store with no cell, no label, no component and no outline: cards wait
+  there while a multi-card selection is resolved, so it is a phase rather than a zone.
+
+`logs` are not the only place the second vocabulary leaks: `boardZones` in
+`diagnostics.js` counts the table under its store name `table`, while the browser check
+that asserts the table carries no count badge (`browser-check.mjs:1418-1427`) looks for
+the *class* `play`. Both are right, which is the point.
+
+**A zone's contents are hidden at two levels, and they are not the same flag.**
+The zone-level flags — `handRevealed`, `prizesFlipped`, `pokemonHidden` — are read by
+`logger.js` to decide whether a move prints card names or a count, *and* fed to the
+card-level `revealed` prop that actually draws `cardback` instead of the image:
+
+```
+opponent/Hand.svelte:18     revealed = handRevealed || spectating || solo
+opponent/Prizes.svelte:71   revealed = prizesFlipped || spectating
+opponent/Slot.svelte:184    src = pokemonHidden ? cardback : cardImage(top)
+```
+
+`revealed` also reaches the drag ghost (`DndCard.svelte:25-44`, "a prize that is face down
+is carried face down") and the card menu, which prints *"Hidden card"* instead of a name
+and still logs `Viewed prize card`. So when a log line counts cards rather than naming
+them, the flag is the *zone's own* privacy and the count is correct — do not "fix" it into
+a name. The one thing the two levels do not share is who they apply to: a spectator is
+handed `revealed` for both halves outright (`spectating` in those expressions), which is
+the deliberate difference from a player.
+
+**Solo hides the Hide Pokémon button but still obeys the flag.**
+`GameActions.svelte:226` renders that button only `{#if !$solo}` — solo has no other
+player to hide from — while `opponent/Slot.svelte:184` reads the far board's own
+`pokemonHidden` in every mode. The flag is cleared by a **board reset**, not by entering
+or leaving solo (`custom/board.js:101`), and `startSolo`/`exitSolo` (`solo.js:32-47`) reset
+the clock, the flip and both boards but not that flag. So a solo game can come up with the
+far half's Pokémon drawn as card backs and no button anywhere to show them again; the flag
+was set while in a room (or arrived in a shared board state) and outlives the mode change.
+The fix is the same line `player.js:761-768` already has for entering a room:
+`pokemonHidden.set(false)` in both solo transitions. Low severity, and the reason to write
+it down is that the asymmetry — button in one mode, flag honoured in all of them — is
+invisible until somebody sees a face-down board they cannot turn over.
+
 **A browser check that imports a deck needs `tools/fake-deck-api.mjs`.** "Import
 Deck" and "Import Random Deck" post to `VITE_LIMITLESS_WEB`
 (`https://limitlesstcg.com`), which is somebody else's API: it can be slow,
