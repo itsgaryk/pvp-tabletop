@@ -65,9 +65,17 @@
          calc(100cqw - 2 * var(--card-gap)),
          calc((100cqh - 2 * var(--card-gap)) * var(--slot-card-share) * var(--card-ratio))
       );
+      /* the room beside a centred card, which is what a fan of any length is drawn in */
+      --slot-fan-room: calc((100cqw - var(--slot-card-width) - 2 * var(--card-gap)) / 2);
    }
 
    .active-slot > :global(.slot) {
       margin-top: var(--attach-lift, 0px);
+      /* no room for the fan in the flow, and the fan's steps divide the room above
+         between them, so the Pokemon keeps the place a lone card has and the fan stays
+         inside the zone (see board/Active.svelte) */
+      --slot-fan-reserve: 0px;
+      --slot-fan-step-energy: min(var(--slot-step-energy), calc(var(--slot-fan-room) / var(--slot-fan-count)));
+      --slot-fan-step-tool: min(var(--slot-step-tool), calc(var(--slot-fan-room) / var(--slot-fan-count)));
    }
 </style>

@@ -1,5 +1,68 @@
 # Things that cost somebody an afternoon
 
+**A fan that reserves its own length in a *fixed-width* line is a fan that resizes the cards
+in it.** The report was *"when you start to attach a lot of cards to the active Pokémon the
+layout starts to fall apart and cards spread apart"*, with three pictures: the same fan fine on
+the Bench, wrong in the Active, and a board where the cards had come out tiny and separated by
+gaps. Every part of it followed from one inline style in `Slot.svelte`:
+
+```svelte
+<div class="slot" style="margin-right: calc({$energy.length} * var(--slot-step-energy) + {$trainer.length} * var(--slot-step-tool))">
+```
+
+- **A slot reserves its fan in the flow, which is right for a row and wrong for a box.** The
+  reservation is what keeps a *row* of slots — the bench — from drawing the next Pokémon over
+  the previous one's cards, and a bench's row is as long as it takes and scrolls. The Active
+  spot is not a row: it is one fixed box in the grid, one per player, and nothing about it
+  scrolls.
+- **So the margin grew in a line that could not.** With one card and a fan of six energies the
+  slot's outer width was 254px inside a 184px zone at the window the checks run at, and the
+  container centres what it is given: the Pokémon was dragged left a step per card attached —
+  `x` went 421px → 329px across twelve cards, which is the "layout falls apart", and the fan
+  ended up hanging out over the Stadium.
+- **And once the line was full it squeezed the slot.** A flex item is shrinkable, and its
+  automatic minimum size is whatever the browser works out from its contents. The slot's box
+  is meant to be the card's size; when it came out *narrower* than the card, **`max-width:
+  100%`** — WindiCSS's preflight, which is on every `img` — resized every card attached to it.
+  The steps were untouched, because a step is a share of the **card** and not of the box:
+
+  | | the card's width | the step it is placed with |
+  | --- | --- | --- |
+  | asked for | `--slot-card-width`, 73px | 17.4px, 34.8px, … |
+  | drawn inside a 12px box | 12px (clamped to the box) | 17.4px, 34.8px, … (unchanged) |
+
+  Cards 12px wide placed 17.4px apart *are* the reported picture: small cards with gaps. Forcing
+  the box to 12px on a live board reproduces it exactly — every card came out 12x17 while
+  `left` stayed `17.3944px` — which is how it was found.
+
+- **Why the bench looked right and the checks were green.** A bench's row is `max-content` in a
+  scroll container, so a long fan makes the *row* longer rather than the box smaller: nothing
+  squeezes, so nothing clamps. And `card-sizing-check.mjs` reads the tree — the size was stated
+  once and the class was worn, both true. This one is only visible in a rendering, and only
+  when the box actually gets squeezed, which is why it looked right here and wrong to the
+  person who reported it, at their window.
+
+The fix is three lines and each closes a door: `--slot-fan-reserve: 0px` in both active spots
+(the Pokémon keeps the place a lone card has, and the fan is drawn behind it), `flex: none` on a
+slot (its box *is* the card's size), and **`max-width: none`** on a slot's card, in both halves.
+The general lesson is the same trap as *A `div` wrapped around an absolutely positioned card is
+a box that resizes it* below, met from the other side: **a percentage `max-width` ties an
+image's size to the box it is drawn in, and nothing that *places* that image is tied to that box
+in the same way** — so a card placed by shares of itself must not be resizable by anything else.
+`tools/fan-check.mjs` measures the four promises of the Active spot's fan in a browser and fails
+on the board as it was; `tools/card-sizing-check.mjs` asserts the three lines are still there.
+
+**A CDP waiter loop drops the requests that arrive in a burst, and the page then hangs on one
+with no error at all.** `page.waitFor('Fetch.requestPaused')` in `tools/browser.mjs` is a
+*single* waiter. A board that renders several card images in one turn of the event loop pauses
+several requests at once, and every request that arrives while no waiter is registered is
+dropped — nobody answers it, the image never finishes loading, and what a check sees is a card
+with no height rather than a harness that starved it. It cost a probe written twice and rewritten
+a third time before anybody suspected the tool rather than the app: a measurement of "the
+Pokémon's image is 73x0" that looked like a fact about the board. Queue the events off the page's
+own message handling and drain the queue (`tools/fan-check.mjs` does), or the harness will answer
+some of the board's requests and silently starve the rest.
+
 **A rule that means to win on source order has to *tie* on specificity first, and `:where()`
 is where the tie hides.** The change that consolidated nine copies of "a card on the board is
 the size of the zone it is in" into one rule in `global.css` wrote that rule as
@@ -433,6 +496,15 @@ bug:
   Pokémon is not a deck, which is why the same check passes against the real
   `limitlesstcg.com`. One field on the stand-in's card objects is the whole fix, and it is
   also why `importDeck()` in the checks cannot set a board up.
+
+  It is worth knowing that it can also be the stand-in *as it is running* rather than as it
+  is written: this was met again with an **old `tools/fake-deck-api.mjs` process** — one from
+  an earlier session, still holding its port — serving cards with no `stage` while the file on
+  disk had had it for months. The symptom is the app's, not the fixture's: `Setup` stays
+  disabled, the deck piles up 60 cards and no hand is dealt, and `node tools/fixture-check.mjs`
+  passes because it reads the *file*. Compare the process's start time with the file's, or just
+  restart it (`tools/dev-servers.ps1` starts the stand-ins by name), before believing anything
+  a board check says about a deck.
 - **`and a card in the middle of a zone covers its name rather than the other way round`** is
   the one left *open*, and the measurement is the useful part. The check requires the first
   element with class `card` in the hit-test stack to be at index 0 (`cardAt === 0`), and for

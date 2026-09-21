@@ -162,6 +162,40 @@ container clips at its own box — `overflow-x: auto` makes the other axis `auto
 whatever it says — so an attached card that reached above the row was drawn from the row's
 top edge down: the top of it, the part with the card's name on it, was cut off.
 
+**A fan is as long as the cards attached to it make it, and only a zone that cannot make
+room for one tightens it.** That is the same distinction as the lift, one axis over, and it
+is what `--slot-fan-step-energy` and `--slot-fan-step-tool` say: the steps the fan is
+*actually drawn* with, as against the ones the card gives it. In a role where the fan simply
+gets longer — the bench, whose row is as long as it takes and scrolls — the two are the same
+values, and a fan of twenty steps out exactly as a fan of two does. The active spot is the
+one zone that can neither grow nor scroll, so it is the one that spends `--slot-fan-room`,
+the space left beside a card centred in it, and divides that between the cards attached: a
+fan of two energies is untouched, and a fan of twenty is twenty overlapping edges inside the
+zone rather than a row marching out over the Stadium. What makes it a *fan* rather than a row
+of cards is that the steps only ever tighten — never widen past the card's own share — so
+consecutive cards always overlap, in order.
+
+**A slot reserves that fan in the flow of its zone, unless the zone says not to.** The room a
+fan takes on the right is `--slot-fan`, and a slot's right margin is
+`var(--slot-fan-reserve, var(--slot-fan))`: the fan's own length by default, and the two
+benches want exactly that, because a slot there is one of several in a row and the next
+Pokémon must not be drawn over the fan of the one before it. The active spot reserves none of
+it (`--slot-fan-reserve: 0px`) and that is the fix this rule was written for: it is a
+*fixed-width* line, so a margin growing with every card attached asked it for room it did not
+have — the Pokémon was pulled left out of its own zone, and the slot itself was squeezed once
+the line was full. What is beside the card in the active spot is the fan drawn behind it, and
+the card is to keep the place a lone card has however many cards are attached to it. See
+[gotchas.md](gotchas.md) for what that squeeze did to the cards.
+
+**And a card is never the size of the box it is drawn in.** `max-width: none` on a slot's
+card, in both halves, because the reset this app wears puts `max-width: 100%` on every image
+and an attached card's box is the slot it is drawn from: any box narrower than the card — a
+squeezed slot, a Pokémon whose image has not arrived — resized the cards while the steps they
+were placed with, shares of the *card*, did not. That is a fan of small cards with gaps
+between them, and it is one line to prevent rather than one line to notice. `tools/fan-check.mjs`
+measures the four promises of this section in a browser; `tools/card-sizing-check.mjs` asserts
+the lines are still there.
+
 **A prize stays face down while it is moved, and looking at one is said out loud.** The
 card under the pointer in a drag is drawn from the card's face, so picking a face-down
 prize up used to turn it over — both a look at a card nobody has taken yet and a lie,

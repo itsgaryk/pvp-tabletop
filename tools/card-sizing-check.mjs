@@ -47,6 +47,9 @@
      4. no zone component has gone back to writing the formula itself
      5. the bench's size is one formula in global.css and both benches point at it
      6. the active spot keeps its own, because it is not the bench's rule
+     7. nothing a card is drawn in may resize it, and a fan of any length is placed with
+        steps the one zone that cannot scroll one tightens (see `tools/fan-check.mjs`
+        for what that measures in a browser)
 
    Read-only, and no browser: this is the half of verification a confined session
    keeps (see docs/gotchas.md on what cannot be rendered). It cannot tell you a card
@@ -287,6 +290,41 @@ const activeFiles = zoneFiles.filter((f) => /[\\/]Active\.svelte$/.test(f.path))
 const activeOwn = activeFiles.filter((f) => /--slot-card-width:\s*min\(/.test(f.source))
 check('both active spots ask for their own slot width',
    activeFiles.length === 2 && activeOwn.length === 2, `${activeOwn.length} of ${activeFiles.length}`)
+
+/* --- 7. nothing a card is drawn in may resize it ---------------------------- */
+
+/*
+   The other half of "a card is the size of the zone it is in", and the half a browser
+   found for us: a card must not be the size of the *box* it is drawn in either. The
+   reset puts `max-width: 100%` on every image, so an attached card - whose box is the
+   slot it is attached to - was resized whenever that box was narrower than the card,
+   while the step it was placed with, a share of the card, was not: a fan of small cards
+   with gaps between them (see docs/card-sizing.md and docs/gotchas.md). Three rules hold
+   it down, and each is one line that a later change could drop in silence:
+
+     * both slots say a card is not the box's size (`max-width: none`)
+     * both slots are unshrinkable, so the box is the card's size whatever line it is in
+     * the fan is placed with `--slot-fan-step-*`, which the active spot tightens to the
+       room it has: the one zone that cannot scroll a fan out of the way
+
+   `tools/fan-check.mjs` measures all of it in a browser; this is the half a confined
+   session keeps.
+*/
+const slots = zoneFiles.filter((f) => /[\\/]Slot\.svelte$/.test(f.path))
+check('both slots keep a card out of its box\'s reach',
+   slots.length === 2 && slots.every((f) => /max-width:\s*none/.test(f.source)),
+   `${slots.filter((f) => /max-width:\s*none/.test(f.source)).length} of ${slots.length} slots`)
+check('and neither slot can be squeezed by the line it is in',
+   slots.every((f) => /flex:\s*none/.test(f.source)),
+   `${slots.filter((f) => /flex:\s*none/.test(f.source)).length} of ${slots.length} slots`)
+check('and the fan is placed with steps a zone can tighten',
+   slots.every((f) => /--slot-fan-step-energy:/.test(f.source) && /--slot-fan-step-tool:/.test(f.source)) &&
+   slots.every((f) => /var\(--slot-fan-step-energy\)/.test(f.source) && /var\(--slot-fan-step-tool\)/.test(f.source)),
+   slots.map((f) => f.path).join(', '))
+
+const fanRooms = activeFiles.filter((f) => /--slot-fan-room:/.test(f.source) && /--slot-fan-reserve:\s*0px/.test(f.source))
+check('both active spots give the fan a room and reserve none of it',
+   activeFiles.length === 2 && fanRooms.length === 2, `${fanRooms.length} of ${activeFiles.length}`)
 
 console.log('')
 if (failures) {
