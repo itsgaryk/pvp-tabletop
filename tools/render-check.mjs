@@ -81,11 +81,11 @@ writeFileSync(entry, `
    import Board from '${p('lib/play/Board.svelte')}'
    import Connection from '${p('routes/Connection.svelte')}'
    import Page from '${p('routes/+page.svelte')}'
-   import { cards, cardSelection, deck, discard, bench, draw, hand, moveSelection, resetBoard, selectCard, selectPile, toBench } from '${p('lib/stores/player.js')}'
+   import { cards, cardSelection, deck, discard, bench, draw, hand, lz, moveSelection, resetBoard, resetSelection, selectCard, selectPile, toBench } from '${p('lib/stores/player.js')}'
    import InspectionView from '${join(root, 'tools', 'pile-dialog.svelte').split(sep).join('/')}'
    /* what a decklist import does: the list of cards, then the board built from it */
    const setDeck = (cards_) => { cards.set(cards_); resetBoard() }
-   export { solo, startSolo, exitSolo, room, Board, Connection, Page, bench, cardSelection, deck, discard, draw, hand, moveSelection, selectCard, selectPile, setDeck, toBench, InspectionView }
+   export { solo, startSolo, exitSolo, room, Board, Connection, Page, bench, cardSelection, deck, discard, draw, hand, lz, moveSelection, resetSelection, selectCard, selectPile, setDeck, toBench, InspectionView }
 `)
 
 const svelte = {
@@ -199,27 +199,43 @@ check('and dealing gives the inspection a pile to read', get(mod.hand).length ==
    The pile inspection, which is the board's one dialog with a component of its
    own inside it - and which renders nothing at all until it is open, so a fault
    in it is invisible to everything above. `tools/pile-dialog.svelte` opens it
-   over the hand, so what renders here is the grid, the cards, and the row of
-   actions at its foot, where a card picked out of the pile is moved to a zone.
+   over the pile it is handed, so what renders here is the heading, the grid and
+   the cards, and the row of actions at its foot.
 
    `Card.svelte` asks the board for its actions through a context, so the dialog
    cannot render without one. Everything a card *does* with it - the details
    dialog, the card menu - is a click, which a render to a string cannot make: the
    stub is here so the click handlers have somewhere to point, not to test them.
 */
+const asPile = (pile) => ({
+   props: { pile },
+   context: new Map([ [ 'boardActions', { openDetails () {}, openCardMenu () {}, startAE () {} } ] ])
+})
+
 const inspection = renders('the pile inspection dialog renders, with cards in it',
-   mod.InspectionView,
-   { context: new Map([ [ 'boardActions', { openDetails () {}, openCardMenu () {}, startAE () {} } ] ]) })
+   mod.InspectionView, asPile(mod.hand))
 check('and it shows the pile as cards',
    Boolean(inspection) && (inspection.match(/class="card"/g) || []).length === get(mod.hand).length,
    `${(inspection?.match(/class="card"/g) || []).length} cards, ${get(mod.hand).length} in the pile`)
-/* a pile with nothing picked out of it is not a pile to move anything out of */
-check('and its moving buttons start disabled',
-   Boolean(inspection) && (inspection.match(/disabled/g) || []).length === 4,
-   `${(inspection?.match(/disabled/g) || []).length} disabled of 4`)
 /* the same reading as the order strip: what is picked out is said, not only drawn */
 check('and it says what to do with no card picked out',
    Boolean(inspection) && inspection.includes('Click a card to pick it out of the pile'))
+
+/*
+   Which pile this is, which is the whole of what tells two pile views apart: each
+   one says its zone's name and how many cards are in it. A pile view is one dialog
+   for every pile, so this heading is the only part of it that is about the pile
+   rather than the cards - and it is what a player reads when two of them are open
+   side by side, which is how a deck is read against a discard.
+
+   The name is in a span of its own and the colour is a custom property on the
+   heading (`--zone-accent`), so this is the name, the count, and that a zone colour
+   is set at all.
+*/
+check('and the heading names the zone it is showing',
+   Boolean(inspection) && inspection.includes('>Hand</span>') && inspection.includes('--zone-accent:'))
+check('and it says how many cards are in the pile',
+   Boolean(inspection) && inspection.includes(`${get(mod.hand).length} cards`))
 
 /*
    Picking several out of a pile, which is the same selection *Search & Order Deck*
@@ -237,7 +253,9 @@ check('and a card clicked again is put back', get(mod.cardSelection).length === 
 
 mod.selectPile(mod.hand)
 check('and Ctrl+A takes the whole pile', get(mod.cardSelection).length === get(mod.hand).length,
-   `${get(mod.cardSelection).length} picked out of ${get(mod.hand).length}`)
+   `${(get(mod.cardSelection).length)} picked out of ${get(mod.hand).length}`)
+mod.resetSelection()
+
 
 /*
    And the one thing about the dialog a render to a string cannot see at all: where
@@ -250,25 +268,32 @@ check('and Ctrl+A takes the whole pile', get(mod.cardSelection).length === get(m
    box the cards are laid out in. Both are the kind of change that reads perfectly
    in the CSS and leaves a margin down one side of every pile on screen, and nothing
    else in this repository would notice either one going.
+
+   The panel's *placement* is the other half, and it is deliberately not a placement
+   of its own: it is the base rule's - centred in the window, the same gap on both
+   sides. The one before this was flush to the window's left edge, which is what put
+   the two gaps out of step, so what is checked here is that no placement class has
+   been added back.
 */
 const inspectionCss = readFileSync(join(src, 'lib', 'play', 'dialogs', 'Inspection.svelte'), 'utf8')
 check('and the card grid is centred in it', /@apply[^;]*justify-center/.test(inspectionCss))
-check('and its right-hand padding carries the panel scrollbar back',
-   /padding:\s*var\(--popup-edge[^)]*\)\s+calc\(\s*var\(--popup-edge[^)]*\)\s*\+\s*var\(--popup-scrollbar\)\s*\)/.test(inspectionCss))
-
+check('and its two paddings are the same length bar the scrollbar',
+   /padding:\s*var\(--popup-padding[^)]*\)\s+calc\(\s*var\(--popup-padding[^)]*\)\s*\+\s*var\(--popup-scrollbar\)\s*\)\s+var\(--popup-padding[^)]*\)\s+var\(--popup-padding[^)]*\)/.test(inspectionCss))
 /*
-   And the panel it is in, which is the other half of what a render cannot see: the
-   inspection is laid against the window's left edge rather than centred with a
-   frame around it (see `flush` in Popup.svelte). The prop is what asks for it and
-   the placement is a positional rule, so neither half is in the rendered string -
-   and a panel that quietly went back to being centred would read as "the padding
-   came back".
+   And that the window is a fixed one. The grid is the panel's widest part and the
+   panel is only as wide as its content, so a grid sized by its cards makes the whole
+   panel resize with the pile - a narrow panel for a pile of three, a wide one for a
+   pile of sixty. `width: max-content` is what pins it, and it is the kind of
+   declaration that reads like a tidy-up and is not: without it nothing throws, the
+   cards are all still there, and the only symptom is a window that changes size.
 */
-const popupCss = readFileSync(join(src, 'lib', 'play', 'dialogs', 'Popup.svelte'), 'utf8')
-check('and the panel asks for the flush placement',
-   inspectionCss.includes('<Popup bind:this={popup} {openOnMount} flush>'))
-check('and flush leaves the centring translate behind',
-   /\.flush\s*\{[^}]*left:\s*0[^}]*transform:\s*none/s.test(popupCss))
+check('and the window is a fixed width rather than the pile\'s',
+   /\.cards\s*\{[^}]*width:\s*max-content/s.test(inspectionCss))
+check('and a window too narrow for it still fits',
+   /\.cards\s*\{[^}]*max-width:\s*100%/s.test(inspectionCss))
+check('and the panel keeps the base placement, centred in the window',
+   /<Popup bind:this=\{popup\} \{openOnMount\}>/.test(inspectionCss))
+
 /*
    And the one thing neither a string nor a store can see: *which* piles the four
    buttons shuffle. A card out of a deck leaves it unknown, so the deck is shuffled;
@@ -277,21 +302,36 @@ check('and flush leaves the centring translate behind',
    "tidy-up" would drop.
 */
 check('and only the deck is shuffled behind the cards that leave it',
-   /if\s*\(\s*pile\s*===\s*deck\s*\)\s*shuffle\(\)/.test(inspectionCss))
+   /if\s*\(\s*isDeck\s*\)\s*shuffle\(\)/.test(inspectionCss))
 
 /*
-   The deck's own view, which is the panel the buttons were asked for: it is the
-   one pile with something to shuffle back into, so it is the one that carries the
-   second button that closes it.
+   And which piles get the four buttons at all. They are the four places a *search*
+   takes a card out of a deck to, so the deck's view is the one that offers them:
+   every other pile's view is a read, and the only action on it is the button that
+   closes it. Rendering each zone's own view is what makes that a fact rather than a
+   claim - a condition on the wrong pile would leave the buttons off the deck's view
+   and on a discard's, and a check that rendered one pile could not tell which.
+
+   The heading is checked in the same pass, because it is the other half of "each
+   pile's view says which pile it is": the name it prints is the zone it was handed.
 */
-const deckView = renders('the deck inspection dialog renders',
-   mod.InspectionView,
-   {
-      props: { pile: mod.deck },
-      context: new Map([ [ 'boardActions', { openDetails () {}, openCardMenu () {}, startAE () {} } ] ])
-   })
+const deckView = renders('the deck inspection dialog renders', mod.InspectionView, asPile(mod.deck))
 check('and the deck can be shuffled back on the way out',
    Boolean(deckView) && deckView.includes('Close &amp; Shuffle'))
+check('and the deck view offers the four moves',
+   Boolean(deckView) && deckView.includes('Add to discard pile'))
+check('and the deck heading names the deck',
+   Boolean(deckView) && deckView.includes('>Deck</span>'))
+/* a pile with nothing picked out of it is not a pile to move anything out of */
+check('and its four moves start disabled',
+   Boolean(deckView) && (deckView.match(/disabled/g) || []).length === 4,
+   `${(deckView?.match(/disabled/g) || []).length} disabled of 4`)
+
+for (const [ zone, pile ] of [ [ 'discard', mod.discard ], [ 'lost zone', mod.lz ], [ 'hand', mod.hand ] ]) {
+   const view = renders(`the ${zone} inspection dialog renders`, mod.InspectionView, asPile(pile))
+   check(`and the ${zone} view is a read: Close, its own name and no moves`,
+      Boolean(view) && view.includes('Close') && view.includes(`>${zone === 'lost zone' ? 'Lost Zone' : zone[0].toUpperCase() + zone.slice(1)}</span>`) && !view.includes('Add to'))
+}
 
 /*
    What those buttons do, which a render cannot click: a card selected out of the

@@ -27,20 +27,6 @@
    export let centered = false
 
    /*
-      Against the left edge of the window, rather than centred in it with the same
-      gap on both sides. A panel that is a *grid of the whole window's width* - the
-      pile inspection - wants the window's edges rather than a frame around them:
-      there is no second column of anything beside it to be centred between, and
-      the frame only spends room that the cards would otherwise have. The right
-      edge keeps `--popup-edge`, so the panel is not touching the scrollbar.
-
-      By class rather than by rewriting the base rule, so that a panel asks for it:
-      the panels that are a short list of actions in the middle of the window are
-      still centred, and the rule above says why.
-   */
-   export let flush = false
-
-   /*
       A panel is opened by a call, and a component rendered without one draws
       nothing at all - which is every panel, in a check that has no clicks to make
       (`tools/render-check.mjs`). This opens it without the call, so a panel's own
@@ -97,15 +83,14 @@
 
 {#if isOpen}
    <!--
-      As wide as what is in it, and centred rather than pinned to a corner - unless
-      the panel asks to be `flush`, which is a panel that is the width of the window
-      and wants the window's edges rather than a frame around them (the pile
-      inspection, see Inspection.svelte).
+      As wide as what is in it, and centred rather than pinned to a corner: the same
+      gap from the window's left edge as from its right, which is the one thing about
+      a panel's placement that a pile view got wrong twice - first centred with a 2rem
+      frame, then flush to the left edge, which is not the same gap at all.
    -->
    <div class="popup m-8 z-20 bg-[var(--popup-color)] rounded-md border border-black w-max max-w-[calc(100vw-4rem)]"
       class:anchored
       class:centered
-      class:flush
       use:clickOutside on:outclick={closed}
       use:escape on:esc={closed}>
 
@@ -148,10 +133,6 @@
       A panel sits in the middle of the window. The detail panels used to span the
       window's full width from the top left, so narrowing them to their content left
       them looking pinned to the corner.
-
-      The pile inspection is the exception, and asks for `flush`: it is a grid as
-      wide as the window, so centring it only spends the window's edges on a frame
-      around it. See `.flush` below.
 
       On the panel itself, by class: this was a bare `div` rule, and a Svelte
       component scopes that to every `div` in its own markup - which caught the row of
@@ -216,34 +197,5 @@
       margin: 0;
       transform: translate(-50%, -50%);
       max-height: calc(100vh - 4rem);
-   }
-
-   /*
-      Against the left edge of the window, with the panel's own frame left behind.
-
-      `left: 0` rather than the base rule's `left: 50%`: the panel is not being
-      centred, so there is nothing to translate - and `transform: none` is
-      load-bearing for the same reason it is in `.centered`, because a transform
-      left on would move a panel that is already where it belongs. The margins go
-      entirely, including the top one the base class carries, so the two lengths
-      that depend on them are restated here rather than inherited wrong.
-
-      `--popup-edge` is the gap that survives: on the right, from the window's own
-      scrollbar, and on the top, because a panel against the left edge is not a
-      panel in the window's corner. It is a variable on the panel rather than a
-      number here so that the panel's own stylesheet can keep the two gaps in step
-      with each other - the inspection's cards sit against the panel's edges, so
-      its card padding and this want to be the same length.
-   */
-   .flush {
-      --popup-edge: 1rem;
-
-      top: var(--popup-edge);
-      left: 0;
-      right: var(--popup-edge);
-      margin: 0;
-      transform: none;
-      max-width: calc(100vw - var(--popup-edge));
-      max-height: calc(100vh - 2 * var(--popup-edge));
    }
 </style>
