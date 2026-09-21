@@ -266,9 +266,50 @@ of verification —
 - no *rendered* verification of CSS, which is the half the build never covers (see the note
   about `npm run check` above) — `docs/card-sizing.md` is full of claims only a renderer can
   settle;
+- **but the tree itself can still be rendered** — `tools/render-check.mjs`, which is a
+  renderer without a browser (see the entry on it below). The list above is about what needs a
+  *browser*; "does any of this render at all" does not;
 - still available: the build, `tools/docs-check.mjs`, `tools/relay-check.mjs` given a dev
   server, and any change assertable by importing the module in plain node — the
   `placeOrdered` half of `tools/deck-order-check.mjs` is the model for that.
+
+**A component can be dead on arrival while the build, the docs check and every other tool are
+green — and `$name` on a plain value is how.** The change that prompted this note was one line:
+two states were named in `Board.svelte`'s script,
+
+```js
+$: topUpright = $spectating || $solo
+$: topFlipped = !topUpright
+```
+
+…and then written into nine template attributes as `class:upright={$topUpright}`. The `$` makes
+Svelte read the expression as a **store**, and `topUpright` is a plain boolean, so the component
+threw on mount:
+
+```
+TypeError: store.subscribe is not a function
+    at subscribe (svelte/src/runtime/internal/utils.js:139:22)
+    at $$subscribe_topUpright
+```
+
+`npm run build` passed — it compiles the template, and this is a *runtime* type error, not a
+compile error. `docs-check` passed. The app was dead: the board never rendered, so clicking
+**Play Solo** left the main menu on screen with no error anywhere a person would look. It is the
+same shape as the spectator bugs (healthy transport, empty board) and it survived exactly as long
+as it did because this repository had **no renderer at all** in a confined session.
+
+Two things follow, and the second is the one that generalises:
+
+- **`$` is for stores only.** A `$:` reactive assignment produces a plain value; referring to it
+  with a `$` prefix elsewhere in the component is the bug above. It is a one-character mistake
+  with no compile-time signal, so it is worth knowing what it looks like when it lands.
+- **`tools/render-check.mjs` is the answer to "does the tree render".** It compiles the real
+  components to their server `render()` and executes the menu, the board in solo and the
+  sidebar. A `render()` call runs every `$:` statement and every template expression, so the
+  throw above happens there in a second, and the check was verified by putting the bug back and
+  watching it go red. It is **not** a browser check — it renders to a string and says nothing
+  about CSS or layout — and it needs `esbuild`, so it hits the same `spawn EPERM` sandbox wall as
+  `npm run build`.
 
 **And do not try to find out by launching a browser by hand.** It does not merely fail: Edge
 puts a modal *`msedge.exe - Application Error`* — "The exception Breakpoint / A breakpoint has
