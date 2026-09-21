@@ -152,27 +152,36 @@ thing you have to know to read the code, and none of them is enforced:
   holds no cards, plays nothing, and is the one zone with no `board/` +
   `opponent/` component pair.
 
-## What is not enforced
+## What is enforced, and what is not
 
-Nothing checks this table. Every vocabulary above is a hand-written literal in
-its own file, so the entries can drift apart in silence — which is how the `play`
-homonym survived every refactoring that has touched `logger.js`, and how a zone
-name that is not in any map falls through to a `slotRegex` test that quietly
-answers "no".
+`tools/zone-vocabulary-check.mjs` derives all five places a zone name is written
+down — `custom/board.js` (which mints it), `exportBoard()`'s keys, `logger.js`'s
+two maps, `diagnostics.js`'s lists, and `opponent.js`'s `getPile()` — and asserts
+they agree. It also holds the two slot-name regexes against each other and against
+what `slot()` actually mints, and it pins the two deliberate exceptions by name:
+Pokémon-in-play (`play`) and the slot zones, so a third one has to be looked at
+rather than waved through.
 
-There are five separate places a zone name is written down:
-`custom/board.js` (minting it), `docs/board.md`'s table, `Board.svelte`'s
-`grid-template-areas`, `logger.js`'s two maps, and `diagnostics.js`'s `PILES` and
-`ZONE_LABELS` lists. A check that derives all five and asserts they agree — and
-that every name `logger.js` answers to is one it knows — is worth writing; until
-then this document is the only place they are compared.
+It runs in CI with the other tree checks. What it cannot check is prose: the table
+above is compared against the code only for the *board's* zones, so a claim about
+semantics — which is most of this document — is still on the reader.
 
-One thing that check can assert today, exactly, without a browser: what a slot's
-sub-piles are named. They are minted in one line of `cards.js` and matched by a
-regex in two other files, so the two are checkable against each other:
+Two things it deliberately does **not** assert, because they are not true of this
+board and asserting them would be asserting a tidiness the code does not have:
 
-```sh
-grep -rn "crypto.randomUUID" src                        # slot() mints the id
-grep -rn "pokemon\\|trainer\\|energy" src/lib/stores/logger.js   # slotRegex
-grep -rn "slotRegex" src                                # and who else matches it
-```
+- That `logger.js`'s two maps have the same keys. `piles` also names the slot
+  zones (Bench, Active), which are single slots rather than piles. What is asserted
+  is the requirement underneath: everything the log can *name* it can also
+  *judge*. Writing the check is what found that it could not — `bench` and
+  `active` were in `piles` and missing from `zones`, so a `logMove(…, 'bench')`
+  would have missed the lookup and printed card names it was meant to count. Two
+  lines fixed it; nothing passes either name today, which is why it had gone
+  unnoticed and why it is now pinned.
+- That the diagnostics panel counts the same set it labels. It deliberately counts
+  fewer: its `PILES` is the pile kinds, and `stadium` is counted beside them rather
+  than in the list — it holds a list of up to two rather than a pile, and it gets
+  no separate entry.
+
+A check that says what the *semantics* are — that these three names mean the same
+thing and those two do not — is not something this can do, and is why the document
+exists as well as the tool.

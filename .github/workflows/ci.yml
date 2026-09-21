@@ -19,6 +19,10 @@ name: CI
 #   a hung relay is a      tools/relay-timeout-check.mjs, because a request with no
 #   dead dialog            deadline leaves a player on "Working..." with no button
 #                          left to press
+#   a zone is named        tools/zone-vocabulary-check.mjs, because a zone's store
+#   the same way twice     name is also its wire name, and a rename that looks like
+#                          tidying makes a card silently stop moving on the other
+#                          board (see docs/terminology.md)
 #   the tree is reviewable  nothing else; a browser check needs real browsers and
 #                          is run by hand (tools/browser-check.mjs)
 #
@@ -111,3 +115,5 @@ jobs:
       - run: node tools/render-check.mjs
 
       - run: node tools/relay-timeout-check.mjs
+
+      - run: node tools/zone-vocabulary-check.mjs
