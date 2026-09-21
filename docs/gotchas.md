@@ -451,10 +451,43 @@ bug:
 **A `Popup`'s body scrolls; its actions do not.** `Popup.svelte` gives the panel
 the window's height at most and hands what is left to `.popup-body`, which
 overflows — so anything that has to stay visible while the cards are scrolled
-belongs in the `buttons` slot, and the actions are **one per line**, which on a
-636px-tall window is 20% of the deck per button. Anything inside the body is
-clipped horizontally too (`overflow-y: auto` does not leave the other axis
-visible), so a badge hung off the corner of a card is simply not drawn.
+belongs in the `buttons` slot. The actions are one per line by default, which on
+a 636px-tall window is 20% of the deck per button — and the row `flex-wrap`s, so a
+panel with a second *kind* of action lays them out in groups beside each other
+instead: the pile inspection's four buttons sit two by two next to the two that
+close it (`Inspection.svelte`). Anything inside the body is clipped horizontally
+too (`overflow-y: auto` does not leave the other axis visible), so a badge hung
+off the corner of a card is simply not drawn — which is why a selection that has
+to be *read* is said in words above the grid rather than drawn on the card.
+
+**A panel that is opened by a call renders as nothing at all, and `bind:this` is
+not the way into one.** Every `Popup` draws nothing until a call opens it, and
+`tools/render-check.mjs` renders components rather than clicking them — so a fault
+in a panel's own markup, or in a `$:` statement only the panel runs, is the one
+class of failure the file exists to catch and cannot reach. The obvious way in
+does not work: **`bind:this` does not bind to a child's methods in a server
+render.** A wrapper component written as
+
+```svelte
+<script>
+   let inspection
+   $: if (inspection) inspection.open(hand)
+</script>
+
+<Inspection bind:this={inspection} />
+```
+
+sees `inspection === undefined` for the whole render, and the check reports the
+dialog as 0 characters rather than as a fault — a `create_ssr_component` exposes
+`render()` and nothing else. What does work is a prop: `Popup.svelte` takes
+`openOnMount`, so a panel renders in its open state with no call at all, and
+`Inspection.svelte` takes its pile as a prop for the same reason.
+`tools/pile-dialog.svelte` is the two of them together — a dialog that opens
+itself over a pile — and the render check reads the whole grid, the line above it
+and the row of buttons below it through that wrapper, and then makes the moves
+those buttons make, which need no browser at all (`moveSelection` and `toBench`).
+Both props are off everywhere in the app, and the wrapper is deliberately not in
+`src/`: nothing on a board wants a dialog that opens itself.
 
 **`tools/relay-check.mjs` used to ask the clock for an exact millisecond, which the
 relay cannot promise.** The check *and the time really left on it* compared the

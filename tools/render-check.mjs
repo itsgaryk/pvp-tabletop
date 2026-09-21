@@ -33,7 +33,7 @@ import { build } from 'esbuild'
 import { compile } from 'svelte/compiler'
 import { get } from 'svelte/store'
 import { pathToFileURL } from 'node:url'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 
 const quiet = process.argv.includes('--quiet')
@@ -69,13 +69,23 @@ const buildId = Date.now()
 const entry = join(work, `entry-${buildId}.js`)
 const outfile = join(work, `bundle-${buildId}.mjs`)
 
+/*
+   `InspectionView` is `tools/pile-dialog.svelte`: the pile inspection dialog in
+   the one state a render can reach, since a panel that has not been opened draws
+   nothing at all. It is a file in the tree rather than a string written here so
+   that it can be read as a component like any other.
+*/
 writeFileSync(entry, `
    import { solo, startSolo, exitSolo } from '${p('lib/stores/solo.js')}'
    import { room } from '${p('lib/stores/connection.js')}'
    import Board from '${p('lib/play/Board.svelte')}'
    import Connection from '${p('routes/Connection.svelte')}'
    import Page from '${p('routes/+page.svelte')}'
-   export { solo, startSolo, exitSolo, room, Board, Connection, Page }
+   import { cards, cardSelection, deck, discard, bench, draw, hand, moveSelection, resetBoard, selectCard, selectPile, toBench } from '${p('lib/stores/player.js')}'
+   import InspectionView from '${join(root, 'tools', 'pile-dialog.svelte').split(sep).join('/')}'
+   /* what a decklist import does: the list of cards, then the board built from it */
+   const setDeck = (cards_) => { cards.set(cards_); resetBoard() }
+   export { solo, startSolo, exitSolo, room, Board, Connection, Page, bench, cardSelection, deck, discard, draw, hand, moveSelection, selectCard, selectPile, setDeck, toBench, InspectionView }
 `)
 
 const svelte = {
@@ -137,9 +147,9 @@ const check = (label, ok, detail = '') => {
 }
 
 /* every `$:` and every template expression runs here; a throw is the whole check */
-function renders (label, Component) {
+function renders (label, Component, { props = {}, context = undefined } = {}) {
    try {
-      const out = Component.render({})
+      const out = Component.render(props, { context })
       const html = out?.html ?? ''
       check(label, html.length > 0, `${html.length} chars`)
       return html
@@ -178,12 +188,120 @@ renders('the sidebar renders in solo', mod.Connection)
 
 check('and the board is actually on the page', Boolean(solo) && /class="game/.test(solo))
 
+mod.setDeck([
+   { name: 'Pikachu', set: 'sv1', number: '1', count: 4, ptcgApiCode: 'sv1' },
+   { name: 'Boss\u2019s Orders', set: 'sv1', number: '2', count: 4, ptcgApiCode: 'sv1' },
+   { name: 'Ultra Ball', set: 'sv1', number: '3', count: 4, ptcgApiCode: 'sv1' }
+])
+mod.draw(6)
+check('and dealing gives the inspection a pile to read', get(mod.hand).length === 6, `${get(mod.hand).length} in hand`)
+/*
+   The pile inspection, which is the board's one dialog with a component of its
+   own inside it - and which renders nothing at all until it is open, so a fault
+   in it is invisible to everything above. `tools/pile-dialog.svelte` opens it
+   over the hand, so what renders here is the grid, the cards, and the row of
+   actions at its foot, where a card picked out of the pile is moved to a zone.
+
+   `Card.svelte` asks the board for its actions through a context, so the dialog
+   cannot render without one. Everything a card *does* with it - the details
+   dialog, the card menu - is a click, which a render to a string cannot make: the
+   stub is here so the click handlers have somewhere to point, not to test them.
+*/
+const inspection = renders('the pile inspection dialog renders, with cards in it',
+   mod.InspectionView,
+   { context: new Map([ [ 'boardActions', { openDetails () {}, openCardMenu () {}, startAE () {} } ] ]) })
+check('and it shows the pile as cards',
+   Boolean(inspection) && (inspection.match(/class="card"/g) || []).length === get(mod.hand).length,
+   `${(inspection?.match(/class="card"/g) || []).length} cards, ${get(mod.hand).length} in the pile`)
+/* a pile with nothing picked out of it is not a pile to move anything out of */
+check('and its moving buttons start disabled',
+   Boolean(inspection) && (inspection.match(/disabled/g) || []).length === 4,
+   `${(inspection?.match(/disabled/g) || []).length} disabled of 4`)
+/* the same reading as the order strip: what is picked out is said, not only drawn */
+check('and it says what to do with no card picked out',
+   Boolean(inspection) && inspection.includes('Click a card to pick it out of the pile'))
+
+/*
+   Picking several out of a pile, which is the same selection *Search & Order Deck*
+   has: a click selects, Ctrl-click adds, Ctrl+A takes the whole pile, and a card
+   clicked again is put back. What `Inspection` adds is a line saying so, because a
+   ring on a card is not something a pile can be read by (see docs/selection.md).
+*/
+mod.selectCard(get(mod.hand)[0], mod.hand, false)
+mod.selectCard(get(mod.hand)[1], mod.hand, true)
+mod.selectCard(get(mod.hand)[2], mod.hand, true)
+check('three cards can be picked out of the pile', get(mod.cardSelection).length === 3, `${get(mod.cardSelection).length} picked out`)
+
+mod.selectCard(get(mod.hand)[2], mod.hand, true)
+check('and a card clicked again is put back', get(mod.cardSelection).length === 2, `${get(mod.cardSelection).length} picked out`)
+
+mod.selectPile(mod.hand)
+check('and Ctrl+A takes the whole pile', get(mod.cardSelection).length === get(mod.hand).length,
+   `${get(mod.cardSelection).length} picked out of ${get(mod.hand).length}`)
+
+/*
+   And the one thing about the dialog a render to a string cannot see at all: the
+   padding its grid keeps from the panel's two edges.
+
+   The grid is as wide as the panel and wraps, so a row that does not fill it
+   leaves its room on one side; `justify-content: center` is what splits that
+   between the sides, and the right-hand padding carries the panel's own scrollbar
+   back (`--popup-scrollbar`), because a bar drawn in the body takes its width out
+   of the box the cards are laid out in. Both are the kind of change that reads
+   perfectly in the CSS and leaves a margin down one side of every pile on screen,
+   and nothing else in this repository would notice either one going.
+*/
+const inspectionCss = readFileSync(join(src, 'lib', 'play', 'dialogs', 'Inspection.svelte'), 'utf8')
+check('and the card grid is centred in it', /@apply[^;]*justify-center/.test(inspectionCss))
+check('and its right-hand padding carries the panel scrollbar back',
+   /padding:\s*0?\.5rem\s+calc\(\s*0?\.5rem\s*\+\s*var\(--popup-scrollbar\)\s*\)\s+0?\.5rem\s+0?\.5rem/.test(inspectionCss))
+
+/*
+   The deck's own view, which is the panel the buttons were asked for: it is the
+   one pile with something to shuffle back into, so it is the one that carries the
+   second button that closes it.
+*/
+const deckView = renders('the deck inspection dialog renders',
+   mod.InspectionView,
+   {
+      props: { pile: mod.deck },
+      context: new Map([ [ 'boardActions', { openDetails () {}, openCardMenu () {}, startAE () {} } ] ])
+   })
+check('and the deck can be shuffled back on the way out',
+   Boolean(deckView) && deckView.includes('Close &amp; Shuffle'))
+
+/*
+   What those buttons do, which a render cannot click: a card selected out of the
+   panel is moved to the pile the button names, and out of the pile it was
+   selected in. The dialog's own handlers are `moveSelection` and `toBench` - the
+   board's own moves, so this is the same motion a card dragged out of the deck
+   makes, and it is asserted here rather than in a browser because none of it
+   needs one.
+
+   A bench is a slot rather than a card in a list, so it is checked as one: the
+   card is off the pile, and a slot holds it.
+*/
+const card = get(mod.hand)[0]
+mod.selectCard(card, mod.hand, false)
+check('a card can be selected out of the pile', get(mod.cardSelection).length === 1, `${get(mod.cardSelection).length} selected`)
+
+mod.moveSelection(mod.discard)
+check('and moved to the discard by the same move the button calls',
+   get(mod.discard).includes(card) && !get(mod.hand).includes(card))
+check('and the selection is spent', get(mod.cardSelection).length === 0, `${get(mod.cardSelection).length} still selected`)
+
+const benched = get(mod.hand)[0]
+mod.selectCard(benched, mod.hand, false)
+mod.toBench()
+check('and moved to the bench as a slot',
+   get(mod.bench).some(s => s.pokemon.get().includes(benched)) && !get(mod.hand).includes(benched))
+
 try { mod.exitSolo() } catch {}
 
 console.log('')
 if (failures) {
-   console.log(`verdict: ${failures} failed - the board does not render, so the app is dead on arrival`)
+   console.log(`verdict: ${failures} failed - something in the tree does not render, or a move it makes does not land`)
    console.log('(this is the class of failure a build and a CSS check cannot see - see docs/gotchas.md)')
    process.exit(1)
 }
-console.log('verdict: ok - the menu, the board in solo and the sidebar all render')
+console.log('verdict: ok - the menu, the board in solo, the sidebar and a pile dialog all render, and a card comes out of one')
