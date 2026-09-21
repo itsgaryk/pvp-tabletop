@@ -7,8 +7,8 @@
    import { dragging } from '$lib/dnd/pointer.js'
    import cardback from '$lib/assets/cardback_int.png'
 
-   import { cardSelection as selection, selectCard, prizes } from '$lib/stores/player.js'
-   import { publishLog } from '$lib/stores/connection.js'
+   import { cardSelection as selection, selectCard } from '$lib/stores/player.js'
+   import { logPrizeLook } from '$lib/stores/logger.js'
    const { openDetails, openCardMenu } = getContext('boardActions')
 
    export let card
@@ -42,12 +42,12 @@
 
    /*
       Double clicking a card shows it, which for a face-down prize is a look at one
-      nobody has taken - the same look the menu's Show Details takes, so it says the
-      same thing in the log. Every other pile a player can show themselves is either
-      face up already or their own hand, which is not news.
+      nobody has taken - the same look the menu's Show Details and the space bar
+      take, so it says the same thing in the log. Every other pile a player can show
+      themselves is either face up already or their own hand, which is not news.
    */
    function onDetails () {
-      if (!revealed && pile === prizes) publishLog('Viewed prize card')
+      logPrizeLook(pile, revealed)
       openDetails(card)
    }
 

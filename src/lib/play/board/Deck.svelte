@@ -3,8 +3,8 @@
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import Pile from './Pile.svelte'
    import cardback from '$lib/assets/cardback_int.png'
-   import { share, spectating, publishLog } from '$lib/stores/connection.js'
-   import { logMove } from '$lib/stores/logger.js'
+   import { share, spectating } from '$lib/stores/connection.js'
+   import { logDeckView, logMove } from '$lib/stores/logger.js'
 
    import { deck, discard, lz, prizes, draw, shuffle } from '$lib/stores/player.js'
    const { openPile, openDeckOrder, openSelection } = getContext('boardActions')
@@ -34,12 +34,12 @@
       Looking through the whole deck to put cards back in a chosen order: the
       search that ends with the player deciding what they draw next. The cards
       never leave the deck, so opening this changes nothing - but it is a look
-      through the one pile the opponent cannot see, and that is what the log
-      records, the same as View All does. The placement says the rest, when the
-      cards are actually placed (see lookAndPlace).
+      through the deck, which the log records the same way View All's does (see
+      logDeckView). The placement says the rest, when the cards are actually
+      placed (see lookAndPlace).
    */
    function arrangeDeck () {
-      publishLog('Viewed deck')
+      logDeckView()
       openDeckOrder()
    }
 
@@ -54,18 +54,19 @@
       let x = parseInt(prompt('Reorder how many cards from the top?'))
       if (!x || x < 1) return
 
-      publishLog('Viewed deck')
+      logDeckView()
 
       /* show what there is rather than a number that is not there */
       openDeckOrder(Math.min(x, deck.get().length))
    }
 
    /*
-      Looking through the deck is worth saying out loud: it is the one pile the
-      opponent cannot see, so what it holds is the information they are missing.
+      The whole deck on screen at once: the menu's View All, and the click on the
+      deck's own card. The board's V key takes the same look and writes the same
+      line (see logDeckView).
    */
    function viewDeck () {
-      publishLog('Viewed deck')
+      logDeckView()
       openPile(deck)
    }
 

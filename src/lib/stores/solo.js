@@ -71,7 +71,15 @@ export function importOpponentDeck (txt, cb, rd = false) {
    the log reads like a game rather than a monologue.
 */
 
-const OPPONENT = 'Player 2'
+/*
+   The name the far half's lines are written in. Both halves are one person's here,
+   and the log is a record of what was done at the table, so a look or a move that
+   happened on that half is written in that half's name rather than the player's -
+   which is also what the board's own keys use when the selection is over there
+   (see Board.svelte). Exported because the far half's card menu and the space bar
+   both write that line.
+*/
+export const OPPONENT = 'Player 2'
 
 function logForOpponent (message) {
    publishToChat(message, 'log', OPPONENT)

@@ -3,8 +3,8 @@
    import ContextMenu from '$lib/components/ContextMenu.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import { defaultOpponent } from '$lib/stores/opponent.js'
-   import { soloMoveCard, soloCardToPlay, soloCardAttach, soloCardToStadium } from '$lib/stores/solo.js'
-   import { publishToChat } from '$lib/stores/connection.js'
+   import { logPrizeLook } from '$lib/stores/logger.js'
+   import { OPPONENT, soloMoveCard, soloCardToPlay, soloCardAttach, soloCardToStadium } from '$lib/stores/solo.js'
 
    const { openDetails } = getContext('boardActions')
 
@@ -17,10 +17,12 @@
    let menu
    let pile = null
    let card = null
+   let revealed = true
 
-   export function open (x, y, _pile, _card) {
+   export function open (x, y, _pile, _card, _revealed = true) {
       pile = _pile
       card = _card
+      revealed = _revealed
       menu.open(x, y)
    }
 
@@ -48,11 +50,12 @@
       /*
          The far half's face-down prize, looked at in solo: the same line the near
          half's writes, in that half's name, because the log is a record of what
-         was done at the table and both halves are played at the same one.
+         was done at the table and both halves are played at the same one. What
+         counts as that look is the one rule, and the card's own face is what it
+         asks (see logPrizeLook): a far half whose prizes are already shown says
+         nothing, the way a face-up prize on your own half says nothing.
       */
-      if (pile === prizes && !defaultOpponent.prizesFlipped.get()) {
-         publishToChat('Viewed prize card', 'log', 'Player 2')
-      }
+      logPrizeLook(pile, revealed, OPPONENT)
       openDetails(card)
       menu.close()
    }

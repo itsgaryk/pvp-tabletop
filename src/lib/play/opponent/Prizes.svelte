@@ -4,6 +4,7 @@
    import Pile from './Pile.svelte'
    import Card from './Card.svelte'
    import { defaultOpponent } from '$lib/stores/opponent.js'
+   import { cardSelection } from '$lib/stores/player.js'
    import { spectating } from '$lib/stores/connection.js'
    import {
       solo, soloTogglePrizes, soloShufflePrizes,
@@ -66,8 +67,13 @@
 <Pile pile={prizes} name="Prizes" showMenu={$solo} bind:menu={menu}>
    <div class="prizes" style={Object.entries(layout).map(([key, value]) => `${key}: ${value}`).join('; ')} on:click|stopPropagation={view}>
       {#each $prizes as card, i (card._id)}
-         <!-- one prize, placed by the row and column it fills -->
-         <div class="prize" style="--row: {Math.floor(i / COLUMNS)}; --col: {i % COLUMNS}">
+         <!--
+            one prize, placed by the row and column it fills. The box carries the
+            selection as well as the card does, because past six prizes the rows
+            overlap and the selected one has to be drawn over its neighbours (see
+            the style below).
+         -->
+         <div class="prize" class:selected={$cardSelection.includes(card)} style="--row: {Math.floor(i / COLUMNS)}; --col: {i % COLUMNS}">
             <Card {card} pile={prizes} revealed={$prizesFlipped || $spectating} />
          </div>
       {/each}
@@ -115,18 +121,32 @@
    }
 
    /* the card fills the box that was worked out for it, border and all */
-   :global(.prizes .prize > div),
-   :global(.prizes img.card) {
+   .prizes .prize > :global(div),
+   .prizes :global(img.card) {
       width: 100%;
       height: 100%;
    }
 
-   :global(.prizes .prize > div) {
-      border-width: 0 !important;
+   /*
+      The card's own 2px border is taken out of the box rather than added to it, and
+      a selected prize draws those 2px as an outline instead - the wrapper *is* the
+      box here, so a live border would shrink and shift the image and step the prize
+      out of the block the cascade worked out. The rule is at the wrapper, which is
+      what carries the selection class, and only the card itself is `:global()` - it
+      belongs to another component, while `.prizes` and `.prize` belong to this one
+      (see the near half, where the arithmetic and the reasoning are written out).
+   */
+   .prizes .prize > :global(div) {
+      border-width: 0;
    }
 
-   :global(.prizes img.card.selected) {
+   .prizes .prize > :global(div.selected) {
       outline: 2px solid var(--selection-color);
       outline-offset: 0;
+   }
+
+   /* and lifted over the neighbours it overlaps once there are more than six */
+   .prize.selected {
+      z-index: 1;
    }
 </style>

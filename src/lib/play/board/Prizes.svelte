@@ -5,7 +5,7 @@
    import Card from './Card.svelte'
    import { share, publishLog, spectating } from '$lib/stores/connection.js'
 
-   import { prizes, deck, prizesFlipped } from '$lib/stores/player.js'
+   import { prizes, deck, prizesFlipped, cardSelection } from '$lib/stores/player.js'
 
    /*
       The prizes cascade only once there are more than the six a game is dealt, and
@@ -91,8 +91,13 @@
 <Pile pile={prizes} name="Prizes" bind:menu={menu}>
    <div class="prizes" style={Object.entries(layout).map(([key, value]) => `${key}: ${value}`).join('; ')}>
       {#each $prizes as card, i (card._id)}
-         <!-- one prize, placed by the row and column it fills -->
-         <div class="prize" style="--row: {Math.floor(i / COLUMNS)}; --col: {i % COLUMNS}">
+         <!--
+            one prize, placed by the row and column it fills. The box carries the
+            selection as well as the card does, because past six prizes the rows
+            overlap and the selected one has to be drawn over its neighbours (see
+            the style below).
+         -->
+         <div class="prize" class:selected={$cardSelection.includes(card)} style="--row: {Math.floor(i / COLUMNS)}; --col: {i % COLUMNS}">
             <Card {card} pile={prizes} revealed={$prizesFlipped} />
          </div>
       {/each}
@@ -154,50 +159,59 @@
       height: var(--card-h);
    }
 
-   /* the card fills the box that was worked out for it, border and all */
-   :global(.prizes .prize > div),
-   :global(.prizes img.card) {
+   /*
+      The card fills the box that was worked out for it, border and all.
+
+      Only the card itself is `:global()`: it is drawn by Card.svelte, so it does not
+      carry this component's scope class, while `.prizes` and `.prize` are this
+      component's own markup and do. Writing the whole selector global - which is how
+      these rules were first written - makes each half's copy of them apply to *both*
+      halves, because both grids are named `prizes`; a fault in one half's prizes then
+      hides behind the other half's stylesheet, which is exactly what a mutation test
+      of this file found.
+   */
+   .prizes .prize > :global(div),
+   .prizes :global(img.card) {
       width: 100%;
       height: 100%;
    }
 
    /*
-      The 2px a card carries (transparent until it is selected) is drawn inside its
-      box rather than added to it, or two prizes in a row would sit 4px apart.
+      The 2px a card carries (transparent until it is selected) is taken out of the
+      box rather than added to it, because here the wrapper is the box: it is 100% of
+      the prize's cell, so a live border would shrink the image by 4px and shift it
+      2px, and a prize that moved when it was selected would step out of the block
+      the cascade worked out.
    */
-   :global(.prizes img.card.selected) {
+   .prizes .prize > :global(div) {
+      border-width: 0;
+   }
+
+   /*
+      So a selected prize draws that 2px as an **outline** instead of as its border.
+      That is the one thing a selected prize does differently from a selected card in
+      the hand, and it is the box arithmetic that forces it - the colour, the width
+      and the way it hugs the card are the hand's (see board/Card.svelte, whose
+      `.selected` is the border this stands in for). An outline costs no room, so the
+      card stays exactly where the cascade put it.
+
+      It is written against the wrapper and not the `img`: the class the selection
+      puts on is the wrapper's (`Card.svelte`'s `class:selected`), and a rule at
+      `img.card.selected` matches nothing on this board - which is how the prizes
+      spent a while with no glow at all.
+   */
+   .prizes .prize > :global(div.selected) {
       outline: 2px solid var(--selection-color);
       outline-offset: 0;
    }
 
    /*
-      The border a card is drawn inside (2px on each side, transparent until it is
-      selected) is part of the box the arithmetic worked out, so it is drawn inside
-      that box rather than added to it - otherwise two prizes in a row would sit 4px
-      apart.
+      And the selected prize is lifted over its neighbours. The rows overlap once
+      there are more than the six a game is dealt, so the ring above is drawn on a
+      card that the next row is painted over - a glow behind the cards is a glow
+      nobody can see.
    */
-   :global(.prizes .prize > div) {
-      border-width: 0 !important;
-   }
-
-   :global(.prizes img.card.selected) {
-      outline: 2px solid var(--selection-color);
-      outline-offset: 0;
-   }
-
-   /*
-      A prize is as large as its own cell of the block allows - the lower of the
-      cell's width and the cell's height - and the block is as many columns as the
-      prizes need. CSS is told the width of the block by the count rather than
-      counting the cards itself: three rows is the table, so the seventh prize is
-      what makes a third column, the tenth a fourth, and so on.
-
-      The whole selector is global on purpose: the card is drawn by Card.svelte, so
-      it does not carry this component's scope and a scoped `img.card` would not
-      reach it at all - which is a size that silently falls back to the card's own.
-   */
-   :global(.prizes img.card) {
-      width: 100%;
-      height: 100%;
+   .prize.selected {
+      z-index: 1;
    }
 </style>
