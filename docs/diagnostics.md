@@ -1,6 +1,6 @@
 # Troubleshooting and diagnostics
 
-Five tools, for the five questions that are expensive to answer by hand. Each of
+A tool apiece, for the questions that are expensive to answer by hand. Each of
 them exists because the hand-written version of it produced a wrong answer at
 least once.
 
@@ -13,6 +13,43 @@ least once.
 | "Does the app really do that, in a browser?" | `node tools/browser-check.mjs` |
 | "Is the clock still smooth and still shared?" | `node tools/clock-check.mjs` |
 | "Did those cards land in the order that was chosen?" | `node tools/deck-order-check.mjs` (see [below](#is-the-deck-in-the-order-that-was-chosen)) |
+| "Does the board still render at all?" | `node tools/render-check.mjs` (see [below](#does-the-board-still-render)) |
+| "Does the deck stand-in still let a board be set up?" | `node tools/fixture-check.mjs` |
+
+## Does the board still render?
+
+```sh
+node tools/render-check.mjs
+```
+
+**This one is here because the app was dead while every other check was green.** A
+one-line change to `Board.svelte` — naming the far half's flip state and writing
+`class:upright={$topUpright}` for a plain value rather than a store — made the board
+throw `TypeError: store.subscribe is not a function` the moment it mounted.
+`npm run build` passed, `docs-check` passed, and clicking **Play Solo** left the main
+menu on screen, because the board it mounts never rendered. Nothing in this
+repository could see it, and [gotchas.md](gotchas.md) is a long account of why a
+confined session has no browser to see it with.
+
+It does not need a *browser*, though — it needs a renderer, and Svelte ships one that
+is not a browser. Every component compiles to a `render()` function for the server,
+and calling it executes the whole tree: every `$:` statement, every template
+expression, every subscription. The same throw happens here, in node, in a second.
+So the check compiles the real components and renders the app in the states a person
+actually reaches — the main menu, the board in solo (the path that broke), the
+sidebar in solo, and the board component on its own.
+
+It is **not** a browser check, and does not replace one: it renders to a string, so
+it says nothing about CSS, layout, or what a click does. It answers one question —
+does the tree render — and answers it where no browser is needed.
+
+Two things worth knowing about running it. It is the only check here that needs a
+dependency the app does not (`esbuild`, a devDependency for exactly this), and it
+compiles every component, so it takes a couple of seconds rather than milliseconds.
+And because esbuild starts its service child with **piped stdio**, it fails with
+`spawn EPERM` under the same confined hosts that break `npm run build` — see the
+stdio table in [gotchas.md](gotchas.md). That is a property of the sandbox, not of
+the check.
 
 ## Verifying a change: `tools/relay-check.mjs` and `tools/browser-check.mjs`
 

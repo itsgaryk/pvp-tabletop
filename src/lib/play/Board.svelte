@@ -1,4 +1,4 @@
-<script>
+﻿<script>
    import { setContext, onMount } from 'svelte'
    import { dragging } from '$lib/dnd/pointer.js'
    import { source as dragSource } from '$lib/dnd/store.js'
@@ -484,31 +484,31 @@
             The hand's pile menu is portalled out of the rotated subtree (see
             ContextMenu.svelte), so turning the half does not turn the menu with it.
          -->
-         <div class="hand2" class:flip={$topFlipped} class:upright={$topUpright}>
+         <div class="hand2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<Hand />{:else}<OppHand store={topStore} />{/if}
          </div>
 
-         <div class="prizes2" class:flip={$topFlipped} class:upright={$topUpright}>
+         <div class="prizes2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<Prizes />{:else}<OppPrizes store={topStore} />{/if}
          </div>
 
-         <div class="deck2" class:flip={$topFlipped} class:upright={$topUpright}>
+         <div class="deck2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<Deck />{:else}<OppDeck store={topStore} />{/if}
          </div>
 
-         <div class="discard2" class:flip={$topFlipped} class:upright={$topUpright}>
+         <div class="discard2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<Discard />{:else}<OppDiscard store={topStore} />{/if}
          </div>
 
-         <div class="lz2" class:flip={$topFlipped} class:upright={$topUpright}>
+         <div class="lz2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<LostZone />{:else}<OppLostZone store={topStore} />{/if}
          </div>
 
-         <div class="bench2" class:flip={$topFlipped} class:upright={$topUpright}>
+         <div class="bench2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<Bench />{:else}<OppBench store={topStore} />{/if}
          </div>
 
-         <div class="play2" class:flip={$topFlipped} class:upright={$topUpright}>
+         <div class="play2" class:flip={topFlipped} class:upright={topUpright}>
             <OppTable store={topStore} />
          </div>
 
@@ -564,7 +564,7 @@
                <PowerZone marker={$topMarker} used={$topUsed} opposite={!$spectating} />
             </div>
 
-            <div class="stadium2" class:flip={$topFlipped} class:upright={$topUpright}>
+            <div class="stadium2" class:flip={topFlipped} class:upright={topUpright}>
                <OppStadium store={topStore} />
             </div>
 
@@ -595,7 +595,7 @@
                <div class="zone-label active-label active-label-bottom">{activeLabel}</div>
             {/if}
 
-            <div class="active2" class:flip={$topFlipped} class:upright={$topUpright}>
+            <div class="active2" class:flip={topFlipped} class:upright={topUpright}>
                {#if soloSwapped}<Active />{:else}<OppActive store={topStore} />{/if}
             </div>
             <div class="active1">
