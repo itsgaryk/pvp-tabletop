@@ -126,6 +126,85 @@ to answer the `OPTIONS` preflight and send `access-control-allow-origin` or the
 status arrives as 200 and the body is refused. Both failure modes look identical
 from the app's side, and both were met here while writing the deck-order check.
 
+**A sandbox that refuses piped stdio breaks `npm run build`, `npm run dev` and `git push`,
+all in the same way.** In a confined agent session — the DSH file sandbox, a container, a
+locked-down CI runner — `child_process` may be denied creating a *new* pipe for a child. The
+refusal is `EPERM` on `spawn`, and it is not about the executable: it is about the stdio
+requested. Measured on this project's Windows host, with `node -e` as the child:
+
+| request | result |
+| --- | --- |
+| `stdio: 'inherit'` | runs (exit 0) |
+| `stdio: 'ignore'` | runs (exit 0) |
+| `stdio: [ 'ignore', 'inherit', 'inherit' ]` | runs |
+| `stdio: 'pipe'` | `EPERM` |
+| *no `stdio` key at all* | `EPERM` — the default is a pipe |
+
+Two of this project's tools depend on the pipe case and therefore fail with a message that
+points at the wrong thing:
+
+- **`npm run build` / `npm run dev`** — Vite 4 starts an esbuild *service*: a long-lived
+  child with JSON-RPC over **piped** stdio (`node_modules/esbuild/lib/main.js`,
+  `ensureServiceIsRunning`). The failure surfaces as `failed to load config from
+  vite.config.js` / `Error: spawn EPERM`, which reads like a broken config. It is not: the
+  same tree builds clean the moment the sandbox is widened. `svelte-check` is absent from
+  this repo anyway (see above), so on a confined host **there is no way to compile or serve
+  the app at all**, and a browser check cannot be run — the diagnosis matters, because
+  "the build is broken" and "the build cannot start here" call for opposite responses.
+- **`git push` over HTTPS** — `credential.helper` here is `!'C:\Program Files\GitHub CLI\gh.exe'
+  auth git-credential`, and git runs a `!`-prefixed helper through a shell with piped
+  stdio. That produces `couldn't create signal pipe, Win32 error 5` followed by `could not
+  read Username for 'https://github.com'`, which reads like missing credentials. It is not:
+  `gh auth status` is fine. The way through, when the token itself can still be read, is to
+  skip the helper —
+
+  ```powershell
+  $t = (gh auth token).Trim()
+  git -c credential.helper= push "https://x-access-token:$t@github.com/<owner>/<repo>.git" "<branch>"
+  ```
+
+  `gh auth token` writes the token to a pipe *we* own, which is allowed; only the helper's
+  own shell is refused. Fetching and `gh` subcommands that do not shell out are unaffected.
+
+Where the sandbox is configurable, the fix is the sandbox, not the tree. Where it is not,
+the two working forms above are the whole of the workaround — and neither the build nor the
+browser checks can be replaced by reading the code.
+
+**Chrome is often the third casualty, and it fails with no diagnostic at all.** The browser
+checks need real browsers started outside the tool
+(`tools/browser-check.mjs` says so in its own header). On a confined host, launching Chrome
+yourself can fail for a reason unrelated to any flag you pass: on this project's Windows
+host, under the same sandbox, **every** invocation exited `4294930433` — `0xFFFF7001`,
+`-36863` — including `chrome.exe --version`, which reads no profile, opens no port and needs
+no window. A failure that survives `--version` is not a command-line problem.
+
+What that looks like from the outside, and why it wastes an afternoon:
+
+- **Chrome gets far enough to look healthy.** It creates its `--user-data-dir` and writes
+  `component_crx_cache`, `GPUPersistentCache`, `Local State` and `Variations` into it, then
+  dies. An empty profile would say "it never started"; a populated one says "it started and
+  then something else went wrong", which is the wrong lead.
+- **No CDP is the only symptom.** `127.0.0.1` and `[::1]` both refuse on the debugging port,
+  `/json/version`, `/json/list` and `/json` all fail, and `DevToolsActivePort` is never
+  written. So the check reports *"chrome did not answer on the debug port"*, which reads
+  like a port clash or a firewall.
+- **Every flag variant fails identically** — `--headless=new`, `--headless`, headful,
+  `--no-sandbox`, `--disable-gpu`, `--dump-dom`, `--version`. Ruling these out one at a time
+  is the afternoon.
+
+The one thing that is *not* blocked is spawning Chrome: `stdio: 'ignore'` is permitted (see
+the table above), so the process starts and the exit code above is the real answer. Two
+consequences worth keeping straight:
+
+- **Launch the browser outside the agent's sandbox, and only the browser.** The dev server
+  can run outside it too, or inside with a wider sandbox — but the browser checks additionally
+  need a session that can create a window or a headless renderer, which a confined agent
+  session on Windows generally cannot.
+- **An exit code is the diagnostic to look for.** When the browser will not come up, record
+  `child.exitCode` and `child.on('error')` before blaming flags, ports or the page. On
+  Windows a killed process settles as exit `1` *without* a signal marker; `0xFFFF7001` above
+  is Chrome's own refusal, not a kill.
+
 **A `Popup`'s body scrolls; its actions do not.** `Popup.svelte` gives the panel
 the window's height at most and hands what is left to `.popup-body`, which
 overflows — so anything that has to stay visible while the cards are scrolled
