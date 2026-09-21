@@ -7,7 +7,8 @@
       hand, discard, deck, prizes, lz, table,
       moveSelection, toActive, toBench, toStadium
    } from '$lib/stores/player.js'
-   import { spectating, publishLog } from '$lib/stores/connection.js'
+   import { logPrizeLook } from '$lib/stores/logger.js'
+   import { spectating } from '$lib/stores/connection.js'
 
    const { openDetails, startAE } = getContext('boardActions')
 
@@ -26,11 +27,12 @@
       Showing a card is the one thing a player does that the other player cannot
       see, so a face-down prize card is the one card it is worth saying out loud:
       looking at it is information the opponent is entitled to know was taken, even
-      though the card itself is not. Every other pile a player shows themselves is
-      already either face up or their own hand, which is not news.
+      though the card itself is not. The rule is in one place, because the double
+      click, the space bar and the far half's own menu take the same look (see
+      logPrizeLook).
    */
    function showDetails () {
-      if (!revealed && pile === prizes) publishLog('Viewed prize card')
+      logPrizeLook(pile, revealed)
       openDetails($selection[0])
    }
 

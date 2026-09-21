@@ -1,5 +1,5 @@
 import { s } from '$lib/util/strings.js'
-import { publishLog } from './connection.js'
+import { publishLog, publishToChat } from './connection.js'
 import { prizesFlipped, handRevealed, pokemonHidden, findSlot } from './player.js'
 
 const slotRegex = /^([0-9a-z-]{36}).(pokemon|trainer|energy)$/i
@@ -163,4 +163,62 @@ export function logStatusCleared (name) {
 /* an ability being used (or cleared) is worth a line of its own */
 export function logAbilityUsed (name, used) {
    publishLog(`[${name}] ability ${used ? 'used' : 'reset'}`)
+}
+
+/*
+   Looking through a deck. It is the one pile the opponent cannot see, so what it
+   holds is the information they are missing - which is why the look is worth a line
+   even though the line names nothing.
+
+   Four things take that look and all four write this line, which is why it is a
+   function rather than a string in each of them: the deck menu's View All, its Order
+   Top X and its Search & Order Deck, and the board's `V`, which is the keyboard's
+   version of View All. It was written at the three menu entries and not at the key,
+   so `V` - the commonest way anybody opens the deck - left no trace at all.
+*/
+export function logDeckView () {
+   publishLog('Viewed deck')
+}
+
+/*
+   Whether showing a card is the private look the game log records.
+
+   Showing a card is the one thing a player does that the other player cannot see,
+   and a face-down prize is the one card where that matters: it is a card nobody has
+   taken yet, so looking at it is information the opponent is entitled to know was
+   taken, even though the card itself is not named. A prize that has been turned face
+   up - Show Prizes, or the setup dealing it up - is readable across the table and is
+   not news, and every other pile a player shows themselves is either face up already
+   or their own hand. So the whole of the rule is *a prize card, still face down*, and
+   it is written once because four things take that look: the double click on a card,
+   the card menu's Show Details, the space bar, and the far half's own menu in solo.
+
+   Both halves' prizes are piles named `prizes` (see docs/terminology.md), and the far
+   half's are looked at in solo, so the rule asks the pile's name rather than one
+   particular store. `faceUp` is what that card was drawn with: the half's own flag,
+   which is the prizes' one visibility flag (see docs/board.md).
+*/
+export function isHiddenPrize (pile, faceUp) {
+   return pile?.name === 'prizes' && !faceUp
+}
+
+/*
+   Taking that look, and saying so in the log.
+
+   `who` is the name the line is written in, which only the far half of a solo board
+   passes: both halves are one person's there, so the log is a record of what was done
+   at the table, and the far half's look is written in that half's name (see the far
+   half's own card menu, and `logForOpponent` in solo.js). Everywhere else the line is
+   the player's own.
+
+   The look is only *recorded* here, never taken: what the caller does next is open
+   the card, and this returns whether the log said anything.
+*/
+export function logPrizeLook (pile, faceUp, who = null) {
+   if (!isHiddenPrize(pile, faceUp)) return false
+
+   if (who) publishToChat('Viewed prize card', 'log', who)
+   else publishLog('Viewed prize card')
+
+   return true
 }

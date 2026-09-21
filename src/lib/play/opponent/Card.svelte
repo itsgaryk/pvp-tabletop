@@ -58,7 +58,8 @@
       e.preventDefault()
       e.stopPropagation()
       if (!$selection.includes(card)) selectCard(card, pile, false)
-      openOppCardMenu(e.clientX, e.clientY, pile, card)
+      /* the card's own face, so the far half's menu can ask the one log rule */
+      openOppCardMenu(e.clientX, e.clientY, pile, card, revealed)
    }
 </script>
 

@@ -7,8 +7,9 @@
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import { isTyping } from '$lib/util/typing.js'
    import { defaultOpponent, spectatorOpponents, spectatorFlipped, handRevealed as oppHandRevealed } from '$lib/stores/opponent.js'
-   import { solo, onOpponentSelection, onOpponentHalf, soloSelectedTo } from '$lib/stores/solo.js'
+   import { solo, onOpponentSelection, onOpponentHalf, soloSelectedTo, OPPONENT } from '$lib/stores/solo.js'
    import { playerName, zoneBorders } from '$lib/stores/settings.js'
+   import { logDeckView, logPrizeLook } from '$lib/stores/logger.js'
    import { message } from '$lib/stores/message.js'
 
    import Hand from './board/Hand.svelte'
@@ -55,6 +56,7 @@
       moveSelection, toBench, toActive, toStadium,
       startAttachEvolve,
       resetSelection,
+      prizesFlipped,
       powerMarker as myPowerMarker,
       powerMarkerUsed as myPowerMarkerUsed,
       togglePowerMarkerUsed,
@@ -273,8 +275,8 @@
    }
 
    /* a single card on the far half, which is only reachable in solo */
-   function openOppCardMenu (x, y, pile, card) {
-      oppCardMenu.open(x, y, pile, card)
+   function openOppCardMenu (x, y, pile, card, revealed = true) {
+      oppCardMenu.open(x, y, pile, card, revealed)
    }
 
    function startAE (evo = false) { // attach / evolve
@@ -303,6 +305,29 @@
       half's own zones, and never carries a card across the table into yours.
    */
    const farSelected = () => $solo && onOpponentSelection()
+
+   /*
+      Whether the prizes of the half a selection was made on are already face up:
+      the player's own, or the far half's, which in solo is played from this same
+      keyboard. The pile is what says which; a pile that is not a prize pile at all
+      answers face up, because it is not this rule's business - the rule itself asks
+      the pile's own name first (see logPrizeLook).
+   */
+   function prizesAreFaceUp () {
+      if (selectionPile === prizes) return $prizesFlipped
+      if (selectionPile === defaultOpponent.prizes) return defaultOpponent.prizesFlipped.get()
+      return true
+   }
+
+   /*
+      The keyboard's View All: the deck menu's own entry, key for key - the same
+      look through the one pile the opponent cannot see, so the same line in the
+      log, which is what `V` used to skip (see logDeckView).
+   */
+   function viewDeck () {
+      logDeckView()
+      openPile(deck)
+   }
 
    function keydown (e) {
       /*
@@ -349,6 +374,12 @@
          clicking its name at the top of its menu. A selected Pokemon in play
          counts as a card here, since that is what its name refers to. With the
          details already up, space puts them away again.
+
+         It is the same look the double click and the menu's entry take, so it says
+         the same thing in the log: a face-down prize is the one card worth saying
+         out loud, and a prize already turned face up is not (see logPrizeLook).
+         Only a card selection can be a prize - a Pokemon in play never is, and a
+         slot selection leaves the pile of whatever was selected before it behind.
       */
       else if (e.code === 'Space' || key === ' ') {
          if (detailsModal.opened()) {
@@ -357,12 +388,14 @@
             return
          }
 
-         const card = $cardSelection.length === 1
-            ? $cardSelection[0]
-            : ($slotSelection.length === 1 ? $slotSelection[0].pokemon.get().at(-1) : null)
+         const one = $cardSelection.length === 1 ? $cardSelection[0] : null
+         const card = one || ($slotSelection.length === 1 ? $slotSelection[0].pokemon.get().at(-1) : null)
 
          if (card) {
             e.preventDefault()
+            /* only a card selection can be a prize: a Pokemon in play never is, and
+               the pile a slot selection left behind is not this card's */
+            if (one) logPrizeLook(selectionPile, prizesAreFaceUp(), farSelected() ? OPPONENT : null)
             openDetails(card)
          }
       }
@@ -378,8 +411,11 @@
          message, and opening the deck on top of the paste is the one thing a
          paste must not do: a combination with the command modifier is the
          browser's and the clipboard's, not the board's.
+
+         It is the deck menu's own View All entry, key for key: the same look, so
+         the same line in the log (see logDeckView).
       */
-      else if (key === 'v' && !holdingCtrlOrCmd(e)) openPile(deck)
+      else if (key === 'v' && !holdingCtrlOrCmd(e)) viewDeck()
       else if (key === 'w') openPile(table)
 
       else if (key === 'w') moveSelection(table) // older version table shortcut without the extra functionality

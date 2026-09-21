@@ -13,6 +13,8 @@ least once.
 | "Does the app really do that, in a browser?" | `node tools/browser-check.mjs` |
 | "Is the clock still smooth and still shared?" | `node tools/clock-check.mjs` |
 | "Did those cards land in the order that was chosen?" | `node tools/deck-order-check.mjs` (see [below](#is-the-deck-in-the-order-that-was-chosen)) |
+| "Does a selected prize glow, and is looking at one logged?" | `node tools/prize-check.mjs` (see [below](#does-a-selected-prize-glow)) |
+| "Is reading the whole deck still written in the log?" | `node tools/view-log-check.mjs` (see [below](#is-reading-the-deck-written-in-the-log)) |
 | "Is a card still the size of its zone, from one place?" | `node tools/card-sizing-check.mjs` (see [below](#is-a-card-still-the-size-of-its-zone)) |
 | "Does the board still render at all?" | `node tools/render-check.mjs` (see [below](#does-the-board-still-render)) |
 | "Can a relay that says nothing trap a player?" | `node tools/relay-timeout-check.mjs` (see [relay.md](relay.md#a-request-that-never-answers)) |
@@ -161,6 +163,55 @@ joining or spectating the room code.
 ```sh
 node tools/browser-check.mjs --only lobby     # just that section
 ```
+
+## Does a selected prize glow?
+
+```sh
+node tools/prize-check.mjs
+```
+
+A prize is the one card on the board whose box is worked out by a formula rather than
+by a grid cell, and the one zone whose rows overlap, so it is the one place a selection
+ring can be written correctly at the wrong element (no ring at all) or drawn correctly
+under the row below (a ring nobody can see). Both of those happened, and both look like
+"my click did not select the prize" from the chair — see
+[selection.md](selection.md) for the rules the glow follows.
+
+So the check clicks a prize **through the browser's own hit testing** rather than by
+dispatching an event at the element, compares the ring it finds against a selected card
+in the hand's own glow, and asserts that the card's rect and its image's rect are
+byte-identical before and after the click — a prize that moved when it was selected
+would be the outline written as a border. Then it deals past six prizes so the rows
+overlap and asks a hit test just inside the selected card's bottom edge which prize is
+on top there.
+
+The other half is the log: the double click, the menu's **Show Details** and the space
+bar on a **face-down** prize each write *Viewed prize card* once, the space bar again
+puts the details away and writes nothing, and none of the three writes anything once
+*Show Prizes* has turned that half's prizes face up. The far half's prizes are checked
+the same way in solo, and their line has to be in that half's name.
+
+It builds its board without Setup — see the deck stand-in note in
+[gotchas.md](gotchas.md) — by sending the top cards of the deck to the prizes.
+
+## Is reading the deck written in the log?
+
+```sh
+node tools/view-log-check.mjs
+```
+
+A look through the deck is the one private look the opponent is entitled to know
+happened, so it is written as *Viewed deck* even though the line names nothing. Four
+things take that look — the deck menu's **View All**, its *Order Top X*, its *Search &
+Order Deck*, and the board's `V` — and the key is the one that had a copy of the entry's
+body instead of the entry, so it opened the deck and wrote nothing.
+
+The check presses `V`, reads the line out of the solo log, closes the panel with Escape
+and asserts the closing wrote nothing, presses it twice to show a look is a line each
+time, and then does the same through the menu's **View All** to show the two routes are
+one rule. It also presses `Ctrl+V` and asserts that *neither* happens: the command
+modifier belongs to the browser and the clipboard, and opening the deck on top of a
+pasted room code is the thing that combination must not do.
 
 ## Is the deck in the order that was chosen?
 

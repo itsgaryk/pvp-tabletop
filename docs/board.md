@@ -170,6 +170,21 @@ Placements travel as the `cardsMoved` event with two optional fields — `positi
 per-card loop it used before pushed the top card in first and left it at the wrong end of
 the array, and no list of ids can carry an order unless the whole list is put back at once.
 
+## Selecting a card, and what a selection looks like
+
+A click on a card selects it, Ctrl/Cmd-click adds to the selection rather than replacing it,
+and Escape or a click on the background clears it (`selectCard` and `resetSelection` in
+`player.js`). The board has **one** selection, and in solo both halves share it — which is
+why every key that moves a selection first asks which half it was made on (see
+[Keyboard shortcuts](#keyboard-shortcuts)).
+
+**A selected card is drawn with a 2px ring in `--selection-color`, and that ring is the whole
+of the feedback a click gets**: a card that does not glow is a card the player will click
+again. What each kind of selection is drawn with, the three rules a zone has to follow to
+draw it — the class goes on the wrapper rather than on the `img`, the ring must not cost any
+room, and the ring must not be buried by its neighbours — and why the prizes are the one zone
+that draws it as an `outline` with the box lifted, are all in **[selection.md](selection.md)**.
+
 ## The Stadium holds two cards, and a play clears the other player's
 
 The Stadium is the one zone both players play into, and each of them may place **two
@@ -341,10 +356,17 @@ The board's own shortcuts, from `Board.svelte`:
 | `T` `M` | the selection to the top / bottom of the deck |
 | `Q` `E` | attach / evolve with the selected card |
 | `U` | mark the selected Pokémon's ability used, or take that back |
-| `Space` | the selected card's details, and again to put them away |
-| `V` `W` | View All of the deck / of the table |
+| `Space` | the selected card's details, and again to put them away — a face-down prize is written to the log |
+| `V` `W` | View All of the deck (written to the log) / of the table |
 | `X` | the selection to the table, or pick the table back up |
 | `Esc` | clear the selection |
+
+`Space` and `V` are the menu entries they stand for, key for key, and that includes
+what those entries write in the log: the details of a **face-down prize** are recorded
+as *Viewed prize card* (a prize already turned face up is readable across the table and
+says nothing), and View All is recorded as *Viewed deck*, the one pile the opponent
+cannot see. The keyboard reaching the same look by another route is not a reason for it
+to go unrecorded. See [gotchas.md](gotchas.md) for what happened when `V` did.
 
 The game actions, from `GameActions.svelte`, which a spectator does not get at all:
 `Enter` ends the turn, `C` starts the next one, `N` starts a new game (after asking),

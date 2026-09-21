@@ -166,9 +166,24 @@ top edge down: the top of it, the part with the card's name on it, was cut off.
 card under the pointer in a drag is drawn from the card's face, so picking a face-down
 prize up used to turn it over — both a look at a card nobody has taken yet and a lie,
 since taking a prize turns nothing over; the drag preview draws the back for a pile
-whose cards are face down. And **Show Details** on a face-down prize writes *Viewed
-prize card* to the game log: it is the one private look a player takes that the opponent
-cannot see, so the log says it happened even though the card is not named.
+whose cards are face down.
+
+And **looking at a face-down prize writes *Viewed prize card* to the game log**: it is
+the one private look a player takes that the opponent cannot see, so the log says it
+happened even though the card is not named. The rule is *a prize card, still face down*
+and nothing else, so it lives in one place (`logPrizeLook` in `logger.js`) rather than at
+each of the four things that take that look: the double click on a card, the card menu's
+**Show Details**, the space bar, and the far half's own card menu in solo (which writes
+the line in that half's name). **A prize that has been turned face up writes nothing** —
+Show Prizes, or a spectator, who is handed every face — because a card both players can
+read is not news.
+
+Neither of those changes what a prize *is* on screen. The ring a selected prize draws,
+and why it is an outline with the box lifted over the row below it rather than the
+border a card in the hand wears, is in
+[selection.md](selection.md#the-prizes-where-the-arithmetic-forces-the-outline); the
+arithmetic above is exactly what forces it. `node tools/prize-check.mjs` measures both
+halves of this in a browser.
 
 Two things are not sized this way, and each is deliberate:
 

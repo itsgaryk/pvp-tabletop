@@ -195,6 +195,15 @@ to answer the `OPTIONS` preflight and send `access-control-allow-origin` or the
 status arrives as 200 and the body is refused. Both failure modes look identical
 from the app's side, and both were met here while writing the deck-order check.
 
+**That stand-in also cannot set a board up**, which is worth knowing before a check
+that needs a dealt board is written: its 60 cards carry no `stage`, so
+`hasBasic($cards)` is false, `deckValid` is false, and the Setup button is *disabled*
+(the three `panel` checks above are that fault, and it is the stand-in's rather than
+the app's). A browser check that needs cards on the board does not have to go through
+Setup, though — dealing them is a board action like any other, and
+`tools/prize-check.mjs` builds its six prizes out of the deck menu's *Prize Top Card*
+entry, which never asks an API anything.
+
 **Do not trust `Get-NetTCPConnection` inside the sandbox to tell you whether something is
 running.** It reports nothing as listening — `NOT REPORTED` even for a port that is answering
 HTTP — because enumerating the TCP table is denied. Two afternoons' worth of wrong conclusions
@@ -471,3 +480,58 @@ as its neighbour. It is worth keeping the story because it is the one piece of r
 in this repository's history that was *not* about the change being tested — the merge
 that tripped it touched one document, a workflow file and two lines of `logger.js`.
 The next flake to appear will look just as much like somebody's fault.
+
+**A selection rule written at `img.card.selected` matches nothing, and fixing it is only
+half the job — the cascade can still hide the ring.** A selected card is picked out by the
+2px `--selection-color` ring on the wrapper `div` `Card.svelte` renders, and the class that
+carries it is `class:selected` **on that `div`** — the `img` inside never has it. The prizes'
+stylesheet carried an outline rule at `img.card.selected`, twice, and so it matched nothing
+on the board: a left click on a prize did select it (the state was right, the menu it opened
+was right, the keyboard acted on it), and nothing on screen said so, which reads exactly like
+"the click did not register" and gets reported that way. What the rule should have named is
+the wrapper:
+
+```css
+:global(.prizes .prize > div.selected) { outline: 2px solid var(--selection-color) }
+```
+
+Three things about that line, each of which was a separate mistake here:
+
+- **It is the wrapper, not the image**, and the wrapper belongs to another component — so
+  the selector has to be `:global()`. A scoped selector compiles to a class the wrapper does
+  not carry and matches nothing, silently, which is the same failure one layer along. Only
+  the card should be global, though: with the *whole* selector written global, both halves'
+  rules match both halves' grids (they are both named `prizes`), so one half's stylesheet
+  hides the other's faults — see [selection.md](selection.md).
+- **It is an `outline` and not the `border` the hand's cards use**, because in the prizes the
+  wrapper *is* the box the cascade worked out (`width`/`height: 100%`), so a live 2px border
+  would come out of the image and move it 2px; a card that shifts when it is selected is a
+  card that steps out of its row. Measuring the card's rect and its image's rect before and
+  after the click is what settles this, and it is what `tools/prize-check.mjs` does.
+- **The prize's box has to be lifted over its neighbours.** Past six prizes the rows overlap
+  by `card-h - step`, and the rows after it in the markup paint over it, so the ring is
+  drawn and then covered — "I can see the glow appear but it is hiding behind the cards",
+  which is a *second* bug wearing the first one's clothes. `z-index: 1` on the selected
+  `.prize` is the fix, and the thing to test is a hit test just inside the selected card's
+  bottom edge rather than the presence of the rule.
+
+The general shape: **a CSS rule about a selection is a claim about a class that some other
+component puts on an element, and nothing in the build checks either half of it.** Read the
+rule, then read what renders the element, then click it. The rules themselves — what each
+kind of selection is drawn with, and why — are in [selection.md](selection.md).
+
+**A shortcut that re-implements a menu entry is a second copy of that entry's rule, and the
+copy is the one that goes stale.** `V` is View All of the deck, and so is the deck menu's own
+*View All* entry — but they were not the same code. The menu entry called the deck's
+`viewDeck()`, which writes *Viewed deck* to the game log (a look through the deck is the one
+private look that pile gets, so it is recorded even though the line names nothing), and the
+key called `openPile(deck)` directly. It opened the same panel, showed the same cards, and
+wrote nothing at all, so the commonest way anybody reads their deck was the one way to do it
+in silence — and the three dialog entries that *did* write the line each had their own copy of
+the string, which is why nobody noticed a fourth place that should have.
+
+Both halves are now one function (`logDeckView` in `logger.js`, called by all four), and
+`node tools/view-log-check.mjs` presses the key and counts the lines. The tell to look for is
+a key handler that calls the *primitive* an entry is built on rather than the entry itself:
+`openPile(deck)` is what `viewDeck()` starts with, and everything `viewDeck()` adds lives only
+in the menu.
