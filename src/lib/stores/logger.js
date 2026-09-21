@@ -5,6 +5,16 @@ import { prizesFlipped, handRevealed, pokemonHidden, findSlot } from './player.j
 const slotRegex = /^([0-9a-z-]{36}).(pokemon|trainer|energy)$/i
 
 function isPublicMove (from, to) {
+   /*
+      What the log can *name*, it must also be able to *judge* - every key of
+      `piles` below has an entry here, `bench` and `active` included even though no
+      caller passes either today (a benched or promoted Pokemon goes through
+      `logBenched` / `logPromoted`, which write their own line). A key in one map
+      and not the other is a zone the log can name but treats as private: the
+      lookup misses, the move falls through to `slotRegex`, and a line that was
+      meant to count cards starts naming them, in front of the player whose board
+      it is. `tools/zone-vocabulary-check.mjs` holds the two maps together.
+   */
    const zones = {
       hand: handRevealed.val,
       deck: false,
@@ -14,6 +24,8 @@ function isPublicMove (from, to) {
       stadium: true,
       table: true,
       pickup: false,
+      bench: !pokemonHidden.val,
+      active: !pokemonHidden.val,
       play: !pokemonHidden.val
    }
 

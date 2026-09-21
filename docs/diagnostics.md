@@ -16,6 +16,7 @@ least once.
 | "Is a card still the size of its zone, from one place?" | `node tools/card-sizing-check.mjs` (see [below](#is-a-card-still-the-size-of-its-zone)) |
 | "Does the board still render at all?" | `node tools/render-check.mjs` (see [below](#does-the-board-still-render)) |
 | "Can a relay that says nothing trap a player?" | `node tools/relay-timeout-check.mjs` (see [relay.md](relay.md#a-request-that-never-answers)) |
+| "Do all the places that name a zone agree?" | `node tools/zone-vocabulary-check.mjs` (see [terminology.md](terminology.md)) |
 | "Does the deck stand-in still let a board be set up?" | `node tools/fixture-check.mjs` |
 
 ## Is a card still the size of its zone?
