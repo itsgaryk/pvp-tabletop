@@ -270,6 +270,65 @@ of verification —
   server, and any change assertable by importing the module in plain node — the
   `placeOrdered` half of `tools/deck-order-check.mjs` is the model for that.
 
+**And do not try to find out by launching a browser by hand.** It does not merely fail: Edge
+puts a modal *`msedge.exe - Application Error`* — "The exception Breakpoint / A breakpoint has
+been reached / (0x80000003)" — on the desktop of whoever is sitting at the machine, which is a
+window nobody asked for and only they can dismiss. The exit code already says the same thing
+in one number, and `tools/browser.mjs` says why it refuses to launch browsers at all. Read the
+code, measure with node, or ask the person at the keyboard to run
+`tools/dev-servers.ps1` — do not spawn a browser to see what happens.
+
+**`tools/dev-servers.ps1` is the way in, and its output is a sequence to read in order.**
+Run outside the sandbox, it brings up the store, the deck-API stand-in, the app and one
+browser per page, and the app is what takes the time: Vite reported `ready in 15393 ms` here,
+after which the script is still in its health loop before it touches Chrome. So a run that
+appears to stop after `starting the dev server on 3005` is not hung — and the authority on
+whether the app came up is the app, not a port probe:
+
+```powershell
+(Invoke-WebRequest 'http://localhost:3005/api/relay/health' -UseBasicParsing).StatusCode   # 200
+```
+
+On this host `TcpClient` could **not** connect to `127.0.0.1:3005`, `::1:3005`, `0.0.0.0:3005`,
+the LAN address or the hostname, while `http://localhost:3005/` served the app and
+`/api/relay/health` answered `200` — so the readiness probe inside the script can print
+`never answered on 3005` for an app that is running perfectly. The store and the deck stand-in
+on 6390/6391 answer on IPv4 as expected. When the two disagree, believe the HTTP request. Two
+further notes for whoever maintains it: the script writes its dev-server output to
+`.dev-server.log`, which `.gitignore` does **not** cover (the `_*.log` rule needs the
+underscore), and the launcher shell stays blocked for as long as the dev server runs, because
+it waits on `npm run dev` rather than detaching it.
+
+**The `panel` section fails three checks on a clean tree, and two of them are the harness.**
+`node tools/browser-check.mjs --only panel` gives **70 PASS, 3 FAIL** on `main` with nothing
+modified — worth knowing before treating a red run as your own doing. The three are not one
+bug:
+
+- **`Setup lights the Hide Pokemon button` and `and it stays lit rather than fading`** are
+  `tools/fake-deck-api.mjs` **not making a legal deck**. Its 60 cards are
+  `{ name, set, number, card_type }` and carry **no `stage`**, while the app's own guard is
+  `$: deckValid = hasBasic($cards)`, which requires `card.stage === 'basic'`
+  (`GameActions.svelte:32-39`). `setup()` therefore returns at its first line —
+  `if (!deckValid && $autoMulligan) return` — and never reaches `hideGlow = true` five lines
+  below it. The app is right and the stand-in is incomplete: a deck of 60 cards with no Basic
+  Pokémon is not a deck, which is why the same check passes against the real
+  `limitlesstcg.com`. One field on the stand-in's card objects is the whole fix, and it is
+  also why `importDeck()` in the checks cannot set a board up.
+- **`and a card in the middle of a zone covers its name rather than the other way round`** is
+  the one left *open*, and the measurement is the useful part. The check requires the first
+  element with class `card` in the hit-test stack to be at index 0 (`cardAt === 0`), and for
+  the Deck zone the stack at the label's centre came back as
+  `img.card`, `.pile-body`, `.pile`, `.deck`, `.zone-label` — `cardAt = 0` with the label at
+  `4`. Every other zone measured `cardAt = -1`. So either the deck's cardback is genuinely
+  drawn over the word *Deck* — which would be the markup bug the check is for, and would need
+  the label moved or the card shrunk — or `cardAt === 0` is simply wrong as a definition of
+  "covers", since the deck's card is the one card on the board that fills its whole zone and
+  therefore lands on the zone's centre by construction. Settling it needs the label's text
+  rect against the card's rect and which of the two wins the hit test at a point *inside the
+  text*; `elementsFromPoint` at the text's centre is not enough on its own, and this note
+  deliberately does not pick a side. Whichever way it goes, it is the Deck alone at 1277x821,
+  and it is not a regression — nothing in this session touched the board.
+
 **A `Popup`'s body scrolls; its actions do not.** `Popup.svelte` gives the panel
 the window's height at most and hands what is left to `.popup-body`, which
 overflows — so anything that has to stay visible while the cards are scrolled
