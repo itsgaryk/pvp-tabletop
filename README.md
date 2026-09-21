@@ -41,6 +41,7 @@ The technical documentation is in [`docs/`](docs/), one file per topic:
 | [relay.md](docs/relay.md) | The three relay routes, the event log and its cursor, what a waiting poll costs, and what a burst costs |
 | [timer.md](docs/timer.md) | The table clock, and how two different clocks are kept together |
 | [board.md](docs/board.md) | The grid and its zones, the Stadium, zone borders and names, flipping the board, spectating, the keyboard shortcuts, what the browser remembers |
+| [terminology.md](docs/terminology.md) | The four vocabularies a zone is named in (store, grid area, wire, log), the `play` homonym, and the conventions that are not names |
 | [card-sizing.md](docs/card-sizing.md) | A card on the board is the size of the zone it is in |
 | [solo.md](docs/solo.md) | Play Solo, and why the two halves are separate boards |
 | [diagnostics.md](docs/diagnostics.md) | The command-line checks, the diagnostics panel, and the failures that used to be silent |

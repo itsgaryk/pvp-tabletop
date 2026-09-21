@@ -1,5 +1,10 @@
 # Project layout notes
 
+- A zone is named four different ways, and only one of those names crosses the
+  network. Before renaming a store field, a pile's `name`, or anything in
+  `logger.js`, read **[terminology.md](terminology.md)** — the store name *is*
+  the wire name, so a rename that looks like tidying is a protocol change and the
+  receiver fails silently. `docs/board.md` has the layout side of the same zones.
 - `src/routes/+page.svelte` opts into `prerender = true`; the root layout sets
   `prerender = false` so the `api/relay` routes stay dynamic.
 - `vercel.json` holds the framework preset only — the output directory comes

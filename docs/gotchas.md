@@ -31,6 +31,12 @@ everything else is a browser check run by hand — so a component can be wrong i
 way only a browser shows, and the build will not say a word about it.
 
 **A zone has three names, and the log's name for one of them is not a zone at all.**
+**[terminology.md](terminology.md) is the table of all of them**, including the fourth
+vocabulary this note missed — the *wire* name an event carries, which is the store
+name, and which is what makes a rename that looks like tidying a field into a
+protocol change. What follows is the account of how the homonym behaves; the table
+is the reference.
+
 A zone is keyed in three vocabularies and nothing declares the mapping between them:
 
 | Vocabulary | Lives in | Names |
