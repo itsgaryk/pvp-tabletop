@@ -3,7 +3,7 @@
    import { ctrlA } from '$lib/actions/customEvents.js'
    import { dnd } from '$lib/dnd/actions.js'
    import { source, draggedCard } from '$lib/dnd/store.js'
-   import { cardSelection, resetSelection, selectPile } from '$lib/stores/player.js'
+   import { cardSelection, resetSelection, selectPile, selectionByPile } from '$lib/stores/player.js'
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import {
       solo, soloMoveCard, soloCardToPlay,
@@ -29,6 +29,14 @@
    */
    export let showMenu = false
    export let menu = undefined
+   /*
+      Whether Ctrl+A over this zone takes the whole pile - the same prop, and the
+      same reason for it, as the near half's (see board/Pile.svelte): the far
+      half's table is a stack of cards that are each picked up on their own, so in
+      solo, where that half is played from this keyboard, its stack is not one
+      selection either.
+   */
+   export let selectAll = true
 
    let heading
 
@@ -79,10 +87,17 @@
 
       if (!onOpponentHalf($source)) return
 
-      for (const card of cards) {
-         if (pile === defaultOpponent.bench) soloCardToPlay($source, card, 'bench')
-         else if (pile === defaultOpponent.discard) soloMoveCard($source, card, pile, 'Discarded')
-         else soloMoveCard($source, card, pile)
+      /*
+         That half's own cards, out of the pile each of them is in: a selection
+         there can hold cards from several of its zones (see selectionByPile in
+         player.js), and the pile the drag started on holds only some of them.
+      */
+      for (const [ from, group ] of selectionByPile(defaultOpponent.piles())) {
+         for (const card of group) {
+            if (pile === defaultOpponent.bench) soloCardToPlay(from, card, 'bench')
+            else if (pile === defaultOpponent.discard) soloMoveCard(from, card, pile, 'Discarded')
+            else soloMoveCard(from, card, pile)
+         }
       }
 
       cardSelection.clear()
@@ -93,7 +108,7 @@
 
 <div class="p-1 rounded flex flex-col focus:outline-none relative" tabindex="0"
    on:contextmenu={onCtx}
-   use:ctrlA on:ctrlA={() => { if (showMenu) selectPile(pile) }}
+   use:ctrlA on:ctrlA={() => { if (showMenu && selectAll) selectPile(pile) }}
    use:dnd={dndConfig}>
 
    {#if name && displayCount}

@@ -490,6 +490,36 @@ check('so a real click reaches the far table\'s card',
    `far ${await count('.play2 .selected')} selected, own ${await count('.play .selected')}`)
 
 /*
+   And one card of the far stack at a time, the way the player's own table's cards
+   are picked up: a click on a card of the stack used to take the whole of it, which
+   is what the table's select-all was (see docs/selection.md). The stack is a
+   cascade, so the card under the pointer is the one whose own part of it is showing
+   - the last card of it, whose middle no other card is over.
+*/
+while ((await count('.play2 img.card')) < 3) {
+   await farHand(1)
+   if ((await count('.hand2 img.card')) === 0) break
+   await fire('.hand2 img.card', 'click')
+   await press('x')
+   await sleep(300)
+}
+
+const farStack = await count('.play2 img.card')
+check('the far table holds a stack to pick from', farStack >= 2, `${farStack} cards`)
+
+await realClick('.play2 .table-card:last-child')
+check('and a real click picks up one card of it, not the whole stack',
+   (await count('.play2 .table-card.selected')) === 1,
+   `${await count('.play2 .table-card.selected')} of ${farStack} picked up`)
+
+const farHandBeforeStack = await count('.hand2 img.card')
+await press('h')
+await sleep(400)
+check('and the move takes that one card, leaving the rest of the stack',
+   (await count('.play2 img.card')) === farStack - 1 && (await count('.hand2 img.card')) === farHandBeforeStack + 1,
+   `far table ${await count('.play2 img.card')} (was ${farStack}), far hand ${await count('.hand2 img.card')} (was ${farHandBeforeStack})`)
+
+/*
    Standing aside is only for a table with nothing on it and nothing in hand: a
    card dragged from the player's own hand still lands on the player's own table,
    because during a drag the table takes pointer events again.
@@ -610,16 +640,17 @@ const farHandNow = await count('.hand2 img.card')
    is drawn over the far half's in the shared cell, so a real click at the far
    card's middle lands on the player's card lying on top of it. The selection is
    what this control is about - the move itself is the keyboard's, as it is for a
-   card played from the far half's hand.
+   card played from the far half's hand - and it is *one card* of the stack that is
+   picked up, so the move takes that card and leaves the rest of the stack.
 */
 await fire('.play2 img.card', 'click')
-const selectedFar = await count('.play2 .selected')
+const selectedFar = await count('.play2 .table-card.selected')
 await press('h')
 await sleep(400)
 check('while the far half can still move its own cards out of the shared table, to its own hand',
    selectedFar === 1 &&
-   (await count('.play2 img.card')) === 0 &&
-   (await count('.hand2 img.card')) === farHandNow + farTableBefore,
+   (await count('.play2 img.card')) === farTableBefore - 1 &&
+   (await count('.hand2 img.card')) === farHandNow + 1,
    `selected ${selectedFar}, far table ${await count('.play2 img.card')} (was ${farTableBefore}), far hand ${await count('.hand2 img.card')} (was ${farHandNow})`)
 
 /*

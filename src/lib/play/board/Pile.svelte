@@ -10,6 +10,16 @@
    export let name = null
    export let displayCount = true
    export let menu = undefined
+   /*
+      Whether Ctrl+A over this zone takes the whole pile (`selectPile`).
+
+      It is the piles' own gesture - a deck, a discard, a lost zone, a hand, a
+      bench - and the table is deliberately not one of them: its cards are each
+      picked up on their own (see Temp.svelte), so taking the whole stack at once
+      is not a selection this zone offers. The mechanism is still here, and a zone
+      that wants it asks for it by default; this is the one that says no.
+   */
+   export let selectAll = true
 
    /* DnD */
 
@@ -62,7 +72,7 @@
 
 <div class="pile p-1 rounded flex flex-col focus:outline-none relative" tabindex="0"
    on:contextmenu={onCtx}
-   use:ctrlA on:ctrlA={() => selectPile(pile)}
+   use:ctrlA on:ctrlA={() => { if (selectAll) selectPile(pile) }}
    use:dnd={dndConfig}>
 
    {#if name && displayCount}

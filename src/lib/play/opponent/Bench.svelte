@@ -5,7 +5,7 @@
    import { ctrlA } from '$lib/actions/customEvents.js'
    import { dnd } from '$lib/dnd/actions.js'
    import { source, draggedCard } from '$lib/dnd/store.js'
-   import { cardSelection, resetSelection, selectSlot } from '$lib/stores/player.js'
+   import { cardSelection, resetSelection, selectSlot, selectionByPile } from '$lib/stores/player.js'
    import { solo, soloCardToPlay, soloSlotToBench, onOpponentHalf, onOpponentSlot } from '$lib/stores/solo.js'
 
    /* which player's board this component shows */
@@ -32,8 +32,13 @@
          return
       }
 
-      for (const card of [ ...$cardSelection ]) {
-         soloCardToPlay($source, card, 'bench')
+      /*
+         That half's own cards, out of the pile each of them is in: a selection
+         there can hold cards from several of its zones (see selectionByPile in
+         player.js), and the one the drag started on is not where the rest are.
+      */
+      for (const [ from, group ] of selectionByPile(store.piles())) {
+         for (const card of group) soloCardToPlay(from, card, 'bench')
       }
       cardSelection.clear()
    }

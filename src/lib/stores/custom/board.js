@@ -111,6 +111,30 @@ export function board () {
       pickup.clear()
    }
 
+   /*
+      Every list of cards this board holds: the zones' own piles, and the three
+      lists inside each Pokemon in play. A card is in exactly one of them, and that
+      is the whole point of the list - what asks for it is "which pile is this card
+      in?", which a move has to know once one selection can hold cards from more
+      than one zone (see player.js and docs/selection.md).
+
+      It is derived from the lists themselves rather than kept beside them, because
+      a second record of where a card is drifts the moment a move forgets to write
+      to it - and this answer is only ever read, never trusted to be up to date.
+
+      The far half of the board is a board of its own (`opponent.js`), so a caller
+      that needs *that* half's answer asks the mirror for its own `piles()`.
+   */
+   const piles = () => {
+      const lists = [ deck, hand, prizes, discard, lz, stadium, table, pickup ]
+
+      for (const s of [ active.get(), ...bench.get() ]) {
+         if (s) lists.push(s.pokemon, s.energy, s.trainer)
+      }
+
+      return lists
+   }
+
    function exportBoard () {
       const expPile = (p) => p.get().map(card => card._id)
       const expSlot = (s) => ({
@@ -150,7 +174,7 @@ export function board () {
       turn,
       timer,
       prizesFlipped, handRevealed, pokemonHidden,
-      exportBoard, reset,
+      exportBoard, reset, piles,
       // utility function used in multiple files
       findSlot: (slotId) => {
          if (active.get()?.id === slotId) return active.get()

@@ -626,3 +626,42 @@ Both halves are now one function (`logDeckView` in `logger.js`, called by all fo
 a key handler that calls the *primitive* an entry is built on rather than the entry itself:
 `openPile(deck)` is what `viewDeck()` starts with, and everything `viewDeck()` adds lives only
 in the menu.
+
+**A selection that can come from several piles breaks every place that assumed it could not,
+and the assumption is written as a variable rather than as a check.** While a selection could
+only ever hold cards from one pile, "the pile the selection came from" was one value —
+`selectionPile` in `player.js` — and six moves, both card menus and the far half's four drop
+handlers read it (or the drag's `$source`, which is the same pile) as *where these cards are*.
+That is only true while the selection is one pile's. Ctrl-click now adds a card from another
+zone of the player's own half, and each of those readers had to be re-derived:
+
+- **A move is one move per pile.** `cardsMoved`, `cardsBenched`, `cardsAttached` and
+  `cardsEvolved` each name **one** `from`, and the opponent's mirror takes the cards out of
+  the pile the event names — so a selection from the hand and the table crosses the wire as
+  two events, and one event carrying both would leave half the cards on the other board's
+  floor. It is also why the log now reads one line per zone.
+- **A pile's `remove` is not a no-op.** It is `v.splice(v.indexOf(card), 1)`, so a card that
+  is not in the pile removes **the last card that is** — the note over `slots().remove` in
+  `custom/cards.js` is the other half of this. Taking a selection out of the one pile it
+  "came from" is therefore not a wrong move but a corrupting one, silently, on both boards.
+- **A drop handler that carries the whole selection out of `$source` moves only part of it.**
+  The far half's Bench, Active and pile drops all read `$source` — the pile the *dragged*
+  card came from — for every card of the selection, and a selection from three zones would
+  have had the cards in `$source` moved and the rest left where they were (the `takeFrom`
+  guards in `solo.js` skip a card that is not in the pile, which is right, and is exactly what
+  makes it silent). None of that was a bug before the selection could span zones; it was a
+  precondition nobody had written down.
+- **The pile a card is in is now asked of the board**, not remembered: `piles()` in
+  `custom/board.js` is every list the board holds — the zones' piles plus the three inside
+  each Pokémon in play — and `cardPile`/`selectionByPile` in `player.js` answer from it. A
+  remembered map would have been a second source of truth for something every move already
+  changes.
+
+What finds this class of fault is not the build and not a browser: it is reading every handler
+that consumes the selection and asking what it believes a selection is. `tools/render-check.mjs`
+holds the store half of it down — it picks cards up across the hand, the table and the Stadium,
+moves them, and asks that each one left the pile it was in — and a browser check that had
+encoded the old rule had to change with it: `tools/solo-select-check.mjs` asserted that
+pressing `H` emptied the far half's whole table, which was true only while a click on one card
+of the stack picked up all of them. A check is written against the rule as it stood, and it
+will hold the old rule in place until somebody reads it.

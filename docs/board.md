@@ -65,6 +65,10 @@ Four cells are not one zone to one component:
   stadium passes clicks through the same way until it has a card in play, and it stays
   the player's own whichever way the board is flipped. Both hold two cards per player
   (see [The Stadium holds two cards](#the-stadium-holds-two-cards-and-a-play-clears-the-other-players) below).
+  **A shared zone is still one zone per player**: the cards in it are their owner's,
+  and only their owner's are selectable — a card on the other half's table or in the
+  other half's Stadium cannot be picked up, online or in solo
+  ([selection.md](selection.md#what-a-selection-is)).
 - **The Stadium's cell is three bands.** `.stadium-area` is itself a grid of
   `1fr 2fr 1fr`: `power2` in the top quarter, the two stadiums sharing the middle
   half, `power` in the bottom quarter. So each player's Pokemon Power zone is the
@@ -99,6 +103,16 @@ none: the stack there is read by looking at it, and a number on top of it was no
 Deck, hand, prizes, discard and lost zone carry one; the stadium, the active spot and
 the bench never did — the first because two cards are read by looking at them, the
 other two because they are slots.
+
+**The table is a stack of cards rather than a pile that draws one**, and every card in
+it is picked up on its own — a click selects that card, Ctrl/Cmd adds it to the
+selection, right-clicking one opens that card's menu and dragging one carries it, the
+way a card attached under a Pokémon behaves. *View All* is the stack's own gesture
+(double click, the `W` key, and the zone's menu on the part of the stack no card
+covers), and the whole stack is never selected at once — not by a click, and not by
+`Ctrl+A` ([selection.md](selection.md#the-tables-stack-where-a-card-is-picked-up-on-its-own)).
+The `X` key still takes the whole table to hand with nothing selected, which is the
+move that key is for; it leaves nothing selected behind it.
 
 **Reading a pile** — *View All* on a deck, discard or lost zone — is a grid of every card
 in it, which is taller than any window: fifty cards at 136px each is four rows. The panel
@@ -174,9 +188,13 @@ the array, and no list of ids can carry an order unless the whole list is put ba
 
 A click on a card selects it, Ctrl/Cmd-click adds to the selection rather than replacing it,
 and Escape or a click on the background clears it (`selectCard` and `resetSelection` in
-`player.js`). The board has **one** selection, and in solo both halves share it — which is
-why every key that moves a selection first asks which half it was made on (see
-[Keyboard shortcuts](#keyboard-shortcuts)).
+`player.js`). **Adding spans the zones of the player's own half**: a card in the hand, a
+card on the table and a card in the Stadium can be picked up together, and a move then
+takes each of them out of the pile that holds it. The selection does not span the two
+*halves*, even in solo where both are played by the same person — a card of the other
+half's starts a new selection, because every key that moves one asks which half it was
+made on (see [Keyboard shortcuts](#keyboard-shortcuts)). The board has **one** selection,
+and in solo both halves share it.
 
 **A selected card is drawn with a 2px ring in `--selection-color`, and that ring is the whole
 of the feedback a click gets**: a card that does not glow is a card the player will click
@@ -358,7 +376,7 @@ The board's own shortcuts, from `Board.svelte`:
 | `U` | mark the selected Pokémon's ability used, or take that back |
 | `Space` | the selected card's details, and again to put them away — a face-down prize is written to the log |
 | `V` `W` | View All of the deck (written to the log) / of the table |
-| `X` | the selection to the table, or pick the table back up |
+| `X` | the selection to the table; with nothing selected, the whole table back into the hand (a move, not a selection — see [selection.md](selection.md#select-all-and-the-one-zone-that-does-not-answer-it)) |
 | `Esc` | clear the selection |
 
 `Space` and `V` are the menu entries they stand for, key for key, and that includes
@@ -367,6 +385,11 @@ as *Viewed prize card* (a prize already turned face up is readable across the ta
 says nothing), and View All is recorded as *Viewed deck*, the one pile the opponent
 cannot see. The keyboard reaching the same look by another route is not a reason for it
 to go unrecorded. See [gotchas.md](gotchas.md) for what happened when `V` did.
+
+**`Ctrl+A` is not in that table, and it is not a board shortcut**: it is a pile's own
+gesture, listened for on the zone itself, and it fills the selection with the whole
+pile. The piles answer it and the table does not, because the table's cards are picked
+up one at a time ([selection.md](selection.md#select-all-and-the-one-zone-that-does-not-answer-it)).
 
 The game actions, from `GameActions.svelte`, which a spectator does not get at all:
 `Enter` ends the turn, `C` starts the next one, `N` starts a new game (after asking),

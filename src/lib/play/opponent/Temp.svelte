@@ -1,11 +1,12 @@
 <script>
    import { getContext } from 'svelte'
    import { cardImage } from '$lib/util/assets.js'
+   import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import Pile from './Pile.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import { solo } from '$lib/stores/solo.js'
-   import { cardSelection, selectPile } from '$lib/stores/player.js'
+   import { cardSelection, selectCard } from '$lib/stores/player.js'
 
    /* DnD */
 
@@ -13,74 +14,76 @@
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { dragging } from '$lib/dnd/pointer.js'
 
-   const { openOppPile } = getContext('boardActions')
+   const { openOppPile, openOppCardMenu } = getContext('boardActions')
 
    /* which player's board this component shows */
    export let store = defaultOpponent
    $: ({ table } = store)
 
-   let menu
-   $: top = $table[$table.length - 1]
-
-   function selected (selection) {
-      for (const card of $table) {
-         if (selection.includes(card)) return true
-      }
-      return false
-   }
-
    /*
-      In solo the table on the far half is yours too, so it is picked up the way
-      your own is: the whole pile at once, by clicking it or by dragging the card
-      on top of it.
+      The far half's table, drawn the same way the player's own is: a cascade, with
+      every card in it picked up on its own (see board/Temp.svelte).
+
+      In solo that half is the player's too, so its cards are selectable - each one
+      by itself, with Ctrl/Cmd to add, and its own menu on a right click. Online the
+      half belongs to somebody else, so nothing here is clickable: the handlers
+      return, as `opponent/Card.svelte`'s do, and the click falls through to the
+      board's own listener and clears the selection.
    */
-   function selectAll () {
-      if ($solo) selectPile(table)
-   }
 
-   function onDragStart () {
+   function onClick (e, card) {
       if (!$solo) return
-      draggedCard.set(top)
-      source.set(table)
+      /* further up is a click listener that reset the selection, so stop that */
+      e.stopPropagation()
+      selectCard(card, table, holdingCtrlOrCmd(e))
    }
 
-   function onDrag ({ $card }) {
-      if (!$solo || $card !== top) return
-      if (!$cardSelection.includes(top)) {
-         selectAll()
+   function onCtx (e, card) {
+      if (!$solo) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      if (!$cardSelection.includes(card)) selectCard(card, table, false)
+      openOppCardMenu(e.clientX, e.clientY, table, card)
+   }
+
+   const cardDnd = (card) => ({
+      start: () => {
+         if (!$solo) return
+         draggedCard.set(card)
+         source.set(table)
+      },
+      drag: (state) => {
+         if (!$solo || state.$card !== card) return
+         if (!cardSelection.get().includes(card)) selectCard(card, table, false)
       }
-   }
-
-   const dndConfig = {
-      start: onDragStart,
-      drag: onDrag
-   }
+   })
 
    /* an empty table opens nothing, the way the player's own empty table does not */
-   function onCtx (e) {
+   function onCtxStack (e) {
       if (!$table.length) e.stopPropagation()
    }
 </script>
 
-<Pile pile={table} name="Table" displayCount={false} showMenu={$solo} bind:menu={menu}>
-   <div class="h-full flex justify-center items-center" on:contextmenu={onCtx}>
+<Pile pile={table} name="Table" displayCount={false} showMenu={$solo} selectAll={false}>
+   <div class="h-full flex justify-center items-center" on:contextmenu={onCtxStack}>
       <div class="relative w-max"
          style="margin-bottom: {($table.length - 1) * 35}px; margin-right: {$table.length > 1 ? 20 : 0}px"
-         class:selected={$solo && selected($cardSelection)}
-         class:dragged={$solo && $dragging && $cardSelection.includes(top)}
-         on:click|stopPropagation={selectAll}
-         on:dblclick={() => openOppPile(table)}
-         use:dnd={dndConfig}>
+         on:dblclick={() => openOppPile(table)}>
 
-         {#if $table.length > 0}
-            <img class="card" src="{cardImage($table[0], 'xs')}" alt={$table[0].name} draggable="false">
-            {#each $table as card, i (card._id)}
-               {#if i >= 1}
-                  <img class="card absolute" src="{cardImage(card, 'xs')}" alt={card.name} draggable="false"
-                     style="bottom: -{i * 35}px; left: {i % 2 !== 0 ? 20 : 0}px">
-               {/if}
-            {/each}
-         {/if}
+         {#each $table as card, i (card._id)}
+            <div class="table-card"
+               class:stacked={i > 0}
+               class:selected={$solo && $cardSelection.includes(card)}
+               class:dragged={$solo && $dragging && $cardSelection.includes(card)}
+               style="bottom: -{i * 35}px; left: {i % 2 !== 0 ? 20 : 0}px; z-index: {$solo && $cardSelection.includes(card) ? 12 : i + 1}"
+               on:click={(e) => onClick(e, card)}
+               on:contextmenu={(e) => onCtx(e, card)}
+               use:dnd={cardDnd(card)}>
+
+               <img class="card" src="{cardImage(card, 'xs')}" alt={card.name} draggable="false">
+            </div>
+         {/each}
       </div>
    </div>
 
@@ -90,12 +93,26 @@
 </Pile>
 
 <style>
-   .selected {
-      --drop-shadow-color: #fbbf24;
-      filter: drop-shadow(0px 0px 10px var(--drop-shadow-color)) !important;
+   .table-card {
+      position: relative;
    }
 
-   .dragged {
+   .table-card.stacked {
+      position: absolute;
+   }
+
+   /*
+      The same two states the player's own cards use, and the same colours: a
+      selection is `--selection-color` wherever it is (see board/Temp.svelte).
+   */
+   .table-card.selected {
+      outline: 2px solid var(--selection-color);
+      outline-offset: -2px;
+      filter: drop-shadow(0 0 6px var(--selection-color));
+      --shadow-color: transparent;
+   }
+
+   .table-card.dragged {
       @apply opacity-50;
    }
 </style>

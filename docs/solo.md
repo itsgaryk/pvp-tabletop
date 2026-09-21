@@ -61,10 +61,16 @@ the same cell. The table and the Stadium each accept *their own* half's cards:
 - Nor can either half take the other's card out of a shared zone: a card on the
   player's table stays there when the opponent's table is the drop target, and the
   other way round.
+- **Nor can a selection hold cards from both halves.** Both are played from the one
+  selection, so a card of the other half's *starts* a new one rather than joining it —
+  a selection spanning the two would have no answer to the question every move asks
+  first (`farSelected()`), and half of it would be carried across the table. It is the
+  same rule as the drags above, asked of the selection rather than of the pointer
+  ([selection.md](selection.md#what-a-selection-is)).
 - Each half still moves its own out — by dragging it, by its own menu, or by the
   board's keys, which ask `farSelected()` before anything else.
 
-`node tools/solo-select-check.mjs` reads all of this: eighteen checks that drag a
+`node tools/solo-select-check.mjs` reads all of this: twenty-odd checks that drag a
 card of one half at every zone of the other and assert that nothing on either board
 moved, plus the shared-zone cases and a control that the far half can still move
 its own card out of the table.
