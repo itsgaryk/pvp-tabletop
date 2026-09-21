@@ -65,15 +65,41 @@ Two lists and a pointer, all in `src/lib/stores/player.js`:
   corner of a card is simply not drawn (see `Popup.svelte`).
 - **A pile inspection moves cards to a zone, and that is the whole decision.** Its foot
   carries *Add to table*, *Add to hand*, *Add to bench* and *Add to discard pile* beside
-  the buttons that close it — the four places a card comes out of a deck, a discard or a
-  lost zone into. They are the board's own moves (`moveSelection`, and `toBench` for the
-  bench, since a card put into play is a slot rather than a card in a list), so the move,
-  the log line and what the opponent is told are the same as a card dragged out of the
-  deck. Each button then closes the panel and, **when the panel is the deck's, shuffles
-  it**: a card taken out of a deck is a card out of a deck, and what is left of it is
-  unknown — the same reason the button beside them is called *Close & Shuffle*. A discard
-  and a lost zone are public and ordered, so nothing is shuffled for them. A spectator sees
-  all four disabled, like every other action they cannot take.
+  the buttons that close it — the four places a card comes out of a deck into. They are the
+  board's own moves (`moveSelection`, and `toBench` for the bench, since a card put into
+  play is a slot rather than a card in a list), so the move, the log line and what the
+  opponent is told are the same as a card dragged out of the deck. Each button then closes
+  the panel and **shuffles the deck**: a card taken out of a deck is a card out of a deck,
+  and what is left of it is unknown — the same reason the button beside them is called
+  *Close & Shuffle*.
+- **The four buttons belong to the deck's view alone, and the other views are reads.**
+  They are what a *search* does with what it finds, which is a move out of a deck; a discard
+  and a lost zone are public and ordered, and nothing comes out of either into play. So
+  those views, and the hand's, are the cards, the heading that says which zone they are, and
+  one button that closes the panel — the deck's is the only view with a foot full of
+  actions. The condition is `isDeck` in `Inspection.svelte`, and
+  `tools/render-check.mjs` renders every zone's view and asserts which of them offer the
+  four, because a check that rendered one pile could not tell which way round the condition
+  was. A spectator sees the four disabled, like every other action they cannot take.
+- **Every pile's view says which zone it is.** A heading at the top of the panel carries the
+  zone's name, how many cards are in it, and the zone's own colour. Without it a deck, a
+  discard and a lost zone are one screen with different cards in it — and the point of the
+  colour is two of them open side by side, which is how a deck is read against a discard.
+  The name and the colour come from the pile's own store name, the one vocabulary the board,
+  the log and the wire already agree on ([terminology.md](terminology.md)), so a pile cannot
+  be labelled as some other pile. The table of the zones and their colours is `ZONES` in
+  `Inspection.svelte`.
+- **The panel is a fixed window, not one the pile sizes.** The grid is the panel's widest
+  part and the panel is only as wide as its content, so a grid that is as wide as its cards
+  make it resizes the whole panel with the pile: a narrow window for a pile of three, a wide
+  one for a pile of sixty, and a panel that changes size as cards are moved in and out of it.
+  `width: max-content` on the grid pins it to one full row of 136px cards — about seven —
+  which is what makes a pile of three short *inside* a window of the same size as a full
+  deck's. Nothing about the panel depends on how many cards there are, which is also why it
+  has no placement of its own: the base rule centres it, and a fixed box that is centred
+  stays where it is put. A window too narrow for that row (a small screen) is the one case
+  that is not the size it says: `max-width: 100%` hands the grid the room there is and the
+  cards wrap to fewer to a row.
 
 ## What it looks like
 

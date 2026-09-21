@@ -11,12 +11,14 @@
 
       It is not part of the app: nothing on a board wants a dialog that opens
       itself. It is here so the render check can reach a panel's own markup, which
-      is otherwise invisible to every tool in this repository.
+      is otherwise invisible to every tool in this repository. The pile arrives as a
+      prop, with no default, so the check names the zone it is rendering - which is
+      what makes "the deck's view offers the four moves and the others do not"
+      something that can be read off each zone's own render.
    */
    import Inspection from '$lib/play/dialogs/Inspection.svelte'
-   import { hand } from '$lib/stores/player.js'
 
-   export let pile = hand
+   export let pile
 </script>
 
 <Inspection {pile} openOnMount />

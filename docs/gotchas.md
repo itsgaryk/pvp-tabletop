@@ -455,25 +455,68 @@ belongs in the `buttons` slot. The actions are one per line by default, which on
 a 636px-tall window is 20% of the deck per button — and the row `flex-wrap`s, so a
 panel with a second *kind* of action lays them out in groups beside each other
 instead: the pile inspection's four buttons sit two by two next to the two that
-close it (`Inspection.svelte`). Anything inside the body is clipped horizontally
+close the deck's view (`Inspection.svelte`). Anything inside the body is clipped horizontally
 too (`overflow-y: auto` does not leave the other axis visible), so a badge hung
 off the corner of a card is simply not drawn — which is why a selection that has
-to be *read* is said in words above the grid rather than drawn on the card.
+to be *read* is said in words above the grid rather than drawn on the card. Nothing
+in that slot is hidden, so a panel can also choose not to have one: the four buttons
+are the deck view's alone, and a discard's view is a Close button on a line of its
+own (`selection.md`).
 
-**The panel has three placements, and a new one has to take the old one's
-`transform` and every length that hung off `m-8` with it.** A panel is centred
-horizontally by `left: 50%` plus `translateX(-50%)`; `.centered` (the diagnostics
-dialog) and `.anchored` (a menu under a corner button) each override one or both,
-and both say `transform: none` where they stop translating, because a translate
-left on moves a panel that is already where it belongs. The third, `.flush`, is
-the pile inspection: it is a grid as wide as the window, so centring it only spends
-the window's edges on a frame around it, and it is laid against the left edge
-instead — `left: 0`, `transform: none`, no margins, and `--popup-edge` kept on the
-right. **What that costs is the arithmetic of the base rule.** Its `max-height` is
-`calc(100vh - 6rem)` because `m-8` is 2rem above and below on top of its `top: 2rem`;
-a placement with no margins that inherited that number would leave the panel 4rem
-short of the bottom of the window. A placement sets what it changes *completely*,
-rather than leaving the reader to work out which half of a length still applies.
+**A panel has two placements, and a new one has to take the old one's `transform`
+and every length that hung off `m-8` with it.** A panel is centred horizontally by
+`left: 50%` plus `translateX(-50%)`; `.centered` (the diagnostics dialog) and
+`.anchored` (a menu under a corner button) each override one or both, and both say
+`transform: none` where they stop translating, because a translate left on moves a
+panel that is already where it belongs. **What a placement costs is the arithmetic
+of the base rule.** Its `max-height` is `calc(100vh - 6rem)` because `m-8` is 2rem
+above and below on top of its `top: 2rem`; a placement with no margins that
+inherited that number leaves the panel 4rem short of the bottom of the window. A
+placement sets what it changes *completely*, rather than leaving the reader to work
+out which half of a length still applies.
+
+That is not hypothetical: the pile inspection had a third placement, `.flush`,
+which laid it against the left edge of the window because it is a grid as wide as
+the window and centring it spends the window's edges on a frame. It read as *the
+gap on the left is smaller than the gap on the right* — a panel touching one edge
+with 1rem on the other is two different gaps, which is the thing a centred panel is
+for. It is gone, and the pile view is the base placement's again. **What made the
+placement question go away was fixing the panel's size instead**: a panel with
+`width: max-content` on its grid is one width for every pile, so the base rule's
+centring has nothing to recompute and the gap from each edge is the same by
+construction. When a fixed thing will not sit still, the first thing to ask is
+whether it is fixed — the answer here was that it was not, and no placement could
+have hidden that.
+
+**A panel is only as wide as its content, so a grid of cards sizes the whole
+panel.** The pile inspection's grid is its widest part, and before `width:
+max-content` the grid was as wide as the panel while the panel was as wide as the
+grid — which settles on however many cards the longest row happened to hold. A pile
+of three opened a narrow window, a pile of sixty a wide one, and the panel changed
+size as cards were moved in and out of it. `width: max-content` pins the grid to one
+full row of the cards it is built for, so a short pile is short *inside* a window of
+the same size. Nothing throws without it, every card is still drawn, and the only
+symptom is a window that will not hold still — so this is a declaration to keep, not
+a tidy-up to make: `tools/render-check.mjs` asserts it, next to the padding rule it
+also cannot see.
+
+**The store a component is handed as a prop is not its value, and the fallback is
+what hides it.** The pile view's heading counts the cards in the pile it is showing:
+
+```svelte
+<span class="count">{$pile?.length ?? 0} {s('card', $pile?.length ?? 0)}</span>
+```
+
+Written as `pile?.length ?? 0` — without the `$` — it compiles, renders, and says
+**0 cards** for every pile in the game. `pile` is the *store*; a store has no
+`length`, `undefined ?? 0` is `0`, and the `?? 0` that was meant to protect an empty
+pile is exactly what makes the wrong read look like a right one. It is the same
+family as `$topUpright` on a plain value (above), one character away and in the
+other direction: that one throws, and this one quietly prints a number. Nothing on
+screen says anything is wrong until somebody counts the cards, which is why
+`tools/render-check.mjs` now counts them — *and it says how many cards are in the
+pile* is that assertion, and it is the only thing in the repository that can see
+this class of fault at all.
 
 **A panel that is opened by a call renders as nothing at all, and `bind:this` is
 not the way into one.** Every `Popup` draws nothing until a call opens it, and
