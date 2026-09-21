@@ -35,13 +35,15 @@ suffix on the far half's class names is the whole of the difference between the 
 halves' markup, and `play2` and `stadium2` deliberately resolve to the *same* grid
 area as `play` and `stadium`.
 
-A zone is named in three vocabularies — the store's field, the grid area, and the
-name a log line uses — and they are not the same set. The log's name for the
-Pokémon in play is `play`, which is not a store: the bench and the active spot are
-`bench` and `active`, and `play` is also the *grid area* of the table's cell, whose
-store is `table`. Renaming those keys to match is how a log line starts naming
-cards it is meant to count. [gotchas.md](gotchas.md) has the full mapping; it is
-worth reading before touching `logger.js`.
+A zone is named in four vocabularies — the store's field, the grid area, the wire
+name an event carries, and the name a log line uses — and they are not the same
+set. The store name and the wire name are the *same string*, so a rename that
+looks like tidying a field is a protocol change; the log's name for the Pokémon
+in play is `play`, which is not a store, while `play` is also the *grid area* of
+the table's cell, whose store is `table`. Renaming those keys to match is how a
+log line starts naming cards it is meant to count. **[terminology.md](terminology.md)
+is the table of all four**, and it is worth reading before touching `logger.js`
+or anything that names a zone.
 
 **Pokemon Power** holds the player's VSTAR / GX marker, the tokens a deck's own power
 is tracked with — and **no Pokémon**. It is deliberately not a card zone: nothing is
