@@ -3,6 +3,7 @@
    import { cardImage } from '$lib/util/assets.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import Pile from './Pile.svelte'
+   import Vertical from '$lib/components/scroll/Vertical.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
 
    import { table, cardSelection, selectCard } from '$lib/stores/player.js'
@@ -89,35 +90,37 @@
 </script>
 
 <Pile pile={table} name="Table" displayCount={false} selectAll={false}>
-   <div class="h-full flex justify-center items-center" on:contextmenu={onCtxStack}>
-      <div class="relative w-max"
-         style="margin-bottom: {($table.length - 1) * 35}px; margin-right: {$table.length > 1 ? 20 : 0}px"
-         on:dblclick={() => openPile(table)}>
+   <Vertical>
+      <div class="table-zone" on:contextmenu={onCtxStack}>
+         <div class="table-stack relative w-max"
+            style="margin-bottom: calc({$table.length - 1} * var(--table-step)); margin-right: {$table.length > 1 ? 'var(--table-offset)' : '0px'}"
+            on:dblclick={() => openPile(table)}>
 
-         {#each $table as card, i (card._id)}
-            <!--
-               One card of the stack, drawn where the stack puts it: the first card
-               is in the flow and sizes the stack, and every card after it is lifted
-               out of the flow and laid over the one above by a fixed step, so the
-               stack reads as a cascade.
+            {#each $table as card, i (card._id)}
+               <!--
+                  One card of the stack, drawn where the stack puts it: the first card
+                  is in the flow and sizes the stack, and every card after it is lifted
+                  out of the flow and laid over the one above by a step that is a share
+                  of the card, so the stack reads as a cascade at any card size.
 
-               The card's own image carries the click, the selection and the drag,
-               and its z-index is its place in the stack - a selected card comes to
-               the front, because a ring drawn on a card the next one is painted over
-               is a ring nobody can see (see docs/selection.md).
-            -->
-            <img class="card table-card"
-               class:stacked={i > 0}
-               class:selected={$cardSelection.includes(card)}
-               class:dragged={$dragging && $cardSelection.includes(card)}
-               src="{cardImage(card, 'xs')}" alt={card.name} draggable="false"
-               style="bottom: {-i * 35}px; left: {i % 2 !== 0 ? 20 : 0}px; z-index: {$cardSelection.includes(card) ? 12 : i + 1}"
-               on:click={(e) => onClick(e, card)}
-               on:contextmenu={(e) => onCtx(e, card)}
-               use:dnd={cardDnd(card)}>
-         {/each}
+                  The card's own image carries the click, the selection and the drag,
+                  and its z-index is its place in the stack - a selected card comes to
+                  the front, because a ring drawn on a card the next one is painted over
+                  is a ring nobody can see (see docs/selection.md).
+               -->
+               <img class="card table-card"
+                  class:stacked={i > 0}
+                  class:selected={$cardSelection.includes(card)}
+                  class:dragged={$dragging && $cardSelection.includes(card)}
+                  src="{cardImage(card, 'xs')}" alt={card.name} draggable="false"
+                  style="bottom: calc({-i} * var(--table-step)); left: {i % 2 !== 0 ? 'var(--table-offset)' : '0px'}; z-index: {$cardSelection.includes(card) ? 12 : i + 1}"
+                  on:click={(e) => onClick(e, card)}
+                  on:contextmenu={(e) => onCtx(e, card)}
+                  use:dnd={cardDnd(card)}>
+            {/each}
+         </div>
       </div>
-   </div>
+   </Vertical>
 
    <svelte:fragment slot="menu">
       <ContextMenuOption click={() => openPile(table)} text="View All" shortcut="w" />
@@ -126,12 +129,65 @@
 
 <style>
    /*
+      The zone the cascade is drawn in: as tall as the table's cell, and scrolled by
+      `Vertical` when the stack is taller than that, so a stack of thirteen - 565px in a
+      cell of about 285 at 1277x821 - is read by scrolling it rather than by watching it
+      cross the border and the rows around the zone, which is what it used to do.
+
+      `safe center` is the centring that can be scrolled: the stack is centred while it
+      fits, which is how the table has always been drawn, and starts at the top of the
+      zone when it does not. Plain centring overflows *both* ways in a scroll container,
+      and the half of it above the start edge is then unreachable - no wheel, no bar, no
+      drag gets a player to the first card of a thirteen-card stack.
+
+      `min-height: 100%` is what gives the stack the zone's height to be centred in when
+      it is short: this box is the scrollable content, so it is exactly as tall as what is
+      in it unless something says otherwise.
+   */
+   .table-zone {
+      min-height: 100%;
+      width: 100%;
+      display: flex;
+      justify-content: safe center;
+      align-items: safe center;
+   }
+
+   /*
+      And the stack keeps its own width in that line. A flex item is shrinkable by default,
+      and a stack the zone has squeezed takes its cards down with it - they wear the reset's
+      `max-width: 100%`, so a narrower stack is narrower cards, and a card on the table is
+      read by looking at it at the size it has always been (see docs/card-sizing.md). The
+      cascade *is* a little wider than the zone at a small window - every second card steps
+      20px to the right of the stack - and the zone clips that rather than resizing the
+      cards, which is what a zone does with what will not fit (see Vertical.svelte).
+   */
+   .table-stack {
+      flex: none;
+   }
+
+   /*
+      The card is the zone's *width*, and nothing else sizes it: the stack is as tall as it
+      is and the zone scrolls it rather than fitting it both ways (see `--table-card-width`
+      in global.css, and Vertical.svelte for the zone that does the scrolling). `img.card`
+      in the selector is what makes this rule win over the board's own `img.card` - see the
+      note over the selected card below, which is the same trap.
+   */
+   img.card.table-card {
+      width: var(--table-card-width);
+   }
+
+   /*
       The stack's geometry, and all of it: one card in the flow, the rest absolutely
-      placed at the offsets written in the markup. The card is the element that is
-      placed, with nothing between it and the stack - so a card on the table is the
-      size it always was, and the offsets land where they always did (see
-      docs/card-sizing.md: the table's cards are the one place a card keeps its own
-      size rather than the zone's).
+      placed at the offsets written in the markup, each a share of the card. The card is
+      the element that is placed, with nothing between it and the stack - so the offsets
+      land where they always did, at whatever size the zone gives the cards (see
+      docs/card-sizing.md).
+
+      The `margin-bottom` the markup writes is what tells the zone how far the cascade
+      reaches below its first card: the cards below it are out of the flow, so without it
+      the stack would be one card tall and a scroll bar would have nothing to scroll. How
+      far the cascade reaches is a share of the card too - `(n - 1)` of `--table-step` -
+      so the stack a zone scrolls is the same stack at any card size.
    */
    .table-card {
       position: relative;

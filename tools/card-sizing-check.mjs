@@ -226,18 +226,31 @@ check('and a pile front is the only image in its component', wrongFronts.length 
    wrongFronts.join(', '))
 
 /*
-   The two things that must NOT be zone-sized cards, and each is a real regression
-   this check is for: the table's stack, and the board's fixed fallback.
+   The table's stack is the one stack of cards that is not fitted *both* ways: a stack
+   taller than the cell is scrolled by its zone rather than shrunk into it (see
+   board/Temp.svelte), so its cards are the zone's **width**, and they are one
+   `--table-card-width` in global.css that both halves take - the two tables are one stack
+   drawn in a cell they share. What must not come back is the board's fixed `--card-width`,
+   which is what a card is where no zone has sized it, and it is what a table's cards were
+   before: a card too wide for its zone at a small window, drawn over its neighbours.
 */
-for (const table of zoneFiles.filter((f) => /[\\/]Temp\.svelte$/.test(f.path))) {
-   const images = [ ...table.source.matchAll(/<img\b[^>]*>/g) ].map((m) => m[0])
-   const wearing = images.filter((i) => /zone-card/.test(i))
-   check(`the table's stack keeps its own size (${table.path})`, wearing.length === 0,
-      `${wearing.length} of ${images.length} images wear .zone-card`)
-}
+const tables = zoneFiles.filter((f) => /[\\/]Temp\.svelte$/.test(f.path))
 
+const tableVars = [ ...globalCode.matchAll(/--table-card-width:\s*([^;]+);/g) ]
+check('global.css declares the table\'s card size once', tableVars.length === 1, `${tableVars.length} declarations`)
+check('and it still spends the zone\'s width, the bar and the cascade\'s overhang',
+   tableVars.length === 1 && squash(tableVars[0][1]).includes('100cqw') &&
+   /--scrollbar/.test(tableVars[0][1]) && /--table-card-share/.test(tableVars[0][1]))
+
+const tablePoints = tables.filter((f) => /width:\s*var\(--table-card-width\)/.test(f.source))
+check('both tables take their card size from it', tables.length === 2 && tablePoints.length === 2,
+   `${tablePoints.length} of ${tables.length} tables`)
+
+const tableFronts = tables.filter((f) => !/<img[^>]*zone-card/.test(f.source))
+check('and neither table wears .zone-card, which fits a card both ways',
+   tableFronts.length === tables.length)
 const gameBlock = /\.game\s*\{([\s\S]*?)\n\s*\}/.exec(boardCode)
-check('the board\'s --card-width is still a fixed size',
+check('while the board\'s --card-width is still the fixed size a card is where no zone sized it',
    Boolean(gameBlock) && /--card-width:\s*[\d.]+px/.test(gameBlock[1]),
    gameBlock && /--card-width:\s*([^;]+)/.test(gameBlock[1]) ? RegExp.$1.trim() : 'no --card-width on .game')
 check('and the board does not size a zone\'s cards from .game',
@@ -325,6 +338,36 @@ check('and the fan is placed with steps a zone can tighten',
 const fanRooms = activeFiles.filter((f) => /--slot-fan-room:/.test(f.source) && /--slot-fan-reserve:\s*0px/.test(f.source))
 check('both active spots give the fan a room and reserve none of it',
    activeFiles.length === 2 && fanRooms.length === 2, `${fanRooms.length} of ${activeFiles.length}`)
+
+/* --- 8. a zone's furniture is a share of the card it sits on, or of the zone --- */
+
+/*
+   The damage counter: its circle has always been a share of the card, and the digits in it
+   were not - they were the page's font size in a box that also carried a `1rem` padding, so
+   on a small card the number stood out of the circle on every side. A marker on a card is a
+   share of the card, all of it (see StatusMarker.svelte for the other one).
+*/
+check('both slots size the damage counter, and the digit in it, as shares of the card',
+   slots.length === 2 && slots.every((f) => /--size:\s*calc\(var\(--slot-width\)\s*\/\s*2\.5\)/.test(f.source) &&
+      /font-size:\s*calc\(var\(--size\)\s*\/\s*2\)/.test(f.source)),
+   slots.map((f) => f.path).join(', '))
+check('and neither counter carries the padding that used to squeeze its digit',
+   slots.every((f) => !/class="counter[^"]*\bp-4\b/.test(f.source)))
+
+/*
+   And the table's zone holds its stack by scrolling it: `Vertical.svelte` is the scroller
+   (`Horizontal.svelte` is the other axis, and the hand and the benches are what scroll with
+   that one), and the stack inside it is the thing that is centred - `safe center` is the
+   centring that gives way when the stack is taller than the cell, because a centred item
+   that overflows a scroll container has half of itself above the start edge where no bar
+   and no wheel reaches it.
+*/
+check('both tables scroll their stack in a zone that fills the cell',
+   tables.every((f) => /import Vertical from '\$lib\/components\/scroll\/Vertical\.svelte'/.test(f.source) &&
+      /<Vertical>/.test(f.source) && /overflow-y-auto/.test(read('src/lib/components/scroll/Vertical.svelte'))),
+   tables.map((f) => f.path).join(', '))
+check('and the stack is centred with the centring a scroll container can keep',
+   tables.every((f) => /justify-content:\s*safe center/.test(f.source) && /align-items:\s*safe center/.test(f.source)))
 
 console.log('')
 if (failures) {

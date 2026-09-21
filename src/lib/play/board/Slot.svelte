@@ -162,7 +162,7 @@
    use:dnd={dndConfig}>
 
    {#if $damage}
-      <span class="counter absolute bottom-1 left-1 z-15 rounded-full p-4 bg-red-500 text-white font-bold flex justify-center items-center">{$damage}</span>
+      <span class="counter absolute bottom-1 left-1 z-15 rounded-full bg-red-500 text-white font-bold flex justify-center items-center">{$damage}</span>
    {/if}
 
    <StatusMarker status={$status} />
@@ -301,7 +301,21 @@
    }
 
    .counter {
-      width: calc(var(--slot-width) / 2.5);
-      height: calc(var(--slot-width) / 2.5);
+      /*
+         The counter is a share of the card it sits on, and so is the number in it. The
+         circle has always been one (`--slot-width / 2.5`) while the digits inside it were
+         the page's own font size, in a box that carried a `1rem` padding on top of that:
+         on a card small enough - a narrow window, a phone - the circle shrank and the
+         number did not, so it stood out of the circle on every side and read as a huge
+         marker on a small Pokemon. Both are shares of the counter now, the way a status
+         marker's emoji has always been a share of its own circle (see
+         StatusMarker.svelte), and there is no padding left to squeeze the digits: the
+         size *is* the circle, so a third digit still fits at any card size.
+      */
+      --size: calc(var(--slot-width) / 2.5);
+      width: var(--size);
+      height: var(--size);
+      font-size: calc(var(--size) / 2);
+      line-height: 1;
    }
 </style>

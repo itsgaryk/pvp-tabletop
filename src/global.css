@@ -174,12 +174,35 @@ img:where(.zone-card).card {
    --slot-card-share: calc(105 / 139);
 
    /*
-      The bar a sideways-scrolling zone draws at its own bottom edge (`Horizontal.svelte`,
-      which styles it). It is part of the box a zone hands its row, so a row that fills
-      its zone has to leave it room the way it leaves room for a padding - otherwise the
-      row is 10px past the bottom of the zone the moment it starts to scroll. The hand's
-      row is the bottom row of the board, so 10px past it is a scrollbar on the whole
-      board (see Board.svelte).
+      The table's stack, which is the one place a card is sized by its zone's *width* alone:
+      the stack is a cascade rather than a pile that draws one card, a stack taller than the
+      cell is scrolled by the zone rather than fitted into it (see board/Temp.svelte), and a
+      cascade a little wider than a card has to fit the width it is given.
+
+      What that width gives a card is what is left of the zone after the pile's own `p-1` on
+      both sides, a `--card-gap` so the cascade does not touch the zone's edge, and the bar
+      the zone scrolls with - times this share, which is the one card of the cascade: every
+      second card steps `--table-offset` to the right, so the cascade is `1 + 20/105` cards
+      wide and one card is `105/125` of the room. Both steps are shares of the card for the
+      reason the fan's are: a cascade that kept its pixels while its cards shrank would be a
+      cascade of a different size than the cards it is made of.
+
+      One rule for both halves, because they are one stack drawn in a cell they share (see
+      docs/board.md), and `100cqw` is that cell - the nearest size container.
+   */
+   --table-card-share: calc(105 / 125);
+   --table-card-width: calc((100cqw - 8px - var(--card-gap) - var(--scrollbar)) * var(--table-card-share));
+   --table-step: calc(var(--table-card-width) * calc(35 / 105));
+   --table-offset: calc(var(--table-card-width) * calc(20 / 105));
+
+   /*
+      The bar a zone that scrolls draws, as the thickness of it: a height for the row that
+      scrolls sideways (`Horizontal.svelte`, which styles it) and a width for the stack that
+      scrolls down (see board/Temp.svelte). It is part of the box a zone hands its row, so a
+      row that fills its zone has to leave it room the way it leaves room for a padding -
+      otherwise the row is 10px past the bottom of the zone the moment it starts to scroll.
+      The hand's row is the bottom row of the board, so 10px past it is a scrollbar on the
+      whole board (see Board.svelte).
    */
    --scrollbar: 10px;
 }
