@@ -108,7 +108,7 @@
       The count badge is a layer over it, not a box beside it.
    -->
    <div class="pile-body">
-      <slot></slot>
+      <slot menu={menu}></slot>
    </div>
 </div>
 
@@ -133,9 +133,16 @@
       The count is rotated back by whoever flips this half (see .flip in
       Board.svelte), so it reads upright whether this pile is shown on a player's
       rotated top half or on a spectator's board, which is never rotated.
+
+      Unlike the near half's it is not a pointer and does not open the menu, and
+      that is the same rule as the rest of this file rather than an oversight: the
+      menu belongs to whoever owns the half, so online there is nothing here to
+      open, and in solo the list is a row down to the bottom-left corner - which is
+      an odd thing to make look like the button the near half's count is. The
+      cursor says so, so the two halves do not disagree about what is clickable.
    */
    .count {
       background-color: var(--overlay-color);
-      @apply absolute z-10 top-1 left-1 font-bold p-1 rounded-md;
+      @apply absolute z-10 top-1 left-1 font-bold p-1 rounded-md cursor-default;
    }
 </style>
