@@ -254,8 +254,27 @@
       if (current) messageAlert?.show(current.text)
    })
 
-   function openCardMenu (x, y, revealed = true) {
-      cardMenu.open(x, y, selectionPile, revealed)
+   /*
+      A card's own menu, which is the board's menu wherever it was opened: its
+      entries act on *the selection*, not on the card that was right-clicked (see
+      CardMenu.svelte).
+
+      A card in a pile's view carries that pile with it, and that is what makes the
+      view's own ending possible: taking an entry from inside a view finishes the
+      view - the panel closes, and the deck's view shuffles what is left of the deck
+      - exactly as the four buttons beside the cards do (`finishAction` in
+      Inspection.svelte). It is asked of the view rather than assumed, because the
+      same card right-clicked on the board has no view behind it and the menu is
+      just a menu there.
+
+      `revealed` and `fromPile` are the card's own; the pile the menu records for
+      *Show Details* is still the selection's, since that is what the menu speaks
+      for.
+   */
+   function openCardMenu (x, y, revealed = true, fromPile = null) {
+      const view = fromPile && inspectionModal.showing(fromPile) ? inspectionModal : null
+
+      cardMenu.open(x, y, selectionPile, revealed, view ? () => view.finishAction() : null)
    }
 
    function openSlotMenu (x, y) {

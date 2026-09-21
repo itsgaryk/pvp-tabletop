@@ -93,6 +93,19 @@ Two lists and a pointer, all in `src/lib/stores/player.js`:
   the panel and **shuffles the deck**: a card taken out of a deck is a card out of a deck,
   and what is left of it is unknown — the same reason the button beside them is called
   *Close & Shuffle*.
+- **The card menu, taken from inside a view, ends the view the same way.** Right-clicking a
+  card in the panel opens the board's own card menu, and taking any of its entries — *To
+  Hand*, *To Discard*, *To Bench*, *Attach*, anything that *acts* — closes the panel behind
+  it and shuffles the deck, because it is the same decision the four buttons make, taken
+  from a right-click instead of from the foot of the panel. It is the same ending and not a
+  second one: both go through `finishAction` in `Inspection.svelte`, and the shuffle itself
+  is `shuffleAfterViewAction` in `stores/player.js`, which shuffles the deck's view and no
+  other pile's. *Show Details* is deliberately not one of them — it opens a panel rather
+  than acting on anything, closes nothing, and leaves the card the player is reading
+  selected. The plumbing is three hand-offs: a card in a view carries its pile, the board
+  asks that pile's view whether it is open and lends the menu a way to finish it, and the
+  menu calls it for an entry that acted. The same card right-clicked on the board carries
+  nothing, and the menu is just a menu there.
 - **The four buttons belong to the deck's view alone, and the other views are reads.**
   They are what a *search* does with what it finds, which is a move out of a deck; a discard
   and a lost zone are public and ordered, and nothing comes out of either into play. So

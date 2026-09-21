@@ -18,6 +18,18 @@
    let revealed
    let menu
 
+   /*
+      What to do once an entry has been taken, if the menu was opened from somewhere
+      that wants to know.
+
+      A pile's view is the caller: taking an entry from a card inside a view finishes
+      the view, which the menu knows nothing about and should not. It is handed in
+      rather than asked for here, because the same menu is opened on the board - a
+      card right-clicked there finishes nothing - and because what "finish" means
+      belongs to the panel (see `finishAction` in Inspection.svelte).
+   */
+   let onAction = null
+
    $: heading = $selection.length === 1 ? (revealed ? $selection[0].name : 'Hidden card') : `${$selection.length} cards`
 
    /* one card, and its face is known: the name is worth clicking */
@@ -49,25 +61,47 @@
       openDetails($selection[0])
    }
 
-   export function open (x, y, _pile, _revealed) {
+   /*
+      `onAction` is optional and comes last, so every existing caller reads the same
+      as it did: a menu opened from the board or from a slot ends with `menu.close()`
+      and nothing else.
+   */
+   export function open (x, y, _pile, _revealed, _onAction = null) {
       pile = _pile
       revealed = _revealed
+      onAction = _onAction
       menu.open(x, y)
+   }
+
+   /*
+      The end of an entry that *did* something - a card moved, a card attached. The
+      menu closes first, so that whatever is behind it is not looking at an open menu
+      when it acts.
+
+      Deliberately not the end of *Show Details*: that entry opens another panel
+      rather than acting, closes nothing, and leaves the card the player is reading
+      selected - so the view behind it, and the deck's shuffle, are left alone. What
+      the rule is about is an action *taken*, which is what a player asks for when
+      they pick a destination out of this menu.
+   */
+   function done () {
+      menu.close()
+      if (onAction) onAction()
    }
 
    function moveTo (targetPile, options = {}) {
       moveSelection(targetPile, options)
-      menu.close()
+      done()
    }
 
    function callThenClose (action) {
       action()
-      menu.close()
+      done()
    }
 
    function attachEvolve (evo = false) {
       startAE(evo)
-      menu.close()
+      done()
    }
 </script>
 
