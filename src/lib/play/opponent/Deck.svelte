@@ -30,7 +30,7 @@
 
 <Pile pile={deck} name="Deck" showMenu={$solo} bind:menu={menu}>
    {#if $deck.length > 0}
-      <img class="card" src={cardback} alt="" draggable="false" on:click|stopPropagation={view}>
+      <img class="card zone-card" src={cardback} alt="" draggable="false" on:click|stopPropagation={view}>
    {/if}
 
    <svelte:fragment slot="menu">
@@ -41,13 +41,3 @@
       <ContextMenuOption click={view} text="View All" />
    </svelte:fragment>
 </Pile>
-
-<style>
-   /*
-      The same rule as the near half's: the card is the size of the zone it is in,
-      the lower of the zone's width and height, less a few pixels of gap.
-   */
-   img.card {
-      width: min(calc(100cqw - 2 * var(--card-gap)), calc((100cqh - 2 * var(--card-gap)) * var(--card-ratio)));
-   }
-</style>

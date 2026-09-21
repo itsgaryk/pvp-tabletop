@@ -26,7 +26,7 @@
 
 <Pile pile={discard} name="Discard" bind:menu={menu}>
    {#if $discard.length}
-      <img class="card" src="{cardImage(top, 'xs')}" alt="{top.name}" on:click|stopPropagation={() => openPile(discard)}>
+      <img class="card zone-card" src="{cardImage(top, 'xs')}" alt="{top.name}" on:click|stopPropagation={() => openPile(discard)}>
    {/if}
 
    <svelte:fragment slot="menu">
@@ -34,14 +34,3 @@
       <ContextMenuOption click={() => shuffleBack()} text="Shuffle All Into Deck" disabled={$spectating} />
    </svelte:fragment>
 </Pile>
-
-<style>
-   /*
-      The card is the size of the zone it is in: the lower of the zone's width and
-      height, less a few pixels so it does not touch the zone's edge (see the note
-      over --card-ratio in global.css).
-   */
-   img.card {
-      width: min(calc(100cqw - 2 * var(--card-gap)), calc((100cqh - 2 * var(--card-gap)) * var(--card-ratio)));
-   }
-</style>

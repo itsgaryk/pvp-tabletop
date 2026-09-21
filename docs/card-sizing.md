@@ -35,6 +35,35 @@ This is why `--card-width` is only what a card is where no zone has sized it: in
 inspection, in the deck list, in a dialog, and on the table's stack — and it is what a
 slot's cards fall back to if one is ever put outside the two zones that hold them.
 
+**The rule is stated once, in `global.css`, and the cards in zones wear a class to claim
+it.** `:where(.zone-card).card` is the one place the size is written down; every pile's
+own front — what a zone draws, a cardback or a discard's top card — wears `zone-card`.
+Nine components used to write that same `min()` out for themselves, two benches carried a
+verbatim copy of the same `--slot-card-width`, and each copy was commented with a pointer
+to another copy: *a rule in nine places is nine rules*, and five sizes were got wrong in a
+copy rather than in the rule (`#109` and `#110` for the prizes and the bench, `#117` to
+`#122` for the prizes again, the bench's centring, an attached card cut off at the top of
+the row, a slot's cards, and the bench's scroll). `tools/card-sizing-check.mjs` fails if a
+zone claims a copy again.
+
+Two things that look like this rule are deliberately not it:
+
+- **The size cannot be a value on the board.** `100cqw` and `100cqh` are whichever zone
+  the *card* is in, and a custom property is inherited unresolved — so a `--card-width`
+  holding this `min()` on `.game` would be resolved against the zone of every card on the
+  board, the table's stack included, which is exactly what the next point forbids.
+- **`:where()` is doing work rather than decorating.** The class is at no specificity, so
+  the rule ties with `img.card` on source order and loses to any rule that means to
+  redirect one zone — the hand's row, which sizes its cards by the zone's height and two
+  things `100cqh` knows nothing about. At `.zone-card` specificity the hand would have
+  needed a fight to win.
+
+**The table's stack is the one place on the board holding cards that is not sized this
+way** (the other is a zone's name, below), and it is why the class is worn per card
+rather than handed down from the board: its cards are read by looking at them rather than
+by fitting, so they keep the fixed `--card-width` the board sets — which is also what a
+slot's pieces fall back to outside the two zones that hold them.
+
 **There is no card size setting any more.** It was a slider over `--card-scale`, and
 once the cards were the zones' it did nothing useful and one thing that was worse than
 nothing: `--card-scale` multiplied the board's own spacing (`--scaled-rem`, the grid's
@@ -80,12 +109,14 @@ at all, and the zone's whole width is the row's drop target.
 
 **A slot's cards are the size of the zone too, and so are the steps its fan keeps.** The
 active spot and the bench hold a Pokémon with whatever is attached to it, and both ask
-their zone for the card: `--slot-card-width` (`Active.svelte`, `Bench.svelte`, and the
-opponent halves of each), which `Slot.svelte` uses for the card *and* for the cards
-attached to it. A slot used to keep a fixed 105px card while the zone around it did not,
-so a window short enough to leave the bench zone less than a card tall — the 821px window
-the browser checks run at is one — drew cards over the bottom of the zone, and over the
-top of it as well once the row was centred in one.
+their zone for the card: `--slot-card-width`, which `Slot.svelte` uses for the card *and*
+for the cards attached to it. The bench's is `--bench-card-width` in `global.css` —
+because there are two benches, and they are one row of cards that differ in whose they
+are rather than in how big they are — while the two active spots declare their own, since
+they are not that rule. A slot used to keep a fixed 105px card while the zone around it
+did not, so a window short enough to leave the bench zone less than a card tall — the 821px
+window the browser checks run at is one — drew cards over the bottom of the zone, and over
+the top of it as well once the row was centred in one.
 
 Every step the fan is laid out with is a **share of the card** rather than a pixel
 (`--attach-step-energy` and `--attach-step-tool` for the 25px and 35px a fan steps
