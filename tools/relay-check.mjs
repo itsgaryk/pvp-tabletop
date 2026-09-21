@@ -522,7 +522,19 @@ console.log('\nthe table clock')
    rooms.push([a.roomId, watching.memberId])
    check('a spectator arriving late is told it on joining', Boolean(watching.timer), JSON.stringify(watching.timer))
    check('with the anchor the clock was actually set at', Number(watching.timer?.at) === Number(set.timer?.at), `${watching.timer?.at} vs ${set.timer?.at}`)
-   check('and the time really left on it', Number(watching.timer?.remaining) === RUNNING_MS - elapsedRelay(watching), `${watching.timer?.remaining} left, ${elapsedRelay(watching)}ms into the clock`)
+   /*
+      Read twice, so it is compared with the slack it actually has rather than
+      exactly. `watching.timer.remaining` and `elapsedRelay(watching)` are both the
+      relay's own clock, but the first was stamped when the reply was built and the
+      second is derived from `watching.now` - a moment taken a fraction later. When
+      the two land either side of a millisecond the exact comparison fails with
+      `298772 left, 1227ms into the clock` (300000 - 1227 is 298773), which is a
+      flake rather than a fault: it turns a push's CI red with nothing changed. The
+      check four lines up measures the same quantity with `Math.abs(drift) <= 1`.
+   */
+   check('and the time really left on it',
+      Math.abs(Number(watching.timer?.remaining) - (RUNNING_MS - elapsedRelay(watching))) <= 1,
+      `${watching.timer?.remaining} left, ${elapsedRelay(watching)}ms into the clock`)
 
    /*
       A paused clock is a value rather than a count, which is what makes it worth
