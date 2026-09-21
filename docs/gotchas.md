@@ -205,6 +205,43 @@ consequences worth keeping straight:
   Windows a killed process settles as exit `1` *without* a signal marker; `0xFFFF7001` above
   is Chrome's own refusal, not a kill.
 
+**No desktop engine renders inside the sandbox — and the three fail differently, with the
+`--version` answer being the signal that misleads.** Chrome 153, Edge and Firefox 156 are all
+installed on this machine. All three were driven with `stdio: 'ignore'`, which is permitted,
+so every result below is the browser refusing rather than the sandbox refusing the spawn:
+
+| engine | `--version` | render (any flag set tried) | what the code means |
+| --- | --- | --- | --- |
+| Chrome 153 | **exit 21** (`0x15`) | exit `0xFFFF7001` | `ERROR_NOT_READY` — dies before the command line |
+| Edge | **exit 0** | exit `0x80000003` | `STATUS_BREAKPOINT` — reaches the browser, then asserts |
+| Firefox 156 | **exit 0** | hangs until killed | no child process ever comes up |
+
+The `--version` column is the trap. Edge and Firefox answer it *successfully*, so the
+executable looks healthy and the natural next step is to try another flag; Chrome cannot even
+answer it, which is the honest signal. Do not read Chrome's `0xFFFF7001` as a Chrome fault and
+Edge's `exit 0` as Edge working — the assert Edge hits is the one `tools/browser.mjs` already
+records from an earlier attempt ("a helper that spawned its own Edge instances made Edge
+assert — *a breakpoint has been reached*"), which is why that file refuses to launch browsers.
+
+Flag sets tried, all failing identically, so none is worth an afternoon: `--headless`,
+`--headless=new`, headful, `--no-sandbox`, `--single-process`, `--in-process-gpu`,
+`--disable-gpu`, `--disable-gpu-sandbox`, `--virtual-time-budget`, `--dump-dom`,
+`--screenshot` (Chromium's form and Firefox's `-screenshot`), and `--version`.
+
+None of this is about the tree: `npm run build` succeeds under a widened sandbox, and the
+relay check needs no browser. What a confined session loses is precisely the *rendering* half
+of verification —
+
+- no screenshots and no CDP, therefore **no browser check**: `browser-check.mjs`,
+  `solo-check.mjs`, `solo-select-check.mjs`, `mirror-check.mjs` and `deck-order-check.mjs` are
+  all out of reach;
+- no *rendered* verification of CSS, which is the half the build never covers (see the note
+  about `npm run check` above) — `docs/card-sizing.md` is full of claims only a renderer can
+  settle;
+- still available: the build, `tools/docs-check.mjs`, `tools/relay-check.mjs` given a dev
+  server, and any change assertable by importing the module in plain node — the
+  `placeOrdered` half of `tools/deck-order-check.mjs` is the model for that.
+
 **A `Popup`'s body scrolls; its actions do not.** `Popup.svelte` gives the panel
 the window's height at most and hands what is left to `.popup-body`, which
 overflows — so anything that has to stay visible while the cards are scrolled
