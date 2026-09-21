@@ -16,6 +16,9 @@ name: CI
 #   the app renders        tools/render-check.mjs, because compiling is not
 #                          rendering: a component can throw on mount and leave the
 #                          app dead with the build above still green
+#   a hung relay is a      tools/relay-timeout-check.mjs, because a request with no
+#   dead dialog            deadline leaves a player on "Working..." with no button
+#                          left to press
 #   the tree is reviewable  nothing else; a browser check needs real browsers and
 #                          is run by hand (tools/browser-check.mjs)
 #
@@ -106,3 +109,5 @@ jobs:
       - run: node tools/card-sizing-check.mjs
 
       - run: node tools/render-check.mjs
+
+      - run: node tools/relay-timeout-check.mjs

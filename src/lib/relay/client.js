@@ -23,6 +23,29 @@ const POLL_IDLE_MS = 300 // pause before re-polling after an error
 const EVENT_BUFFER = 200 // events fetched per poll
 
 /*
+   How long a *request* may take before this client gives up on it.
+
+   The long poll has had its own deadline since it was written (POLL_TIMEOUT_MS
+   above, which is the server's own window plus slack). Everything else did not, and
+   a connection that answers nothing - a relay that is up but whose database is
+   unreachable, a black-holing proxy, a machine that has gone to sleep - left the
+   promise unsettled for ever.
+
+   That is not a slow request, it is a dead dialog. The prompt that asks for a name
+   disables OK and Cancel and refuses Escape while its action is in flight, because
+   the request is already going and there is nowhere to report it - so an action
+   that never settles left the player looking at "Working…" with no button left to
+   press, which is where this was found. A deadline turns that into a sentence on
+   the form that failed, which is what the prompt's error line is for.
+
+   Room and event calls are ordinary request/response round trips, so twenty seconds
+   is generous by an order of magnitude; the number is deliberately far above any
+   healthy latency, because the cost of being wrong here is abandoning a request
+   that was about to succeed.
+*/
+const REQUEST_TIMEOUT_MS = 20000
+
+/*
    How many things that went wrong to keep. They are kept because a relay fault
    is otherwise invisible: a failed send, a poll that 500s and an event that
    arrives with no handler all used to end at console.error and nowhere else, so
@@ -158,10 +181,11 @@ async function readJson (res) {
 }
 
 export class HttpSocket {
-   constructor ({ baseUrl = '', wait = POLL_WAIT_MS, fetchImpl = null } = {}) {
+   constructor ({ baseUrl = '', wait = POLL_WAIT_MS, fetchImpl = null, requestTimeout = REQUEST_TIMEOUT_MS } = {}) {
       this.base = baseUrl
       this.wait = wait
       this.fetch = fetchImpl || ((...args) => globalThis.fetch(...args))
+      this.requestTimeout = requestTimeout
 
       this.id = null // member id, set once a room is created or joined
       this.roomId = null
@@ -863,7 +887,38 @@ export class HttpSocket {
          options.body = JSON.stringify(body)
       }
 
-      const res = await this.fetch(this.base + url, options)
+      /*
+         A deadline, because a request that never settles is a dialog that never
+         closes (see REQUEST_TIMEOUT_MS). The abort is what actually ends it - the
+         fetch is cancelled rather than merely abandoned - and it is passed through
+         `options.signal` so a caller that wants its own deadline can still give one.
+
+         The long poll does not come through here: it sets its own signal against the
+         server's own window, which is longer than this (poll() below).
+      */
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), this.requestTimeout)
+      options.signal = controller.signal
+
+      let res
+      try {
+         res = await this.fetch(this.base + url, options)
+      } catch (err) {
+         /*
+            Said in the caller's terms rather than as "The operation was aborted":
+            this is the message that ends up on the prompt, and "the relay did not
+            answer" is the thing worth knowing. Whether the request *arrived* is not
+            knowable from here - an abort is not a guarantee the server did nothing -
+            so the message does not claim it failed, only that no answer came.
+         */
+         if (err && (err.name === 'AbortError' || controller.signal.aborted)) {
+            throw new Error(`the relay did not answer within ${Math.round(this.requestTimeout / 1000) || 1}s`)
+         }
+         throw err
+      } finally {
+         clearTimeout(timer)
+      }
+
       const payload = await readJson(res)
       if (!res.ok) {
          const err = new Error(payload.error || `relay request failed (${res.status})`)
