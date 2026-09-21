@@ -10,6 +10,9 @@ name: CI
 #   the docs still link    tools/docs-check.mjs, because the README and docs/ are
 #                          read by following links between them, and a stale link
 #                          renders as ordinary text rather than reporting itself
+#   a size is stated once tools/card-sizing-check.mjs, because a card on the board
+#                          being the size of its zone was decided in nine
+#                          components at once and got wrong in five of them
 #   the tree is reviewable  nothing else; a browser check needs real browsers and
 #                          is run by hand (tools/browser-check.mjs)
 #
@@ -73,8 +76,12 @@ jobs:
       - name: Build
         run: npm run build
 
-  # the documentation's own links: a file or an anchor that has moved, which
-  # nothing else would notice
+  # the checks that need nothing but the tree: the documentation's own links (a
+  # file or an anchor that has moved, which nothing else would notice), and the
+  # card sizes (a rule that is only correct while it is stated once).
+  #
+  # Still called `docs` for the job that is not about docs: renaming it would
+  # quietly unrequire it wherever the old name is a required status check.
   docs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -87,3 +94,5 @@ jobs:
           node-version: 20
 
       - run: node tools/docs-check.mjs
+
+      - run: node tools/card-sizing-check.mjs

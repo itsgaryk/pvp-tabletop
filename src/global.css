@@ -62,23 +62,53 @@ input[type="text"], textarea {
 
 /*
    A card outside the board - in an inspection, in the deck list, in a dialog - is
-   this wide. A card *on the board* is the size of the zone it is in instead, and
-   each zone says so in its own component: see the note over `--card-ratio` below
-   for the rule they all follow.
+   this wide, and so is one on the board that no zone has sized: the table's stack,
+   which keeps its own size on purpose.
+
+   `--card-width` is a length for both of those. A card in a *zone* is not sized by
+   it either way: it is sized by the `.zone-card` rule just below, because the zone
+   it is in is its size container and it is the card that has to ask.
 */
 img.card {
    width: var(--card-width);
    height: auto;
 }
 
+/*
+   The board's own card, and the only place that size is written down: a card in a
+   zone is as large as the zone allows - whichever of the zone's width and height
+   is reached first, less `--card-gap` so it does not touch the card beside it or
+   the zone's edge (see docs/card-sizing.md).
+
+   It has to be a rule at the card rather than a value on the board, because
+   `100cqw` and `100cqh` are whichever zone the *card* is in - every zone is a size
+   container (see Board.svelte) - and a custom property is inherited unresolved, so
+   a `--card-width` set on the board would be resolved against the zone of every
+   card on it, including the table's stack, whose cards deliberately keep their own
+   size. It is the card itself that has to ask.
+
+   Which cards carry it: every pile's own front (what a zone draws - a cardback, a
+   discard's top card, a lost zone's), and nothing else. The table's stack is not
+   one of them, and neither is a slot's card, which is sized by `--slot-card-width`
+   instead (`Slot.svelte`) because a slot spends room on the fan above it.
+
+   `:where()` is the class at no specificity, so this ties with `img.card` above on
+   source order and loses to any rule that means to redirect one zone - the hand's
+   row, which sizes its cards by the zone's height and two things `100cqh` knows
+   nothing about. A higher specificity here would have to be answered with another
+   `!important`-flavoured rule there.
+*/
+:where(.zone-card).card {
+   width: min(
+      calc(100cqw - 2 * var(--card-gap)),
+      calc((100cqh - 2 * var(--card-gap)) * var(--card-ratio))
+   );
+}
+
 :root {
    /*
-      A card is as large as the zone it is in allows: it scales to whichever of the
-      zone's width and height is reached first, less a few pixels so that it does
-      not touch the cards beside it. Every zone of the board is a size container
-      (see Board.svelte), so what is in one can be sized in the zone's own units -
-      `100cqw` and `100cqh` are the zone's width and height - and a zone whose cards
-      are laid out as a block divides its own box by how many it holds.
+      The two numbers the board's card is built from - the rule that spends them is
+      `:where(.zone-card).card` above, and the note over it is the arithmetic.
 
       `--card-ratio` is the shape of a card, width over height: a card that is as
       tall as its zone allows is this much wide, which is what turns "the zone's
@@ -87,6 +117,24 @@ img.card {
    --card-ratio: 0.7241;
    /* the space a card keeps from the cards around it and from its zone's edge */
    --card-gap: 4px;
+
+   /*
+      What a bench gives the cards on it: the zone's height, less a fan's worth of
+      room above them (`--slot-card-share`) and the bar a bench that no longer fits
+      draws under them (`--scrollbar`) - so a bench too long for its zone scrolls
+      sideways rather than shrinking its cards (see docs/card-sizing.md).
+
+      It lives here rather than in either bench because there are two of them - the
+      near half's and the far half's - and this is one rule they both follow: the
+      two benches are one row of cards that differ in whose they are and in which
+      half of the board they sit on, not in how big they are. `100cqh` is the
+      bench's own zone height, which is a size container (see Board.svelte).
+
+      The active spot sets its own `--slot-card-width` instead, because it is not
+      this rule: it is not wide enough for a fan of any length, so what it can give
+      a card is what it has with nothing else in it (see board/Active.svelte).
+   */
+   --bench-card-width: calc((100cqh - 2 * var(--card-gap) - var(--scrollbar)) * var(--slot-card-share) * var(--card-ratio));
 
    /*
       A card attached to a Pokemon in play is fanned out to the right of the card it is

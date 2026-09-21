@@ -23,7 +23,7 @@
 
 <Pile pile={discard} name="Discard" showMenu={$solo} bind:menu={menu}>
    {#if $discard.length}
-      <img class="card" src="{cardImage(top, 'xs')}" alt="{top.name}" on:click|stopPropagation={() => openOppPile(discard)}>
+      <img class="card zone-card" src="{cardImage(top, 'xs')}" alt="{top.name}" on:click|stopPropagation={() => openOppPile(discard)}>
    {/if}
 
    <!-- in solo the other half's discard is yours to shuffle back, as your own is -->
@@ -32,13 +32,3 @@
       <ContextMenuOption click={shuffleBack} text="Shuffle All Into Deck" />
    </svelte:fragment>
 </Pile>
-
-<style>
-   /*
-      The same rule as the near half's: the card is the size of the zone it is in,
-      the lower of the zone's width and height, less a few pixels of gap.
-   */
-   img.card {
-      width: min(calc(100cqw - 2 * var(--card-gap)), calc((100cqh - 2 * var(--card-gap)) * var(--card-ratio)));
-   }
-</style>

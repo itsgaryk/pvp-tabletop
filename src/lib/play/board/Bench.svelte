@@ -81,17 +81,18 @@
 
       The cards are the size of the zone, as every other card on the board is, and the
       zone gives them what is left of its height once a fan's worth has been kept above
-      them (`--slot-card-share`, see global.css) and the bar a bench that does not fit
-      draws under them (`--scrollbar`). A bench whose cards no longer fit is then a bench
-      too long for its zone rather than one holding cards of the wrong size: the row
-      scrolls sideways. The width the zone has is not the cards', for the same reason.
+      them and the bar a bench that does not fit draws under them - which is
+      `--bench-card-width`, in global.css, because the far half's bench asks for the
+      same thing. A bench whose cards no longer fit is then a bench too long for its
+      zone rather than one holding cards of the wrong size: the row scrolls sideways.
+      The width the zone has is not the cards', for the same reason.
 
       `100cqh` is this zone's height - the cell Board.svelte makes a size container.
    */
    .bench-zone {
       display: grid;
       align-items: center;
-      --slot-card-width: calc((100cqh - 2 * var(--card-gap) - var(--scrollbar)) * var(--slot-card-share) * var(--card-ratio));
+      --slot-card-width: var(--bench-card-width);
    }
 
    .bench-row {

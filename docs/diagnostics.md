@@ -1,6 +1,6 @@
 # Troubleshooting and diagnostics
 
-Five tools, for the five questions that are expensive to answer by hand. Each of
+A tool apiece, for the questions that are expensive to answer by hand. Each of
 them exists because the hand-written version of it produced a wrong answer at
 least once.
 
@@ -13,6 +13,37 @@ least once.
 | "Does the app really do that, in a browser?" | `node tools/browser-check.mjs` |
 | "Is the clock still smooth and still shared?" | `node tools/clock-check.mjs` |
 | "Did those cards land in the order that was chosen?" | `node tools/deck-order-check.mjs` (see [below](#is-the-deck-in-the-order-that-was-chosen)) |
+| "Is a card still the size of its zone, from one place?" | `node tools/card-sizing-check.mjs` (see [below](#is-a-card-still-the-size-of-its-zone)) |
+| "Does the deck stand-in still let a board be set up?" | `node tools/fixture-check.mjs` |
+
+## Is a card still the size of its zone?
+
+```sh
+node tools/card-sizing-check.mjs
+```
+
+This asks the tree rather than a browser, which is the half of verification a
+confined session keeps: it cannot tell you a card *looks* right, but it can tell
+you the rule that decides it is stated once — and that is the half that kept being
+got wrong. Every zone of the board used to size its own cards: nine components
+carried a verbatim copy of the same `img.card` width, two benches a copy of the
+same `--slot-card-width`, and each copy had a comment pointing at another copy.
+The card-sizing PRs are the ledger, and five sizes were wrong in a copy rather than
+in the rule.
+
+So the check is about *where the answer lives* rather than what it is: the size is
+the one `:where(.zone-card).card` rule in `global.css`, every pile's own front
+wears the class, no zone component writes the formula out again, both benches take
+one `--bench-card-width` from `global.css`, and the two active spots keep the
+`--slot-card-width` they declare themselves, because the active spot is not the
+bench's rule — it is not wide enough for a fan of any length.
+
+Two of its assertions are about what must *not* claim the rule, and both are
+regressions it was written after: the table's stack keeps its own fixed size (its
+cards are read by looking at them rather than by fitting), which is also why the
+size cannot be a `--card-width` handed down from the board — a custom property is
+inherited unresolved, so it would be resolved against the zone of every card on the
+board, the stack included. Read-only, no browser, no server, nothing started.
 
 ## Verifying a change: `tools/relay-check.mjs` and `tools/browser-check.mjs`
 

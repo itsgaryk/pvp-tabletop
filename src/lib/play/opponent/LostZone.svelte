@@ -18,7 +18,7 @@
 
 <Pile pile={lz} name="Lost Zone" showMenu={$solo} bind:menu={menu}>
    {#if $lz.length}
-      <img class="card" src="{cardImage(top, 'xs')}" alt="{top.name}" on:click|stopPropagation={() => openOppPile(lz)}>
+      <img class="card zone-card" src="{cardImage(top, 'xs')}" alt="{top.name}" on:click|stopPropagation={() => openOppPile(lz)}>
    {/if}
 
    <!-- in solo the other half's lost zone is yours to look through, as your own is -->
@@ -26,13 +26,3 @@
       <ContextMenuOption click={() => openOppPile(lz)} text="View All" />
    </svelte:fragment>
 </Pile>
-
-<style>
-   /*
-      The same rule as the near half's: the card is the size of the zone it is in,
-      the lower of the zone's width and height, less a few pixels of gap.
-   */
-   img.card {
-      width: min(calc(100cqw - 2 * var(--card-gap)), calc((100cqh - 2 * var(--card-gap)) * var(--card-ratio)));
-   }
-</style>

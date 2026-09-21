@@ -696,6 +696,19 @@
       @apply opacity-50;
    }
 
+   /*
+      What `--card-width` is on the board: the size a card keeps where no zone has
+      sized it. The table's stack is the one that matters - its cards are read by
+      looking at them rather than by fitting, so they keep their own size - and it
+      is also what the slot's pieces fall back to (see Slot.svelte).
+
+      A card in a zone is not sized from here: it asks the zone it is in, through
+      the `.zone-card` rule in global.css. It has to be a rule at the card rather
+      than a value on the board, because `100cqw` and `100cqh` are whichever zone
+      the *card* is in, and a custom property is inherited unresolved - so a
+      `--card-width` given to the whole board would be resolved against every
+      card's own zone, including the table's stack, which is not a zone-sized card.
+   */
    .game {
       --card-width: 105px;
       --card-height: 145px;
