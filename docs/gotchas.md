@@ -460,6 +460,21 @@ too (`overflow-y: auto` does not leave the other axis visible), so a badge hung
 off the corner of a card is simply not drawn — which is why a selection that has
 to be *read* is said in words above the grid rather than drawn on the card.
 
+**The panel has three placements, and a new one has to take the old one's
+`transform` and every length that hung off `m-8` with it.** A panel is centred
+horizontally by `left: 50%` plus `translateX(-50%)`; `.centered` (the diagnostics
+dialog) and `.anchored` (a menu under a corner button) each override one or both,
+and both say `transform: none` where they stop translating, because a translate
+left on moves a panel that is already where it belongs. The third, `.flush`, is
+the pile inspection: it is a grid as wide as the window, so centring it only spends
+the window's edges on a frame around it, and it is laid against the left edge
+instead — `left: 0`, `transform: none`, no margins, and `--popup-edge` kept on the
+right. **What that costs is the arithmetic of the base rule.** Its `max-height` is
+`calc(100vh - 6rem)` because `m-8` is 2rem above and below on top of its `top: 2rem`;
+a placement with no margins that inherited that number would leave the panel 4rem
+short of the bottom of the window. A placement sets what it changes *completely*,
+rather than leaving the reader to work out which half of a length still applies.
+
 **A panel that is opened by a call renders as nothing at all, and `bind:this` is
 not the way into one.** Every `Popup` draws nothing until a call opens it, and
 `tools/render-check.mjs` renders components rather than clicking them — so a fault
