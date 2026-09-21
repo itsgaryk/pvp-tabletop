@@ -146,23 +146,28 @@ export function shuffle () {
 }
 
 /*
-   What a pile's *view* does to the pile once an action has been taken out of it:
-   the deck is shuffled, and every other pile is left as it is.
+   The shuffle that comes with taking a card out of a deck: the deck is shuffled if
+   the deck is one of the piles the cards left, and nothing happens otherwise.
 
    A card taken out of a deck is a card out of a deck, and what is left of it is
-   unknown - which is the whole of why the view offers the move and the shuffle
-   together (the button beside it is called Close & Shuffle). A discard and a lost
-   zone are public and ordered, so shuffling one would be a pile rearranging itself
-   for no reason at all.
+   unknown - which is the whole of why a search's move and a shuffle come together
+   (the button beside the four is called Close & Shuffle). A discard and a lost zone
+   are public and ordered, so shuffling one would be a pile rearranging itself for no
+   reason at all.
 
-   It is here rather than in the panel because it is a rule about a pile and not
-   about the screen: the view's four buttons and its card menu both end through it
-   (see `finishAction` in dialogs/Inspection.svelte), and it is the one part of that
-   ending that can be asked about without a browser -
-   `tools/render-check.mjs` does, by counting the log lines it writes.
+   `sources` are the piles the cards came out of, because the answer is a fact about
+   the cards and not about the screen: the four buttons of a pile's view and an entry
+   of its card menu come through here with the pile the view is of, and an attach or
+   an evolve comes through with the piles it actually took its cards from - which is
+   what lets that one wait for the card to land (see `attachSelection`). It is stated
+   once because two copies of "is it the deck" is two answers to one question, and
+   the copy is the one that goes stale.
+
+   It is also the one part of any of this that can be asked about without a browser:
+   `tools/render-check.mjs` counts the log lines it writes.
 */
-export function shuffleAfterViewAction (pile) {
-   if (pile === deck) shuffle()
+export function shuffleAfterLeavingDeck (sources) {
+   if (sources.includes(deck)) shuffle()
 }
 
 /*
@@ -621,7 +626,10 @@ export function attachSelection (slot) {
       of the board - the hand, the table, off another Pokemon - so the selection
       can hold cards from several zones at once.
    */
+   const sources = []
+
    for (const [ source, cards ] of selectionByPile()) {
+      sources.push(source)
 
       const ids = []
       const from = source.name
@@ -644,6 +652,18 @@ export function attachSelection (slot) {
       if (evolving.get()) logEvolve(slot, cards, from)
       else logAttachment(slot, cards, from)
    }
+
+   /*
+      And now the shuffle, because *now* a card has left a pile: this is the moment
+      an attach or an evolve happened, and it is the only moment it did. A deck's
+      view offers both entries, and the player picks one and then clicks the Pokemon
+      - so the card is in hand between the two, and shuffling when the entry was
+      picked would shuffle a deck that a change of mind leaves untouched.
+      `sources.length` is the same question as "did anything move": the selection is
+      known to be non-empty, and a card in none of the board's piles is not this
+      move's to carry (see `selectionByPile`).
+   */
+   if (sources.length) shuffleAfterLeavingDeck(sources)
 
    resetSelection()
 }

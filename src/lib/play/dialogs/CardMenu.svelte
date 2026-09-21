@@ -74,15 +74,14 @@
    }
 
    /*
-      The end of an entry that *did* something - a card moved, a card attached. The
-      menu closes first, so that whatever is behind it is not looking at an open menu
-      when it acts.
+      The end of an entry that *did* something - a card moved. The menu closes first,
+      so that whatever is behind it is not looking at an open menu when it acts.
 
-      Deliberately not the end of *Show Details*: that entry opens another panel
-      rather than acting, closes nothing, and leaves the card the player is reading
-      selected - so the view behind it, and the deck's shuffle, are left alone. What
-      the rule is about is an action *taken*, which is what a player asks for when
-      they pick a destination out of this menu.
+      Two kinds of entry are deliberately not this. *Show Details* opens another
+      panel rather than acting, closes nothing, and leaves the card the player is
+      reading selected. *Attach* and *Evolve* do not do the thing they say until the
+      player has clicked a Pokemon (see `attachEvolve`), so they close the menu and
+      nothing else.
    */
    function done () {
       menu.close()
@@ -101,7 +100,7 @@
 
    function attachEvolve (evo = false) {
       startAE(evo)
-      done()
+      menu.close()
    }
 </script>
 

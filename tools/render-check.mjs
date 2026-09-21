@@ -82,11 +82,12 @@ writeFileSync(entry, `
    import Board from '${p('lib/play/Board.svelte')}'
    import Connection from '${p('routes/Connection.svelte')}'
    import Page from '${p('routes/+page.svelte')}'
-   import { cards, cardSelection, deck, discard, bench, draw, hand, lz, moveSelection, resetBoard, resetSelection, selectCard, selectPile, shuffleAfterViewAction, stadium, table, toBench } from '${p('lib/stores/player.js')}'
+   import { cards, cardSelection, deck, discard, bench, draw, hand, lz, moveSelection, resetBoard, resetSelection, attachSelection, selectCard, selectPile, shuffleAfterLeavingDeck, stadium, table, toBench } from '${p('lib/stores/player.js')}'
+   import { slot } from '${p('lib/stores/custom/cards.js')}'
    import InspectionView from '${join(root, 'tools', 'pile-dialog.svelte').split(sep).join('/')}'
    /* what a decklist import does: the list of cards, then the board built from it */
    const setDeck = (cards_) => { cards.set(cards_); resetBoard() }
-   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, deck, defaultOpponent, discard, draw, hand, lz, moveSelection, resetSelection, selectCard, selectPile, setDeck, shuffleAfterViewAction, stadium, table, toBench, InspectionView }
+   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, deck, defaultOpponent, discard, draw, hand, lz, moveSelection, resetSelection, attachSelection, selectCard, selectPile, setDeck, shuffleAfterLeavingDeck, slot, stadium, table, toBench, InspectionView }
 `)
 
 const svelte = {
@@ -304,28 +305,68 @@ check('and the panel keeps the base placement, centred in the window',
    It is asked of the store rather than read off the panel, and the answer is counted
    in the game log, which is a real consequence and not a shape: `shuffle` writes
    *Shuffled Deck* (in solo it is written locally - see publishToChat), so the
-   assertion is that the deck's view writes one more line and a discard's view writes
-   none. The four buttons and a card menu's own entries both end through this
-   (see the wiring checks below), so this is the rule they share.
+   assertion is that a move out of the deck writes one more line and one out of a
+   discard writes none. The four buttons, a card menu's own entries and an attach all
+   end through this (see the wiring checks below), so this is the rule they share.
 */
 const shuffled = () => get(mod.chat).filter((line) => line.message === 'Shuffled Deck').length
 
 const beforeAction = shuffled()
-mod.shuffleAfterViewAction(mod.discard)
-check('and an action out of a discard\'s view shuffles nothing', shuffled() === beforeAction)
+mod.shuffleAfterLeavingDeck([ mod.discard ])
+check('and a move out of a discard shuffles nothing', shuffled() === beforeAction)
 
-mod.shuffleAfterViewAction(mod.deck)
-check('and an action out of the deck\'s view shuffles the deck', shuffled() === beforeAction + 1)
+mod.shuffleAfterLeavingDeck([ mod.deck ])
+check('and a move out of the deck shuffles the deck', shuffled() === beforeAction + 1)
+
+mod.shuffleAfterLeavingDeck([ mod.hand, mod.deck ])
+check('and the deck is shuffled when it is one of several piles left', shuffled() === beforeAction + 2)
+
+mod.shuffleAfterLeavingDeck([ mod.hand, mod.discard ])
+check('and not when it is none of them', shuffled() === beforeAction + 2)
+
+/*
+   And the timing of the same rule for the two entries that do not act at once.
+
+   *Attach* and *Evolve* arm the board - the card goes under, or on top of, the
+   Pokemon the player clicks next - so choosing the entry is not the moment a card
+   leaves a pile, and shuffling there would shuffle a deck that a change of mind
+   leaves untouched. The shuffle belongs to the moment the card lands, which is
+   `attachSelection`, and that can be called here: pick a card out of the deck, give
+   the board something to attach it to, and count the lines.
+
+   Two assertions, because they are two different questions: a card out of the deck
+   shuffles *when it lands* and not before, and a card out of the hand (the ordinary
+   attach, with no search behind it) never shuffles the deck at all. The slot the
+   cards go under is a real one - `slot()` is what the board builds for a Pokemon.
+*/
+const beforeAttach = shuffled()
+const deckCard = get(mod.deck)[0]
+mod.selectCard(deckCard, mod.deck, false)
+check('and picking a card out of the deck has not shuffled anything yet', shuffled() === beforeAttach)
+
+const target = mod.slot()
+mod.bench.add(target)
+mod.attachSelection(target)
+check('and the deck is shuffled when the card lands under a Pokemon', shuffled() === beforeAttach + 1)
+check('and the card really is attached',
+   target.energy.get().includes(deckCard) && !get(mod.deck).includes(deckCard))
+
+const onBoard = get(mod.hand)[0]
+mod.selectCard(onBoard, mod.hand, false)
+mod.attachSelection(target)
+check('and an attach with no deck behind it shuffles nothing', shuffled() === beforeAttach + 1)
+check('and that card is attached too', target.energy.get().includes(onBoard))
 
 /*
    And the wiring that gets a card menu's entry to that ending, which is three
    hand-offs and cannot be clicked here: the card in a view carries its pile
    (`board/Card.svelte`), the board asks that pile's view whether it is open and
    hands the menu a way to finish it (`Board.svelte`), and the menu calls it for an
-   entry that acted and not for *Show Details* (`dialogs/CardMenu.svelte`).
+   entry that acted and not for *Show Details* or the two that arm an attach
+   (`dialogs/CardMenu.svelte`).
 
    Each half is a line that reads perfectly on its own and does nothing at all on its
-   own, which is why all three are here: a card menu that is never handed the ending
+   own, which is why all of them are here: a card menu that is never handed the ending
    is a menu that leaves the view open, and nothing in the tree would say so.
 */
 const cardSource = readFileSync(join(src, 'lib', 'play', 'board', 'Card.svelte'), 'utf8')
@@ -346,9 +387,12 @@ check('and a card in a view carries its pile to the menu',
 check('and the board asks the view before lending the menu its ending',
    /inspectionModal\.showing\(fromPile\)/.test(boardSource) && /view\.finishAction\(\)/.test(boardSource))
 check('and every menu entry that acted ends through it',
-   [ 'moveTo', 'callThenClose', 'attachEvolve' ].every((fn) => bodyOf(menuSource, fn).includes('done()')))
+   [ 'moveTo', 'callThenClose' ].every((fn) => bodyOf(menuSource, fn).includes('done()')))
 check('and Show Details is not one of them - it acts on nothing',
    bodyOf(menuSource, 'showDetails') !== '' && !bodyOf(menuSource, 'showDetails').includes('done()'))
+check('and neither are Attach and Evolve - they act when the card lands',
+   bodyOf(menuSource, 'attachEvolve') !== '' && !bodyOf(menuSource, 'attachEvolve').includes('done()')
+   && bodyOf(menuSource, 'attachEvolve').includes('startAE(evo)'))
 check('and the four buttons end the view the same way',
    bodyOf(inspectionCss, 'moveCards').includes('finishAction()'))
 check('and the panel is the only thing that knows it is open',
