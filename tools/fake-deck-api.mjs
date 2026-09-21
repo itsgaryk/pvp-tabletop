@@ -33,11 +33,23 @@ const HOST = '127.0.0.1'
 
 const CARDS = []
 for (let i = 1; i <= 60; i++) {
+   const cardType = i % 3 === 0 ? 'energy' : (i % 2 === 0 ? 'trainer' : 'pokemon')
    CARDS.push({
       name: 'Card' + String(i).padStart(2, '0'),
       set: 'TST',
       number: String(i),
-      card_type: i % 3 === 0 ? 'energy' : (i % 2 === 0 ? 'trainer' : 'pokemon')
+      card_type: cardType,
+      /*
+         Pokémon are Basic. This one field is what makes the deck a deck: the app
+         refuses to set up on a list with no Basic in it - `deckValid = hasBasic($cards)`,
+         which wants `card.stage === 'basic'` (GameActions.svelte:32-39) - and `setup()`
+         returns at its first line without it. Every browser check that has to reach a
+         dealt board goes through that, so a stand-in without it could not set a game
+         up at all: the board stayed empty and the checks reported the app as broken
+         rather than the fixture. The real Limitless API sends a stage for Pokémon,
+         which is why the same checks passed against it and not against this.
+      */
+      ...(cardType === 'pokemon' ? { stage: 'basic' } : {})
    })
 }
 
