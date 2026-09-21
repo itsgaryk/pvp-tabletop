@@ -87,18 +87,35 @@ a name. The one thing the two levels do not share is who they apply to: a specta
 handed `revealed` for both halves outright (`spectating` in those expressions), which is
 the deliberate difference from a player.
 
-**Solo hides the Hide Pokémon button but still obeys the flag.**
-`GameActions.svelte:226` renders that button only `{#if !$solo}` — solo has no other
-player to hide from — while `opponent/Slot.svelte:184` reads the far board's own
-`pokemonHidden` in every mode. The flag is cleared by a **board reset**, not by entering
-or leaving solo (`custom/board.js:101`), and `startSolo`/`exitSolo` (`solo.js:32-47`) reset
-the clock, the flip and both boards but not that flag. So a solo game can come up with the
-far half's Pokémon drawn as card backs and no button anywhere to show them again; the flag
-was set while in a room (or arrived in a shared board state) and outlives the mode change.
-The fix is the same line `player.js:761-768` already has for entering a room:
-`pokemonHidden.set(false)` in both solo transitions. Low severity, and the reason to write
-it down is that the asymmetry — button in one mode, flag honoured in all of them — is
-invisible until somebody sees a face-down board they cannot turn over.
+**Solo hides the Hide Pokémon button, and neither half's flag is reset by entering or
+leaving solo.** `GameActions.svelte:226` renders that button only `{#if !$solo}` — solo has
+no other player to hide from — while `opponent/Slot.svelte:184` reads the board's own
+`pokemonHidden` in every mode, and `:93`, `:115`, `:122` refuse the click, the double click
+and the context menu while it is set. Three things follow, and only the third is a problem:
+
+- **The button is more load-bearing in solo than it looks.** `startSolo` resets both
+  boards (`solo.js:32-39`), so the flag is false when a solo game begins, and nothing in
+  solo sets it — the button is the only writer and it is not rendered. Which is the reason
+  the flag cannot be reached *during* solo play.
+- **The flag is cleared by a board reset, not by a mode change** (`custom/board.js:101`),
+  and `startSolo`/`exitSolo` (`solo.js:32-47`) reset the clock, the flip and both boards.
+  They do reach the flag through `reset()` — including the `defaultOpponent` copy — so the
+  hole is conceptual rather than observed: a second writer of that flag would not be
+  covered, and the next person to add one has no signal that solo depends on there being
+  none.
+- **A flipped solo board can hide a half nobody can show.** `soloSwapped` puts the far
+  board's components in the near row (`Board.svelte:473-495, 598-662`), where the flag they
+  obey is `defaultOpponent.pokemonHidden` — so with the board flipped and that half's flag
+  set, the Pokémon in front of the player are card backs and the door out of it is at
+  `GameActions.svelte:226`, which solo does not render. The same applies to the *near*
+  half's flag if it is ever set without solo's own board being reset, which is what the
+  paragraph above says nothing does today.
+
+The fix is the line `player.js:761-768` already has for entering a room:
+`pokemonHidden.set(false)` in both solo transitions, so the flag's lifetime is the mode's.
+Cheap, and it is the kind of asymmetry — button in one mode, flag honoured in all of them,
+component swapped between rows by a flip — that is invisible until somebody is looking at a
+face-down board they cannot turn over.
 
 **A browser check that imports a deck needs `tools/fake-deck-api.mjs`.** "Import
 Deck" and "Import Random Deck" post to `VITE_LIMITLESS_WEB`
