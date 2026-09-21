@@ -21,6 +21,37 @@ idle. `connection.js` exposes the same `socket.on/off/emit` surface the rest of
 the app was already written against, so gameplay code is unaware of the
 transport.
 
+## A request that never answers
+
+The long poll has had its own deadline since it was written, because it is
+*supposed* to be held open: the client gives up a little after the server's own
+window. Every other call — create, join, spectate, leave, and appending an event —
+had none, and a connection that answers nothing left the promise unsettled for
+ever: a relay that is up with its database unreachable, a black-holing proxy, a
+machine asleep. A poll that hangs costs a poll; a *request* that hangs is a dead
+dialog, because the prompt that asks for a name disables OK **and** Cancel and
+refuses Escape while its action is in flight — so an action that never settles
+leaves the player looking at *"Working…"* with no button left to press.
+
+So `HttpSocket.request()` now aborts at `REQUEST_TIMEOUT_MS` (20s) and rejects with
+a sentence the form can show: *"the relay did not answer within 20s"*. Three things
+about it are deliberate:
+
+- **It is only on `request()`**, which the long poll does not go through — the poll
+  sets its own signal against the server's window, which is longer. A deadline that
+  governed both would cut off every poll and turn each game into a reconnecting one,
+  which is why `tools/relay-timeout-check.mjs` asserts the two windows and their
+  order rather than only the timeout itself.
+- **The number is far above any healthy latency** (twenty seconds to create a room).
+  A deadline that fires early is worse than none: it abandons work that was about to
+  succeed, so the check also asserts that a slow-but-answering relay still lands.
+- **The message does not claim the request failed.** An abort is not a guarantee the
+  server did nothing, so it says no answer came. Retrying a *create* may therefore
+  leave one abandoned room behind, which the room TTL reaps.
+
+`tools/relay-timeout-check.mjs` drives all of that against the real transport with a
+stand-in `fetch` — no server, no network, no browser.
+
 While a poll waits it reads **one key** - the room's event cursor - per turn, and
 only reads the rest of the room when that cursor moves. Members live in a single
 hash, so a poll fetches them with one `HGETALL` and nothing ever runs `KEYS` over

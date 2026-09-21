@@ -15,6 +15,7 @@ least once.
 | "Did those cards land in the order that was chosen?" | `node tools/deck-order-check.mjs` (see [below](#is-the-deck-in-the-order-that-was-chosen)) |
 | "Is a card still the size of its zone, from one place?" | `node tools/card-sizing-check.mjs` (see [below](#is-a-card-still-the-size-of-its-zone)) |
 | "Does the board still render at all?" | `node tools/render-check.mjs` (see [below](#does-the-board-still-render)) |
+| "Can a relay that says nothing trap a player?" | `node tools/relay-timeout-check.mjs` (see [relay.md](relay.md#a-request-that-never-answers)) |
 | "Does the deck stand-in still let a board be set up?" | `node tools/fixture-check.mjs` |
 
 ## Is a card still the size of its zone?
