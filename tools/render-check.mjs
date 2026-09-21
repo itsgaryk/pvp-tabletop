@@ -240,21 +240,44 @@ check('and Ctrl+A takes the whole pile', get(mod.cardSelection).length === get(m
    `${get(mod.cardSelection).length} picked out of ${get(mod.hand).length}`)
 
 /*
-   And the one thing about the dialog a render to a string cannot see at all: the
-   padding its grid keeps from the panel's two edges.
+   And the one thing about the dialog a render to a string cannot see at all: where
+   the panel sits and the padding its grid keeps from its edges.
 
-   The grid is as wide as the panel and wraps, so a row that does not fill it
-   leaves its room on one side; `justify-content: center` is what splits that
-   between the sides, and the right-hand padding carries the panel's own scrollbar
-   back (`--popup-scrollbar`), because a bar drawn in the body takes its width out
-   of the box the cards are laid out in. Both are the kind of change that reads
-   perfectly in the CSS and leaves a margin down one side of every pile on screen,
-   and nothing else in this repository would notice either one going.
+   The grid is as wide as the panel and wraps, so a row that does not fill it leaves
+   its room on one side; `justify-content: center` is what splits that between the
+   sides, and the right-hand padding carries the panel's own scrollbar back
+   (`--popup-scrollbar`), because a bar drawn in the body takes its width out of the
+   box the cards are laid out in. Both are the kind of change that reads perfectly
+   in the CSS and leaves a margin down one side of every pile on screen, and nothing
+   else in this repository would notice either one going.
 */
 const inspectionCss = readFileSync(join(src, 'lib', 'play', 'dialogs', 'Inspection.svelte'), 'utf8')
 check('and the card grid is centred in it', /@apply[^;]*justify-center/.test(inspectionCss))
 check('and its right-hand padding carries the panel scrollbar back',
-   /padding:\s*0?\.5rem\s+calc\(\s*0?\.5rem\s*\+\s*var\(--popup-scrollbar\)\s*\)\s+0?\.5rem\s+0?\.5rem/.test(inspectionCss))
+   /padding:\s*var\(--popup-edge[^)]*\)\s+calc\(\s*var\(--popup-edge[^)]*\)\s*\+\s*var\(--popup-scrollbar\)\s*\)/.test(inspectionCss))
+
+/*
+   And the panel it is in, which is the other half of what a render cannot see: the
+   inspection is laid against the window's left edge rather than centred with a
+   frame around it (see `flush` in Popup.svelte). The prop is what asks for it and
+   the placement is a positional rule, so neither half is in the rendered string -
+   and a panel that quietly went back to being centred would read as "the padding
+   came back".
+*/
+const popupCss = readFileSync(join(src, 'lib', 'play', 'dialogs', 'Popup.svelte'), 'utf8')
+check('and the panel asks for the flush placement',
+   inspectionCss.includes('<Popup bind:this={popup} {openOnMount} flush>'))
+check('and flush leaves the centring translate behind',
+   /\.flush\s*\{[^}]*left:\s*0[^}]*transform:\s*none/s.test(popupCss))
+/*
+   And the one thing neither a string nor a store can see: *which* piles the four
+   buttons shuffle. A card out of a deck leaves it unknown, so the deck is shuffled;
+   a discard and a lost zone are public and ordered, and shuffling one would be a
+   pile quietly rearranging itself. The gate is one line, and it is the line a later
+   "tidy-up" would drop.
+*/
+check('and only the deck is shuffled behind the cards that leave it',
+   /if\s*\(\s*pile\s*===\s*deck\s*\)\s*shuffle\(\)/.test(inspectionCss))
 
 /*
    The deck's own view, which is the panel the buttons were asked for: it is the

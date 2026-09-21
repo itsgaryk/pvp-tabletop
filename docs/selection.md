@@ -58,17 +58,22 @@ Two lists and a pointer, all in `src/lib/stores/player.js`:
   "the three I clicked" something the player can check before saying where they go.
   `Inspection` says *N cards picked out: …* and what a click does when none is;
   `DeckOrder` numbers its strip instead, because there the sequence is the whole of what is
-  being decided (a card put back on the deck has a *place*, and one shipped to a zone does
+  being decided (a card put back on the deck has a *place*, and one moved to a zone does
   not). Both keep the line whether or not anything is selected, so the grid does not jump
-  the moment a card is clicked.
-- **A pile inspection moves cards to a zone.** Its foot carries *Add to table*, *Add to
-  hand*, *Add to bench* and *Add to discard pile* beside the buttons that close it — the
-  four places a card comes out of a deck, a discard or a lost zone into. They are the
-  board's own moves (`moveSelection`, and `toBench` for the bench, since a card put into
-  play is a slot rather than a card in a list), so the move, the log line and what the
-  opponent is told are the same as a card dragged out of the deck; the panel stays open,
-  which is what moving one card at a time out of a search needs. A spectator sees them
-  disabled, like every other action they cannot take.
+  the moment a card is clicked. It is said in words rather than drawn on the cards because
+  the grid is a scroll container, and that clips the other axis too — a badge hung off the
+  corner of a card is simply not drawn (see `Popup.svelte`).
+- **A pile inspection moves cards to a zone, and that is the whole decision.** Its foot
+  carries *Add to table*, *Add to hand*, *Add to bench* and *Add to discard pile* beside
+  the buttons that close it — the four places a card comes out of a deck, a discard or a
+  lost zone into. They are the board's own moves (`moveSelection`, and `toBench` for the
+  bench, since a card put into play is a slot rather than a card in a list), so the move,
+  the log line and what the opponent is told are the same as a card dragged out of the
+  deck. Each button then closes the panel and, **when the panel is the deck's, shuffles
+  it**: a card taken out of a deck is a card out of a deck, and what is left of it is
+  unknown — the same reason the button beside them is called *Close & Shuffle*. A discard
+  and a lost zone are public and ordered, so nothing is shuffled for them. A spectator sees
+  all four disabled, like every other action they cannot take.
 
 ## What it looks like
 

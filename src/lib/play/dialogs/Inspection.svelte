@@ -42,7 +42,7 @@
    */
    $: selected = $cardSelection.length > 0 && selectionPile === pile
    $: selectedCards = selected ? $cardSelection : []
-   $: shipped = !$spectating && selected
+   $: moves = !$spectating && selected
 
    export function open (_pile) {
       pile = _pile
@@ -65,18 +65,39 @@
       and logs it - and the Bench is the other kind of move, since a card put into
       play is a slot with a card under it rather than a card in a list (see
       `toBench`). Both clear the selection and share the move, so the opponent and
-      any spectator follow it. The panel stays open, which is what picking a card
-      out of a search and sending it somewhere needs.
+      any spectator follow it.
    */
-   const shipsTo = {
+   const movesTo = {
       table: () => moveSelection(table),
       hand: () => moveSelection(hand),
       bench: toBench,
       discard: () => moveSelection(discard)
    }
+
+   /*
+      The whole of what one of the four buttons does: the cards the player picked
+      go where it says, and the panel closes behind them.
+
+      The shuffle is the deck's, and it is a *shuffle* rather than a tidy-up: a card
+      taken out of a deck is a card out of a deck, and what is left of it is
+      unknown - the same reason the button below is called Close & Shuffle. The
+      other piles are not shuffled: a discard and a lost zone are public and
+      ordered, and there is nothing about them for a shuffle to say.
+
+      Closing is what the player means by picking a card out and naming a place for
+      it - the decision is made, so the panel gets out from in front of the table -
+      and it puts the four buttons on the same footing as the two beside them,
+      which is why the move happens first: closing is a popup call, and a popup
+      that closed first would have no pile left to read.
+   */
+   function moveCards (where) {
+      movesTo[where]()
+      if (pile === deck) shuffle()
+      popup.close()
+   }
 </script>
 
-<Popup bind:this={popup} {openOnMount}>
+<Popup bind:this={popup} {openOnMount} flush>
    <div class="flex">
       <button class="flex-1 tab rounded-tl-md" class:active={view === 'natural'} on:click={() => view = 'natural'}>Natural</button>
       <button class="flex-1 tab rounded-tr-md" class:active={view === 'sorted'} on:click={() => view = 'sorted'}>Sorted</button>
@@ -130,17 +151,18 @@
          </div>
 
          <!--
-            The cards the player selected out of the pile, to a zone at the table:
+            The cards the player picked out of the pile, to a zone at the table:
             two by two, beside the buttons that close the panel. Disabled rather
             than hidden when nothing is selected, so the panel's foot does not
             change shape under a click, and a spectator sees the actions it cannot
-            take.
+            take. Each one is the whole decision - the cards go, and the panel
+            closes and the deck is shuffled (see moveCards).
          -->
          <div class="grid grid-cols-2 gap-2">
-            <button class="action" disabled={!shipped} on:click={shipsTo.table}>Add to table</button>
-            <button class="action" disabled={!shipped} on:click={shipsTo.hand}>Add to hand</button>
-            <button class="action" disabled={!shipped} on:click={shipsTo.bench}>Add to bench</button>
-            <button class="action" disabled={!shipped} on:click={shipsTo.discard}>Add to discard pile</button>
+            <button class="action" disabled={!moves} on:click={() => moveCards('table')}>Add to table</button>
+            <button class="action" disabled={!moves} on:click={() => moveCards('hand')}>Add to hand</button>
+            <button class="action" disabled={!moves} on:click={() => moveCards('bench')}>Add to bench</button>
+            <button class="action" disabled={!moves} on:click={() => moveCards('discard')}>Add to discard pile</button>
          </div>
       </div>
    </svelte:fragment>
@@ -157,23 +179,36 @@
       between the two sides, so a row that is not full reads as a grid rather than
       as a row that ran out.
 
-      The asymmetric padding is the scrollbar. A pile taller than the window
-      scrolls (see Popup.svelte), and a vertical scrollbar takes its width out of
-      the box it is drawn in - so the cards keep their padding from the left edge
-      and their padding *less* the scrollbar from the right one, which puts the
+      The left-hand length is the window's edge: the panel is `flush` (Popup.svelte)
+      and `--popup-edge` is what it keeps, so the cards sit the same distance from
+      the window as the line above them does. There is no panel frame left to pad
+      against - see `flush` for why there is not.
+
+      The right-hand length is the same plus the scrollbar. A pile taller than the
+      window scrolls, and a vertical scrollbar takes its width out of the box it is
+      drawn in - so without this the cards would keep their padding from the left
+      edge and their padding *less* the scrollbar from the right one, which puts the
       right-hand gap visibly inside the left-hand one. `--popup-scrollbar` is the
       width it takes back, and it is a value rather than a measurement because CSS
-      has no length for "how wide is this scrollbar": 15px is Chrome's on Windows
-      and on Linux, and a browser whose bar is a different width is out by that
-      difference rather than by the whole padding. A pile short enough not to
-      scroll has no bar to take anything, so its right-hand padding is that much
-      wider; this panel is opened on a whole pile, so that is the rarer case.
+      has no length for "how wide is this scrollbar": 15px is Chrome's on Windows and
+      on Linux, and a browser whose bar is a different width is out by that difference
+      rather than by the whole padding. A pile short enough not to scroll has no bar
+      to take anything, so its right-hand padding is that much wider; this panel is
+      opened on a whole pile, so that is the rarer case.
    */
    .cards {
       --popup-scrollbar: 15px;
 
       @apply flex flex-wrap justify-center gap-1;
-      padding: 0.5rem calc(0.5rem + var(--popup-scrollbar)) 0.5rem 0.5rem;
+      /*
+         The left-hand length is the panel's own edge (`--popup-edge`, from `flush`
+         in Popup.svelte), so the cards keep the same gap from the window's left edge
+         as the line above them and the panel keeps from the top; the fallback is
+         what a centred panel would use, where the panel's edge is its own margin
+         rather than the window's. The right-hand length is that, less the scrollbar
+         - see the note above.
+      */
+      padding: var(--popup-edge, 0.5rem) calc(var(--popup-edge, 0.5rem) + var(--popup-scrollbar)) var(--popup-edge, 0.5rem) var(--popup-edge, 0.5rem);
    }
 
    .inspection {
