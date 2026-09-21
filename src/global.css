@@ -92,13 +92,21 @@ img.card {
    one of them, and neither is a slot's card, which is sized by `--slot-card-width`
    instead (`Slot.svelte`) because a slot spends room on the fan above it.
 
-   `:where()` is the class at no specificity, so this ties with `img.card` above on
-   source order and loses to any rule that means to redirect one zone - the hand's
-   row, which sizes its cards by the zone's height and two things `100cqh` knows
-   nothing about. A higher specificity here would have to be answered with another
-   `!important`-flavoured rule there.
+   `img` outside `:where()` and the class inside it are both load-bearing, and they
+   are what makes this rule *tie* with `img.card` above so that being later is what
+   wins. `:where()` contributes nothing, so `img:where(.zone-card).card` is a type
+   and a class - (0,1,1) - exactly what `img.card` is. Written the obvious way,
+   `:where(.zone-card).card`, it is a class alone, (0,1,0): *less* than `img.card`'s
+   (0,1,1), so the pile fronts lost to it and silently kept the board's fixed
+   `--card-width` while every other zone scaled - a 105px card in a zone smaller
+   than that (see docs/card-sizing.md). The class is still at no specificity *of its
+   own*, which is what lets a zone redirect its own cards: the hand's row sizes its
+   cards by the zone's height and two things `100cqh` knows nothing about, and
+   `.hand-cards img.card` in the component is (0,2,1) and beats this either way.
+   `tools/card-sizing-check.mjs` measures both selectors and fails if this one stops
+   beating `img.card`.
 */
-:where(.zone-card).card {
+img:where(.zone-card).card {
    width: min(
       calc(100cqw - 2 * var(--card-gap)),
       calc((100cqh - 2 * var(--card-gap)) * var(--card-ratio))

@@ -11,7 +11,7 @@
    bench's scroll - and every one of those five sizes was got wrong in a copy
    rather than in the rule. A rule in nine places is nine rules.
 
-   The size is now written down once, as `:where(.zone-card).card` in global.css,
+   The size is now written down once, as `img:where(.zone-card).card` in global.css,
    and the cards in zones wear the class. Two neighbours of that rule look like it
    and are not, which is what most of this file is about:
 
@@ -23,10 +23,25 @@
        card's own zone, which is the stack quietly resizing - the reason this is a
        rule at the card rather than a value on the board.
 
+   That rule was then written as `:where(.zone-card).card`, on the reasoning that
+   `:where()` is at no specificity so it would tie with `img.card` above it and win
+   on source order. It does not tie: `:where()` contributes nothing, and what was
+   left was a class alone, (0,1,0), against `img.card`'s (0,1,1) - so `img.card` won
+   and every pile front kept the board's fixed `--card-width` while every other zone
+   scaled. Nothing in the tree could see it: the class was worn, the formula was
+   stated once, the build was green, the docs check was green. It took a person
+   looking at the board (a 105px card is too big for the deck zone at a small
+   window and too small for it at a large one). The selector is now
+   `img:where(.zone-card).card` - a type and a class, (0,1,1), the same as
+   `img.card` - and check 1 below *measures* both selectors instead of trusting
+   either one's shape.
+
    What this checks, in the order it matters:
 
-     1. global.css still holds the one rule, and still at `.card` specificity so a
-        zone that means to redirect its own cards can
+     1. global.css still holds the one rule, that it is still the zone-sized card,
+        and - the assertion this file was missing - that its specificity is not less
+        than the `img.card` rule it has to beat, so a rule that is stated once is also
+        a rule that reaches the cards
      2. every pile's own front wears the class
      3. the table's stack does not, and the board's `--card-width` is still fixed
      4. no zone component has gone back to writing the formula itself
@@ -77,16 +92,96 @@ const check = (label, ok, detail = '') => {
 /* --- 1. the one rule ------------------------------------------------------- */
 
 /*
-   `:where(.zone-card).card` and not `.zone-card` or `.game img.card`: the class has
-   to be at no specificity for the hand's row to be able to redirect it (see the
-   note over the rule), and `.zone-card` alone would not out-rank the `img.card`
-   rule it has to beat.
+   The rule the zone card has to beat: `img.card`, which is what hands a card the
+   board's fixed `--card-width` where no zone sized it. Both selectors are measured
+   rather than recognised by shape, because shape is what was got wrong: the rule
+   that was meant to tie with this one did not, and looked right in a diff.
 */
-const zoneRule = /:where\(\.zone-card\)\.card\s*\{([^}]*)\}/.exec(globalCode)
+const baseRule = /\n\s*(img\.card)\s*\{([^}]*)\}/.exec(globalCode)
+
+/*
+   A selector's specificity, as the three numbers CSS compares - ids, classes
+   (classes, attributes and pseudo-classes), types (elements and pseudo-elements) -
+   with everything inside a `:where(...)` counted at nothing, which is the whole
+   point of it.
+
+   Plain counting, and one deliberate simplification: the argument of `:not()`,
+   `:is()` or `:has()` is counted as if it had been written out, which is what the
+   spec says for `:is()`/`:has()` and the opposite of what it says for `:not()`.
+   Every selector this file measures is a couple of compounds with no functional
+   pseudo-class in them, and over-counting is the safe direction anyway: it can make
+   this check more suspicious of a selector, never more permissive.
+*/
+const stripWhere = (selector) => {
+   let out = ''
+   for (let i = 0; i < selector.length; i++) {
+      if (!selector.startsWith(':where(', i)) { out += selector[i]; continue }
+      let depth = 1
+      i += ':where('.length
+      while (i < selector.length && depth > 0) {
+         if (selector[i] === '(') depth++
+         else if (selector[i] === ')') depth--
+         i++
+      }
+      i-- // the for loop steps over the last character consumed
+   }
+   return out
+}
+
+const specificity = (selector) => {
+   const bare = stripWhere(selector)
+   const ids = (bare.match(/#[\w-]+/g) || []).length
+   const classes = (bare.match(/\.[\w-]+/g) || []).length +
+      (bare.match(/\[[^\]]*\]/g) || []).length +
+      (bare.match(/(?<!:):(?!:)[\w-]+/g) || []).length
+   /* a tag name opens a compound: at the start, or after a space or a combinator */
+   const types = (bare.match(/(?:^|[\s>+~,])[a-z][\w-]*/gi) || []).length +
+      (bare.match(/::[\w-]+/g) || []).length
+   return [ ids, classes, types ]
+}
+
+const atLeast = (a, b) => a[0] !== b[0] ? a[0] > b[0]
+   : a[1] !== b[1] ? a[1] > b[1]
+      : a[2] >= b[2]
+
+const show = (s) => `(${s.join(',')})`
+
+/*
+   `:where(.zone-card).card`, and not `.zone-card` or `.game img.card`: the class has
+   to be at no specificity *of its own* for the hand's row to be able to redirect it
+   (see the note over the rule - `.hand-cards img.card` in the component is (0,2,1)
+   and wins either way), and the rule still has to reach (0,1,1) to beat `img.card`.
+   The `img` outside `:where()` is what does the second half of that.
+*/
+const zoneRule = /([^{}\n]*:where\(\.zone-card\)\.card)\s*\{([^}]*)\}/.exec(globalCode)
+const zoneSel = zoneRule ? zoneRule[1].trim() : ''
+const zoneSpec = zoneRule ? specificity(zoneSel) : null
+const baseSpec = baseRule ? specificity(baseRule[1]) : null
+
 check('global.css holds the board card\'s size, once',
    (globalCode.match(/:where\(\.zone-card\)\.card/g) || []).length === 1)
 check('and it is still the zone-sized card',
-   Boolean(zoneRule) && squash(zoneRule[1]).includes(CARD_WIDTH_FORMULA) && /--card-ratio/.test(zoneRule[1]))
+   Boolean(zoneRule) && squash(zoneRule[2]).includes(CARD_WIDTH_FORMULA) && /--card-ratio/.test(zoneRule[2]))
+
+/*
+   The assertion this file was missing, and the bug it exists for now: a rule that is
+   *stated* once is worth nothing unless it also *wins*. `:where()` contributes no
+   specificity, so a selector that leans on it for the class and names no element is a
+   class alone - less than `img.card` - and the pile fronts silently go back to the
+   board's fixed 105px.
+*/
+const sameSpec = Boolean(zoneSpec) && Boolean(baseSpec) && zoneSpec.every((n, i) => n === baseSpec[i])
+const wins = Boolean(zoneRule) && Boolean(baseRule) && atLeast(zoneSpec, baseSpec) &&
+   (!sameSpec || globalCode.indexOf(zoneSel) > globalCode.indexOf(baseRule[1]))
+const measured = zoneSpec && baseSpec
+   ? `${zoneSel} is ${show(zoneSpec)} at ${globalCode.indexOf(zoneSel)}, img.card is ${show(baseSpec)} at ${globalCode.indexOf(baseRule[1])}`
+   : 'a selector could not be measured'
+
+check('global.css still holds the img.card rule it has to beat',
+   Boolean(baseRule), baseRule ? baseRule[1] : 'no img.card rule found')
+check('and the zone rule is not less specific than img.card',
+   Boolean(zoneRule) && Boolean(baseRule) && atLeast(zoneSpec, baseSpec), measured)
+check('and it wins: more specific than img.card, or tied and written after it', wins, measured)
 
 check('global.css still holds --card-ratio', /--card-ratio:\s*[\d.]+/.test(globalCode))
 check('global.css still holds --card-gap', /--card-gap:\s*[\d.]+/.test(globalCode))

@@ -11,8 +11,11 @@ name: CI
 #                          read by following links between them, and a stale link
 #                          renders as ordinary text rather than reporting itself
 #   a size is stated once tools/card-sizing-check.mjs, because a card on the board
-#                          being the size of its zone was decided in nine
-#                          components at once and got wrong in five of them
+#   and reaches the cards    being the size of its zone was decided in nine
+#                          components at once and got wrong in five of them - and
+#                          because the one rule that replaced all nine was written
+#                          at a specificity that lost to `img.card`, which no other
+#                          check here looks at
 #   the app renders        tools/render-check.mjs, because compiling is not
 #                          rendering: a component can throw on mount and leave the
 #                          app dead with the build above still green
