@@ -14,6 +14,7 @@ least once.
 | "Is the clock still smooth and still shared?" | `node tools/clock-check.mjs` |
 | "Did those cards land in the order that was chosen?" | `node tools/deck-order-check.mjs` (see [below](#is-the-deck-in-the-order-that-was-chosen)) |
 | "Does a selected prize glow, and is looking at one logged?" | `node tools/prize-check.mjs` (see [below](#does-a-selected-prize-glow)) |
+| "Does the Active spot hold a fan of any length?" | `node tools/fan-check.mjs` (see [below](#does-the-active-spot-hold-a-fan-of-any-length)) |
 | "Is reading the whole deck still written in the log?" | `node tools/view-log-check.mjs` (see [below](#is-reading-the-deck-written-in-the-log)) |
 | "Is a card still the size of its zone, from one place?" | `node tools/card-sizing-check.mjs` (see [below](#is-a-card-still-the-size-of-its-zone)) |
 | "Does the board still render at all?" | `node tools/render-check.mjs` (see [below](#does-the-board-still-render)) |
@@ -193,6 +194,42 @@ the same way in solo, and their line has to be in that half's name.
 
 It builds its board without Setup — see the deck stand-in note in
 [gotchas.md](gotchas.md) — by sending the top cards of the deck to the prizes.
+
+## Does the Active spot hold a fan of any length?
+
+```sh
+node tools/fan-check.mjs
+```
+
+The Active spot is the one zone holding a Pokemon with whatever is attached to it that
+cannot grow, scroll or be scrolled: a bench's row is as long as it takes and scrolls, and
+the hand is the same, but there is one Active spot per player and it is a fixed box in the
+grid. It is also the zone a report came in about — *attach a lot of cards and the layout
+falls apart, the cards spread apart* — so it is the one zone whose fan is measured rather
+than looked at.
+
+Four things are asserted, at twelve lengths of fan, and each is one of the way that report
+was true (see [card-sizing.md](card-sizing.md) for the rules and
+[gotchas.md](gotchas.md) for the mechanism):
+
+- the Pokemon **keeps the place a lone card has** in its zone, in both axes: the fan used to
+  be reserved in the flow, so every card attached pulled the Pokemon a step further left
+  until it was outside its own zone
+- **every attached card is exactly the size the Pokemon is**: a card may not be resized by
+  the box it is drawn in, and the fan's steps are shares of the card, so a clamped card came
+  out smaller than the step it was placed with
+- the **fan stays inside the zone** however long it gets: past a few cards the steps are
+  shares of the room beside the card rather than of the card, and twenty energies are twenty
+  overlapping edges rather than a row marching over the Stadium
+- and the **cards still overlap, in order**: what a long fan tightens into is a fan
+
+The card images are answered by the check itself rather than fetched — a stand-in deck's
+card names are ones no image host serves, and an image that never loads has no height, which
+is a different board from the one this is about. What it measures is a real board in a real
+browser, so it needs what the other browser checks need: the dev server, the stand-in store
+and deck API, and a browser on CDP (`tools/dev-servers.ps1`, then
+`node tools/fan-check.mjs`). It fails loudly on the board as it was before the fix — the
+Pokemon walked 421 → 329 CSS px across the twelve lengths, and the fan left the zone.
 
 ## Is reading the deck written in the log?
 

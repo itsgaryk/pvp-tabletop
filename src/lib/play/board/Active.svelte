@@ -69,6 +69,22 @@
          calc(100cqw - 2 * var(--card-gap)),
          calc((100cqh - 2 * var(--card-gap)) * var(--slot-card-share) * var(--card-ratio))
       );
+
+      /*
+         The room this zone has for a Pokemon's fan, which is the one thing about a fan
+         the zone has to decide: a fan is as long as the cards attached to it make it,
+         and this zone cannot grow or scroll to hold one - so the fan is given the room
+         that is left beside a card centred in the zone, and divides *that* between its
+         cards (see Slot.svelte). A fan of two energies is untouched by it; a fan of
+         twenty is drawn as twenty overlapping edges inside the zone rather than
+         marching out over the bench or the Stadium.
+
+         A card's own 2px borders are drawn outside the width this measures (the card
+         keeps `--card-gap` from its zone's edge, the way every other card does), so the
+         room is the gap's worth less than the free space: the last card of a fan that
+         has filled it ends inside the zone rather than on its line.
+      */
+      --slot-fan-room: calc((100cqw - var(--slot-card-width) - 2 * var(--card-gap)) / 2);
    }
 
    /*
@@ -76,8 +92,20 @@
       here, the way the bench's row spends it: this container centres the *margin* box of
       what is in it, so a Pokemon with a fan is centred with its fan - and without this
       the fan reached over the band above the zone while the card sat in the middle of it.
+
+      Nothing is reserved beside it, though, and that is the other half of this rule: the
+      fan is drawn behind and beside the Pokemon here, so the box this container centres
+      is the card alone. Reserving the fan's length asked a *fixed-width* line for room
+      that grows with every card attached: the Pokemon was pulled left out of its own
+      zone, and once the line was wider than the zone the slot inside it was squeezed -
+      which is what "the layout falls apart" was (see the note over `max-width` in
+      Slot.svelte). The Pokemon keeps the place a lone card has, however many cards are
+      attached to it, and the fan stays inside the zone.
    */
    .active-slot > :global(.slot) {
       margin-top: var(--attach-lift, 0px);
+      --slot-fan-reserve: 0px;
+      --slot-fan-step-energy: min(var(--slot-step-energy), calc(var(--slot-fan-room) / var(--slot-fan-count)));
+      --slot-fan-step-tool: min(var(--slot-step-tool), calc(var(--slot-fan-room) / var(--slot-fan-count)));
    }
 </style>

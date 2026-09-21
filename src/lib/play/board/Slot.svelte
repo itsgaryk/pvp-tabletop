@@ -153,7 +153,8 @@
    })
 </script>
 
-<div class="slot relative w-max z-15" style="--attach-lift: {attachLift}; margin-right: calc({$energy.length} * var(--slot-step-energy) + {$trainer.length} * var(--slot-step-tool))"
+<div class="slot relative w-max z-15"
+   style="--attach-lift: {attachLift}; --slot-fan-count: {$energy.length + $trainer.length || 1}; --slot-fan: calc({$energy.length} * var(--slot-step-energy) + {$trainer.length} * var(--slot-step-tool))"
    class:dragged={$dragging && $selection.includes(slot)}
    on:click|stopPropagation={onClick}
    on:contextmenu={onCtx}
@@ -179,7 +180,7 @@
 
    {#each $energy as nrg, i (nrg._id)}
       <img src="{cardImage(nrg, 'xs')}" alt="{nrg.name}" class="card absolute" draggable=false
-         style="bottom: var(--slot-lift-energy); left: calc({i + 1} * var(--slot-step-energy)); z-index: {$cardSelection.includes(nrg) ? 12 : 9 - i}"
+         style="bottom: var(--slot-lift-energy); left: calc({i + 1} * var(--slot-fan-step-energy)); z-index: {$cardSelection.includes(nrg) ? 12 : 9 - i}"
          data-attached="energy"
          class:card-attached-selected={$cardSelection.includes(nrg)}
          on:click={(e) => onCardClick(e, nrg, energy)}
@@ -189,7 +190,7 @@
 
    {#each $trainer as tool, i (tool._id)}
       <img src="{cardImage(tool, 'xs')}" alt="{tool.name}" class="card absolute" draggable=false
-         style="bottom: var(--slot-lift-tool); left: calc({$energy.length} * var(--slot-step-energy) + {i + 1} * var(--slot-step-tool)); z-index: {$cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
+         style="bottom: var(--slot-lift-tool); left: calc({$energy.length} * var(--slot-fan-step-energy) + {i + 1} * var(--slot-fan-step-tool)); z-index: {$cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
          data-attached="trainer"
          class:card-attached-selected={$cardSelection.includes(tool)}
          on:click={(e) => onCardClick(e, tool, trainer)}
@@ -215,10 +216,53 @@
       --slot-step-tool: calc(var(--slot-width) * var(--attach-step-tool));
       --slot-lift-energy: calc(var(--slot-width) * var(--attach-lift-energy));
       --slot-lift-tool: calc(var(--slot-width) * var(--attach-lift-tool));
+
+      /*
+         The steps the fan is actually drawn with, as against the ones the card gives
+         it. They are the same thing wherever the fan has room to be as long as it is,
+         which is the bench: its row is as long as it takes and scrolls (see
+         Bench.svelte). The one zone that cannot do that is the active spot, so it is
+         the one that tightens them - a fan that has to fit inside a box divides the
+         room it is given between its cards rather than leaving the box (see
+         Active.svelte). Everything the fan is placed with reads these, so a tightened
+         fan is still a fan: the cards keep overlapping in the same order.
+      */
+      --slot-fan-step-energy: var(--slot-step-energy);
+      --slot-fan-step-tool: var(--slot-step-tool);
+
+      /*
+         What the fan is worth in the flow this slot is in, which is its own length
+         unless the zone it is in says otherwise: a slot in a row of slots - the bench -
+         keeps the room its fan takes, so the next Pokemon is not drawn over it, and
+         the row scrolls when the room runs out. The active spot reserves none of it
+         (see Active.svelte): nothing is beside it, and its Pokemon is to keep the
+         place a lone card has however many cards are attached to it.
+      */
+      margin-right: var(--slot-fan-reserve, var(--slot-fan, 0px));
+
+      /*
+         And a slot is the size of its card whatever line it is in. A flex item is
+         shrinkable by default, and a slot whose box was squeezed would draw its
+         Pokemon - and place its fan - against a box narrower than the card the zone
+         gave it: the fan's steps are shares of the card, so the cards would come out
+         apart from one another rather than overlapping (see `max-width` below).
+      */
+      flex: none;
    }
 
    img.card {
       width: var(--slot-width);
+      /*
+         A card is the size the zone gives it, and **never the size of the box it is
+         drawn in**. The reset this app wears puts `max-width: 100%` on every image,
+         and the box an attached card is drawn in is the slot it is attached to: when
+         that box was narrower than the card - a squeezed slot, a Pokemon whose image
+         has not arrived - every card was clamped to the box while the step it was
+         placed with, a share of the *card*, was not. A fan of small cards with gaps
+         between them is what that looks like, and it is the bug this line is here to
+         make impossible: nothing a card is drawn in may resize it.
+      */
+      max-width: none;
       @apply box-content border-2 border-transparent rounded-md;
    }
 

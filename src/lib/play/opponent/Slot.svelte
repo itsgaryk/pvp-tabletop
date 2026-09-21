@@ -165,7 +165,8 @@
    })
 </script>
 
-<div class="slot relative w-max z-15" style="--attach-lift: {attachLift}; margin-right: calc({$energy.length} * var(--slot-step-energy) + {$trainer.length} * var(--slot-step-tool))"
+<div class="slot relative w-max z-15"
+   style="--attach-lift: {attachLift}; --slot-fan-count: {$energy.length + $trainer.length || 1}; --slot-fan: calc({$energy.length} * var(--slot-step-energy) + {$trainer.length} * var(--slot-step-tool))"
    class:dragged={$solo && $dragging && $slotSelection.includes(slot)}
    on:click|stopPropagation={onClick}
    on:contextmenu={onCtx}
@@ -193,7 +194,7 @@
 
    {#each $energy as nrg, i (nrg._id)}
       <img src="{cardImage(nrg, 'xs')}" alt="{nrg.name}" class="card absolute" draggable=false
-         style="bottom: var(--slot-lift-energy); left: calc({i + 1} * var(--slot-step-energy)); z-index: {$solo && $cardSelection.includes(nrg) ? 12 : 9 - i}"
+         style="bottom: var(--slot-lift-energy); left: calc({i + 1} * var(--slot-fan-step-energy)); z-index: {$solo && $cardSelection.includes(nrg) ? 12 : 9 - i}"
          data-attached="energy"
          class:card-attached-selected={$solo && $cardSelection.includes(nrg)}
          on:click={(e) => onCardClick(e, nrg, energy)}
@@ -203,7 +204,7 @@
 
    {#each $trainer as tool, i (tool._id)}
       <img src="{cardImage(tool, 'xs')}" alt="{tool.name}" class="card absolute" draggable=false
-         style="bottom: var(--slot-lift-tool); left: calc({$energy.length} * var(--slot-step-energy) + {i + 1} * var(--slot-step-tool)); z-index: {$solo && $cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
+         style="bottom: var(--slot-lift-tool); left: calc({$energy.length} * var(--slot-fan-step-energy) + {i + 1} * var(--slot-fan-step-tool)); z-index: {$solo && $cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
          data-attached="trainer"
          class:card-attached-selected={$solo && $cardSelection.includes(tool)}
          on:click={(e) => onCardClick(e, tool, trainer)}
@@ -220,10 +221,21 @@
       --slot-step-tool: calc(var(--slot-width) * var(--attach-step-tool));
       --slot-lift-energy: calc(var(--slot-width) * var(--attach-lift-energy));
       --slot-lift-tool: calc(var(--slot-width) * var(--attach-lift-tool));
+      /* the steps the fan is drawn with, which the active spot tightens */
+      --slot-fan-step-energy: var(--slot-step-energy);
+      --slot-fan-step-tool: var(--slot-step-tool);
+      /* what the fan is worth in the flow: its length, unless the zone says otherwise */
+      margin-right: var(--slot-fan-reserve, var(--slot-fan, 0px));
+      /* a slot is the size of its card whatever line it is in */
+      flex: none;
    }
 
    img.card {
       width: var(--slot-width);
+      /* a card is the size the zone gives it, never the size of the box it is drawn
+         in - the reset's `max-width: 100%` is what put a squeezed slot's cards out of
+         step with the fan's steps (see board/Slot.svelte) */
+      max-width: none;
       @apply box-content border-2 border-transparent rounded-md;
    }
 
