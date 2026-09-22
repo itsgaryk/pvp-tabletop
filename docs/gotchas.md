@@ -1,5 +1,20 @@
 # Things that cost somebody an afternoon
 
+**Styling a scrollbar with the *standard* two properties hands it back to the platform, which
+may be hiding it.** A zone that scrolls has to say so — that is the point of the bar — and
+`scrollbar-width: thin` with `scrollbar-color` is the modern pair that looks like the way to
+say it. In Chrome those two make the browser paint *its own* bar, and a machine set to hide
+scrollbars until the pointer is over them then draws an **overlay** bar: the width it takes out
+of the box is zero (so nothing in the layout reserves it, and the cards sized against the zone
+are sized against a zone that grows by the bar's width when it appears), and it fades out
+again the moment the pointer leaves — *"I have to hover the mouse over to see it"*. Styling
+`::-webkit-scrollbar` instead is what makes the bar a thing in the layout: it is drawn when the
+box can scroll, it takes its own width out of the box, and `overflow-y: auto` still keeps it
+away entirely when there is nothing to scroll. The tell is measurable and worth measuring —
+`offsetWidth - clientWidth` is the bar's width, and it is **0 for an overlay bar** and the
+bar's own thickness for a drawn one (`tools/zone-fit-check.mjs` asserts a drawn bar is at least
+6px, and asserts the reservation is 0 when nothing overflows).
+
 **Centring is the one thing a scroll container cannot do, and `safe center` is the half of it
 that it can.** The table's stack is a cascade that can be taller than the cell it is drawn in,
 so the cell scrolls it — and the stack has always been *centred* in that cell. Those two are

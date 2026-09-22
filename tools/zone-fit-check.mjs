@@ -405,27 +405,35 @@ check('a stack taller than the cell scrolls', t.scrollHeight > t.clientHeight + 
 check('and the bar it scrolls with is drawn rather than floating',
    t.bar >= 6, `the bar is ${t.bar}px wide`)
 
-/* the card every other zone gives: the zone's width or height, whichever is reached first,
-   less the gap a card keeps from the zone's edge - and, in a zone that scrolls down, less
-   the bar it always reserves, whether or not the bar is showing */
-const zoneCard = (zoneRect, bar = 0) => Math.min(
-   zoneRect.w - 2 * 4 - bar,
-   (zoneRect.h - 2 * 4) * 0.7241
-)
-const tableCard = zoneCard(t.cell, t.barWidth)
+/* the card a pile draws: its zone's width or height, whichever is reached first, less the gap
+   a card keeps from the zone's edge - the deck, the discard and the lost zone are each one
+   board row tall, so this is the size a player reads the board by */
+const pileCard = (zone) => Math.min(zone.w - 2 * 4, (zone.h - 2 * 4) * 0.7241)
+
+/* and the card the table draws: that same row's height at the card's shape, capped by the
+   cell's width, less the bar the stack reserves whether or not it is showing */
+const tableCard = (cell, bar) => Math.min((cell.h / 2 - 2 * 4) * 0.7241, cell.w - 2 * 4 - bar)
+const expected = tableCard(t.cell, t.barWidth)
+const deckCard = t.pileCard ? pileCard(t.pileZone) : null
 const cascade = t.cards.length
    ? { left: Math.min(...t.cards.map((c) => c.x)), right: Math.max(...t.cards.map((c) => c.right)) }
    : null
-console.log(`  a card is ${t.cards[0]?.w}px of a ${t.cell.w}px cell; the cascade is ${cascade ? (cascade.right - cascade.left).toFixed(1) : '?'}px of the ${t.zoneClientWidth}px the zone has`)
-console.log(`  a pile's card (the deck's) is ${t.pileCard?.w}px in a ${t.pileZone?.w}px zone of ${t.pileZone?.h}px`)
+console.log(`  a card is ${t.cards[0]?.w}px of a ${t.cell.w}x${t.cell.h}px cell; the cascade is ${cascade ? (cascade.right - cascade.left).toFixed(1) : '?'}px of the ${t.zoneClientWidth}px the zone has`)
+console.log(`  the card a pile draws (the deck's) is ${t.pileCard?.w}px in a ${t.pileZone?.w}x${t.pileZone?.h}px zone`)
 
-check('a card on the table is the card its zone gives every other zone\'s card',
-   t.cards.length ? Math.abs(t.cards[0].w - tableCard) < 1.5 : false,
-   `${t.cards[0]?.w}px against the ${tableCard.toFixed(1)}px the zone rule gives`)
+check('a card on the table is the size the rule gives it',
+   t.cards.length ? Math.abs(t.cards[0].w - expected) < 1.5 : false,
+   `${t.cards[0]?.w}px against the ${expected.toFixed(1)}px one row of the cell is worth`)
 
-check('and that is the same rule a pile\'s card is sized by',
-   t.pileCard ? Math.abs(t.pileCard.w - zoneCard(t.pileZone, 0)) < 1.5 : false,
-   `the deck's ${t.pileCard?.w}px against the ${zoneCard(t.pileZone, 0).toFixed(1)}px the same rule gives it`)
+/*
+   The one that matters to a player: the card on the table and the card a pile draws are the
+   same card on the same board, so no card on the board is a size of its own. A tolerance,
+   because a pile sits in a narrower column than the table does and the two can be limited by
+   different sides at some windows.
+*/
+check('and it is the card a pile draws, not a size of its own',
+   Boolean(t.cards.length) && Boolean(deckCard) && Math.abs(t.cards[0].w - deckCard) / deckCard < 0.12,
+   `the table's ${t.cards[0]?.w}px against the deck's ${deckCard?.toFixed(1)}px`)
 
 check('and the whole cascade fits the room the zone has, so no card is cropped',
    cascade !== null && (cascade.right - cascade.left) <= t.zoneClientWidth + 0.5,
@@ -515,9 +523,9 @@ check('at a tall board: the cascade is inside the room the zone has, so no card 
    tall !== null && tallWidth <= t.zoneClientWidth + 0.5,
    `${tallWidth.toFixed(1)}px of ${t.zoneClientWidth}px`)
 
-check('at a tall board: the cards are the card the zone gives',
-   t.cards.length ? Math.abs(t.cards[0].w - zoneCard(t.cell, t.barWidth)) < 1.5 : false,
-   `${t.cards[0]?.w}px against the ${zoneCard(t.cell, t.barWidth).toFixed(1)}px the zone rule gives`)
+check('at a tall board: the cards are the card one row of the cell is worth',
+   t.cards.length ? Math.abs(t.cards[0].w - tableCard(t.cell, t.barWidth)) < 1.5 : false,
+   `${t.cards[0]?.w}px against the ${tableCard(t.cell, t.barWidth).toFixed(1)}px the rule gives`)
 
 check('at a tall board: no bar on the other axis', t.hbar === 0, `a bar ${t.hbar}px tall`)
 

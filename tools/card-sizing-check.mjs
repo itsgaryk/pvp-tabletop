@@ -238,10 +238,11 @@ const tables = zoneFiles.filter((f) => /[\\/]Temp\.svelte$/.test(f.path))
 
 const tableVars = [ ...globalCode.matchAll(/--table-card-width:\s*([^;]+);/g) ]
 check('global.css declares the table\'s card size once', tableVars.length === 1, `${tableVars.length} declarations`)
-check('and it is the zone\'s card, less the bar the stack scrolls with',
+check('and it is the card a pile draws: one board row tall, capped by the cell\'s width',
    tableVars.length === 1 &&
-   squash(tableVars[0][1]).includes(squash('min(calc(100cqw - 2 * var(--card-gap) - var(--scrollbar))')) &&
-   /--card-ratio/.test(tableVars[0][1]) && /100cqh/.test(tableVars[0][1]))
+   squash(tableVars[0][1]).includes(squash('(100cqh / 2 - 2 * var(--card-gap)) * var(--card-ratio)')) &&
+   /100cqw/.test(tableVars[0][1]) && /--scrollbar/.test(tableVars[0][1]),
+   'the cell is two rows, and a pile - the card a player reads the board by - is one')
 check('and the cascade\'s step is a share of it rather than a pixel',
    /--table-step:\s*calc\(var\(--table-card-width\)\s*\*/.test(globalCode) && !/--table-offset/.test(globalCode),
    'a step to the right would make the stack wider than the card it is made of')

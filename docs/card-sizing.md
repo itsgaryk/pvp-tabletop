@@ -79,21 +79,31 @@ Two things that look like this rule are deliberately not it:
   enough to tie with `img.card` and no higher — see the paragraph above for what the
   selector costs without it.
 
-**The table's stack draws the same card as every other zone, and it is the bar that makes it
-a rule of its own.** A card in the table is what a card in the deck or the discard is —
-whichever of the zone's width and height is reached first, less `--card-gap` — with one thing
-taken off the width: the bar the stack scrolls with. That bar is real room in a zone that
-scrolls *down*, the way the hand's row takes the same bar's thickness off its height, and it
-is reserved whether or not the bar is showing, so the cards are one size and stay that size
-as a stack grows past the cell.
+**The table's stack draws the card a *pile* draws, which is one board row's worth.** A card on
+the table and the cardback in the deck's zone — or the top card in a discard's, or the lost
+zone's — are the same card on the same board, because that is how a player reads a board: the
+piles' zones are each one board *row* tall, and the table's cell is two (the grid gives it rows
+3 and 4), so what the table gives a card is that cell's height halved. Nothing else sizes it:
+not the cell's whole height, which is what made a card on the table twice the size of every
+other card on the board, and not the cell's width beyond a cap — a pile sits in a narrower
+column than the table does, so the width is a limit here rather than the measure.
+
+The one thing taken off that width is the bar the stack scrolls with — real room in a zone that
+scrolls *down*, the way the hand's row takes the same bar's thickness off its height, and
+reserved whether or not the bar is showing, so the cards are one size and stay that size as a
+stack grows past the cell. The bar itself is drawn by the zone's own styling rather than left to
+the platform (`::-webkit-scrollbar` in `Vertical.svelte`): the standard `scrollbar-width` and
+`scrollbar-color` properties make Chrome paint its own bar, and on a machine set to hide
+scrollbars until the pointer is over them that is an overlay bar that comes and goes. `auto`
+overflow is what keeps it out of the way when there is nothing to scroll, and the styling is
+what makes it *stay* when there is.
 
 It is written as `--table-card-width` in `global.css` rather than left to
-`img:where(.zone-card).card`, which draws exactly that card, because the cascade's *step* is a
-share of the card and a share needs a length to be a share of: `--table-step` is 35/105 of it
-and that is what the offsets the markup places the stack with read. A pile's card is placed by
-nothing, so it needs no name for its size. One rule for both halves, because the two tables
-are one stack drawn in a cell they share; the check (`tools/zone-fit-check.mjs`) asks the deck
-for its card and asserts the table's is the same rule's answer, so the two cannot drift.
+`img:where(.zone-card).card`, because the cascade's *step* is a share of the card and a share
+needs a length to be a share of: `--table-step` is 35/105 of it and that is what the offsets the
+markup places the stack with read. One rule for both halves, because the two tables are one
+stack drawn in a cell they share; the check (`tools/zone-fit-check.mjs`) measures the card a
+pile draws on the same board and asserts the table's is that size, so the two cannot drift.
 
 **The cascade steps down and only down.** Every second card used to step 20px to the right, and
 that is what made the cards small: a stack wider than one card has to leave the extra width out

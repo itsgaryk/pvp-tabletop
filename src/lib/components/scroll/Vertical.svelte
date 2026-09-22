@@ -27,8 +27,17 @@
          wrong, which is a sight better than losing the edge of a card in silence.
       */
       overflow-x: auto;
-      scrollbar-color: var(--primary-color) #f5f5f5;
-      scrollbar-width: thin;
+
+      /*
+         And the bar is *drawn* rather than handed to the platform, which is what the two
+         standard properties here would do: `scrollbar-width` and `scrollbar-color` make
+         Chrome paint its own bar, and on a machine set to hide scrollbars until the pointer
+         is over them that is an overlay bar that comes and goes - "I have to hover the mouse
+         over to see it". Styling `::-webkit-scrollbar` instead makes the bar a thing in the
+         layout, the way the hand's row has always had one, so a zone that *can* scroll says
+         so while it can. `overflow-y: auto` still keeps it out of the way when nothing
+         overflows, which is the other half of what was asked for.
+      */
    }
 
    .vertical::-webkit-scrollbar-track {
@@ -38,7 +47,8 @@
    }
 
    .vertical::-webkit-scrollbar {
-      width: 8px;
+      /* the thickness the layout reserves for it (see --scrollbar) */
+      width: var(--scrollbar, 10px);
       background-color: #f5f5f5;
    }
 

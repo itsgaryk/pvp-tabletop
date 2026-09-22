@@ -174,25 +174,29 @@ img:where(.zone-card).card {
    --slot-card-share: calc(105 / 139);
 
    /*
-      The table's stack. Its cards are **the card every other zone gives** - whichever of
-      the zone's width and height is reached first, less `--card-gap` - with one thing taken
-      off the width: the bar the stack scrolls with, which is real room in a zone that
-      scrolls down. (The hand's row takes the same bar's thickness off its height, for the
-      same reason.)
+      The table's stack. A card on the table is **the card a pile draws** - the cardback in
+      the deck's zone, or the top card in a discard's - which is what a player reads the board
+      by, and every one of those is a card in a zone one board *row* tall. The table's cell is
+      two rows (the grid gives it rows 3 and 4), so what it gives a card is that cell's height
+      halved: the same row a pile's card is sized by, and so the same card. Two things it is
+      not: the width a pile's zone has (a pile sits in a narrower column, and the table's own
+      column is what bounds it here), and the cell's *whole* height, which is what made a card
+      on the table twice the size of every other card on the board.
+
+      The one thing taken off the width is the bar the stack scrolls with - real room in a
+      zone that scrolls down, the way the hand's row takes the same bar's thickness off its
+      height, and reserved whether or not the bar is showing so the cards are one size and
+      stay that size as a stack grows past the cell.
 
       It is written here, as a variable, rather than left to `img:where(.zone-card).card`,
-      which draws exactly this card, because the cascade's *step* is a share of the card and
-      a share needs a length: `--table-step` is 35/105 of this, and it is what the offsets
-      the markup places the stack with read. A pile's card is placed by nothing, so it needs
-      no name for its size.
-
-      One rule for both halves, because the two tables are one stack drawn in a cell they
-      share (see docs/board.md), and `100cqw`/`100cqh` are that cell - the nearest size
-      container.
+      because the cascade's *step* is a share of the card and a share needs a length:
+      `--table-step` is 35/105 of this, and that is what the offsets the markup places the
+      stack with read. One rule for both halves, because the two tables are one stack drawn in
+      a cell they share (see docs/board.md), and `100cqw`/`100cqh` are that cell.
    */
    --table-card-width: min(
-      calc(100cqw - 2 * var(--card-gap) - var(--scrollbar)),
-      calc((100cqh - 2 * var(--card-gap)) * var(--card-ratio))
+      calc((100cqh / 2 - 2 * var(--card-gap)) * var(--card-ratio)),
+      calc(100cqw - 2 * var(--card-gap) - var(--scrollbar))
    );
    --table-step: calc(var(--table-card-width) * calc(35 / 105));
 

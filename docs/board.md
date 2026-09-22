@@ -117,18 +117,21 @@ move that key is for; it leaves nothing selected behind it.
 **The stack is a cascade, and the cell holds it by scrolling it.** A card is laid over the
 one above at a step *down* that is a share of the card (35/105), and only down: a step to the
 right would make the stack wider than the card it is made of, and a card on the table is **the
-card every other zone gives** — the zone's width or its height, whichever is reached first,
+card a pile draws** — one board row's height at a card's shape, capped by the cell's width,
 less the bar the stack reserves for scrolling (`--table-card-width`, one rule in `global.css`
-for both halves, because the two tables are one stack drawn in a cell they share). A card is
-not also fitted to the cell's height: the cell is about two cards tall at 1277x821 and a game
-can put a dozen on the table, so a stack taller than the cell is scrolled by it
-(`Vertical.svelte`), with the bar drawn only while there is something to scroll and always
-visible when there is. What that replaced was worse than untidy: the cascade was drawn
-straight through the zone's border and over the rows around it, and the cards were a fixed
-105px of their own, so at a small window the stack was wider than the cell it is in and
-reached over its neighbours. The stack is centred in the cell while it fits — and *gives that
-up* when it does not (`safe center`), because a centred box that overflows a scroll container
-has its first cards above the start edge, where no wheel and no bar reaches them.
+for both halves, because the two tables are one stack drawn in a cell they share). The cell is
+two board rows and a pile's zone is one, which is why the size is that cell's *height halved*:
+a card on the table and the cardback in the deck's zone are the same card. A card is not also
+fitted to the cell's whole height — the cell is about two cards tall at 1277x821 and a game can
+put a dozen on the table — so a stack taller than the cell is scrolled by it
+(`Vertical.svelte`), with the bar drawn only while there is something to scroll and *drawn*
+while there is, rather than handed to the platform as an overlay bar that hides until the
+pointer arrives. What that replaced was worse than untidy: the cascade was drawn straight
+through the zone's border and over the rows around it, and the cards were a fixed 105px of
+their own, so at a small window the stack was wider than the cell it is in and reached over
+its neighbours. The stack is centred in the cell while it fits — and *gives that up* when it
+does not (`safe center`), because a centred box that overflows a scroll container has its first
+cards above the start edge, where no wheel and no bar reaches them.
 
 **Reading a pile** — *View All* on a deck, discard or lost zone — is a grid of every card
 in it, which is taller than any window: fifty cards at 136px each is four rows. The panel
