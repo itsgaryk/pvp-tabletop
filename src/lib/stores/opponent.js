@@ -252,6 +252,17 @@ export function createOpponent () {
          for (const { cardId, slotId } of items) {
             const card = removeCard(cardId, pile)
             if (!card) continue
+            /*
+               A card this board has already put into play itself, with a slot id of its
+               own: that is the acting player's optimistic move, and it is the same card
+               the owner is now naming. The owner's slot is the one to keep, so the
+               stand-in goes - without this the board draws two Pokemon holding one card,
+               side by side, until the next full board state (see `optimisticMove` in
+               oppAction.js, which is the other half of this).
+            */
+            for (const s of [ ...bench.get() ]) {
+               if (s.id !== slotId && s.pokemon.get().some((c) => c._id === card._id)) bench.remove(s)
+            }
             bench.add(slot(card, slotId))
          }
       },
@@ -264,7 +275,13 @@ export function createOpponent () {
       cardPromoted: ({ cardId, slotId, from }) => {
          const card = removeCard(cardId, getPile(from))
          if (!card) return
-         if (active.get()) bench.add(active.get())
+         /* the same stand-in the Bench handler removes, in the Active spot */
+         for (const s of [ ...bench.get() ]) {
+            if (s.pokemon.get().some((c) => c._id === card._id)) bench.remove(s)
+         }
+         const previous = active.get()
+         if (previous && previous.id !== slotId && previous.pokemon.get().some((c) => c._id === card._id)) active.set(null)
+         else if (previous) bench.add(previous)
          active.set(slot(card, slotId))
       },
       slotPromoted: ({ slotId }) => {

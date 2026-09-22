@@ -8,6 +8,7 @@ import {
    active as myActive
 } from './player.js'
 import { defaultOpponent } from './opponent.js'
+import { slot } from './custom/cards.js'
 import { isActionable } from './reveal.js'
 
 /*
@@ -386,31 +387,49 @@ export function opponentCardAction (cards, action, options = {}) {
 
    It is deliberately the *same* shape as what `opponent.js` does with an incoming
    event - take the card out of the source pile and put it in the destination - so that
-   the owner's event, when it lands, is confirmation rather than a second move. The
-   places it declines to guess at are the two where a card lands somewhere that is not a
-   pile of that board's:
+   the owner's event, when it lands, is confirmation rather than a second move.
 
-      - **into play** (bench, active, attach): a slot with an id, which the owner's own
-        `cardsBenched` / `cardsAttached` event carries. Guessing it here would mean
-        inventing a slot id and hoping the owner's matches, and a wrong guess is a
-        phantom Pokemon on the board until the next full state.
-      - **the Stadium**, for the same reason: the owner's event clears the *other*
-        half of it as well, and half of that move is not this board's to make.
+   ---------------------------------------------------------------------------
+   Into play is the hard half, and it is done here too
+   ---------------------------------------------------------------------------
 
-   For those, the cards simply wait for the round trip, exactly as they did before.
+   The first version of this left Bench, Active, Attach and Stadium to the round trip,
+   on the theory that the acting board could not invent the *slot* a Pokemon in play
+   becomes. That is true, and it is not a reason to wait: the player who sent a card to
+   their opponent's Bench watched it sit in place for two seconds while *To Discard* and
+   *To Hand*, one line away in the same menu, were instant. The complaint was exact -
+   "To Bench, To Active and To Stadium still take a couple of seconds".
+
+   What it does now is the same move the owner will make, with a slot id of this
+   board's own. That leaves one seam, and it is handled rather than hoped about: the
+   owner's event arrives carrying **its** slot id, and `opponent.js`'s handler adds a
+   slot for it without looking for the card - so an optimistic slot would become a
+   second Pokemon holding the same card. `dedupeSlot` is what closes it: the mirror's
+   copy of the card is taken out before the owner's slot is added, and the owner's own
+   events stay the authority for what is on the board.
+
+   *Attach* is still left to the round trip, and it is the one that has to be: the card
+   goes *under* a Pokemon of theirs which this board can see but whose attachments are
+   the owner's to order, and "put this under your Active" has no shape on this side that
+   the owner's `cardsAttached` would confirm rather than duplicate.
 */
 function optimisticMove (cards, source, action) {
-   const target = optimisticTarget(action)
-   if (!target || target === source) return false
-
    let moved = false
 
    for (const card of cards) {
       if (!takeFrom(source, card)) continue
 
-      /* a placement onto a deck is content rather than order - see `shareShuffle` */
-      if (action === OPP_ACTIONS.DECK_BOTTOM) target.unshift(card)
-      else target.push(card)
+      /*
+         Nowhere this board can put it yet - *Attach*. The card has still left the pile
+         it was in, because the owner is about to move it and the window should not go on
+         offering a card that has been sent somewhere. If the owner never answers it is
+         missing from the mirror until the next full board state, which is what every
+         lost event costs here (see the note above).
+      */
+      if (!placeOptimistically(card, action, source)) {
+         moved = true
+         continue
+      }
 
       moved = true
    }
@@ -418,7 +437,70 @@ function optimisticMove (cards, source, action) {
    return moved
 }
 
-/* the pile of the far half an action lands in, for the ones this board can mirror */
+/*
+   Put one card where the owner's event will put it, on this board's mirror.
+
+   Returns whether it landed anywhere. The two into-play zones get a *slot* rather than
+   a pile entry, because that is what a Pokemon in play is, and the slot is made with
+   the same `slot()` helper the mirror's own event handler uses - so the card drawn here
+   is the shape every other card in play has, down to the piles its energy and tools
+   live in.
+*/
+function placeOptimistically (card, action, source) {
+   switch (action) {
+      case OPP_ACTIONS.BENCH: {
+         dedupeSlot(card)
+         defaultOpponent.bench.add(slot(card))
+         return true
+      }
+
+      case OPP_ACTIONS.ACTIVE: {
+         dedupeSlot(card)
+         const current = defaultOpponent.active.get()
+         defaultOpponent.active.set(slot(card))
+         /* the owner's own move sends the outgoing Active to the Bench - `toActive` */
+         if (current) defaultOpponent.bench.add(current)
+         return true
+      }
+
+      default: {
+         const target = optimisticTarget(action)
+         if (!target || target === source) return false
+
+         if (action === OPP_ACTIONS.DECK_BOTTOM) target.unshift(card)
+         else target.push(card)
+         return true
+      }
+   }
+}
+
+/*
+   Take a mirror's copy of a card out of play, if it is in play.
+
+   The seam the optimistic move opens, and the whole of what closes it: this board put
+   the card on the Bench with an id of its own, and the owner's `cardsBenched` then
+   arrives carrying a *different* id for the same card. `opponent.js`'s handler adds
+   that slot without looking for the card first, so without this the board ends up with
+   two Pokemon holding one card - a phantom sitting beside the real one until the next
+   full board state. Called with `(card)` it clears the way for a placement; called with
+   `(card, id)` it does nothing when the slot already there is the owner's own, which is
+   what makes a replayed event a no-op rather than a second removal.
+*/
+function dedupeSlot (card, keepId = null) {
+   const bench = defaultOpponent.bench
+   for (const s of [ ...bench.get() ]) {
+      if (s.id !== keepId && holdsCard(s, card)) bench.remove(s)
+   }
+
+   const active = defaultOpponent.active.get()
+   if (active && active.id !== keepId && holdsCard(active, card)) defaultOpponent.active.set(null)
+}
+
+function holdsCard (s, card) {
+   return s.pokemon.get().some((c) => c._id === card._id)
+}
+
+/* the pile of the far half an action lands in, for the ones that are a pile at all */
 function optimisticTarget (action) {
    switch (action) {
       case OPP_ACTIONS.HAND:
@@ -426,12 +508,13 @@ function optimisticTarget (action) {
       case OPP_ACTIONS.LZ:
       case OPP_ACTIONS.PRIZES:
       case OPP_ACTIONS.TABLE:
+      case OPP_ACTIONS.STADIUM:
       case OPP_ACTIONS.DECK_TOP:
       case OPP_ACTIONS.DECK_BOTTOM:
       case OPP_ACTIONS.DECK_SHUFFLE:
          return oppPile(action === OPP_ACTIONS.DECK_TOP || action === OPP_ACTIONS.DECK_BOTTOM || action === OPP_ACTIONS.DECK_SHUFFLE ? 'deck' : action)
       default:
-         /* into play, the Stadium, and anything new: wait for the owner */
+         /* Bench, Active, Attach and anything new - see `placeOptimistically` */
          return null
    }
 }

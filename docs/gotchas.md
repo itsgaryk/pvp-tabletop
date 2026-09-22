@@ -1172,6 +1172,31 @@ where it sat, so a check that grabbed its centre aimed the pointer at the row ra
 card and reported the drag as failed. `img.card`'s own parent is the element drawn at a card's
 size; a check about a *card* should measure the card.
 
+**A panel rendered *inside* the board floats over the zones it is not part of, and swallows a drop aimed
+at one.** A Reveal or a Look window is written in `Board.svelte` beside the zones it covers, so it is a
+*descendant* of `.gameboard`; `position: fixed` takes it out of the flow but not out of the tree, and the
+bench zone's own box reaches up underneath it. A drag from the window down to the other player's Bench
+therefore has the pointer over the window for the whole gesture, and `document.elementFromPoint` answers
+with the window's own grid: the zone never gets `pointerenter`, never highlights, and never gets the
+`pointerup` that would make the request. From the outside that reads as *"dragging into the opponent's
+bench or active zone closes the window"* - the drop landed on the window, which did nothing with it, and
+the window was still there afterwards. The fix is a `pointer-events: none` class taken while `$dragging`
+is true, so the zones underneath are the ones under the pointer for the length of the drag.
+
+The tell is a drag that *starts* inside a panel: **ask what `elementFromPoint` says where the drop is
+aimed, not what the zone's own box says.** The two disagree here, and the zone's box is the one that
+lies - a check that measures the target's rectangle is measuring the thing that is covered.
+
+**An optimistic move that lands a card in play has to be de-duplicated on the way back.** A card put on
+the Bench has to appear at once, so the acting board makes a slot for it - but a Pokemon in play *is* a
+slot, and the owner's own `cardsBenched` carries **its** slot id, which the acting board cannot know in
+advance. The mirror's handler adds a slot for whatever id the event names without looking for the card
+first, so the board drew two Pokemon holding one card, side by side, until the next full board state.
+The owner's handler now takes the mirror's copy of the card out of play before it adds the owner's slot:
+the stand-in is what makes the move feel instant, and the owner's event is what makes it true. The
+general shape - **an optimistic move that must invent an identity the authority has not sent yet needs
+the authority's handler to be able to recognise and replace its own invention.**
+
 **A batch that is a copy of a list keeps offering cards that have already left.** The window a
 Reveal opens is a view of the top of a deck, so the obvious implementation is to take the cards
 at reveal time and render that list. The symptom is nothing like a bug: the player right-clicks
