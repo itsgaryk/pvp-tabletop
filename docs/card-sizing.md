@@ -79,21 +79,36 @@ Two things that look like this rule are deliberately not it:
   enough to tie with `img.card` and no higher — see the paragraph above for what the
   selector costs without it.
 
-**The table's stack is the one place a card is sized by its zone's *width* alone.** It is
-the exception that proves the rule above rather than one to it: a stack taller than its cell
-is *scrolled* by the cell ([board.md](board.md) has the table itself), so there is no height
-for a card to fit into, and what the zone has to give is its width — less the pile's own
-`p-1`, a `--card-gap` so the cascade does not touch the edge, and the bar the zone scrolls
-with, times `--table-card-share`, which is the one card of a cascade that is `1 + 20/105`
-cards wide. It is stated once, in `global.css`, because the two tables are one stack drawn
-in a cell they share. Its cards are the reason the class is worn per card rather than handed
-down from the board: `img:where(.zone-card).card` fits a card *both* ways, which a card in a
-scrolling stack must not be. Before this, a table's cards were the board's fixed
-`--card-width` — 105px of a 123px cell at 1277x821 — so the cascade was wider than the zone
-it was in and reached over its neighbours at any small window, and a dozen cards ran
-straight through the zone's border and over the rows around it. `--card-width` is still what
-a card is where no zone has sized it: a dialog's, and a slot's fallback outside the two
-zones that hold them.
+**The table's stack draws the same card as every other zone, and it is the bar that makes it
+a rule of its own.** A card in the table is what a card in the deck or the discard is —
+whichever of the zone's width and height is reached first, less `--card-gap` — with one thing
+taken off the width: the bar the stack scrolls with. That bar is real room in a zone that
+scrolls *down*, the way the hand's row takes the same bar's thickness off its height, and it
+is reserved whether or not the bar is showing, so the cards are one size and stay that size
+as a stack grows past the cell.
+
+It is written as `--table-card-width` in `global.css` rather than left to
+`img:where(.zone-card).card`, which draws exactly that card, because the cascade's *step* is a
+share of the card and a share needs a length to be a share of: `--table-step` is 35/105 of it
+and that is what the offsets the markup places the stack with read. A pile's card is placed by
+nothing, so it needs no name for its size. One rule for both halves, because the two tables
+are one stack drawn in a cell they share; the check (`tools/zone-fit-check.mjs`) asks the deck
+for its card and asserts the table's is the same rule's answer, so the two cannot drift.
+
+**The cascade steps down and only down.** Every second card used to step 20px to the right, and
+that is what made the cards small: a stack wider than one card has to leave the extra width out
+of the card, so a card was `105/125` of the zone to make room for a step nothing else on the
+board has. The size is worth more than the zig-zag, and a stack that is *wider* than the card it
+is made of is a stack that cannot be kept inside its zone at all — which is how it was reported.
+What the stack scrolls as is `(n - 1)` steps of `--table-step` down, which the zone holds by
+scrolling, and the cell is as tall as it is.
+
+**Before any of this**, a table's cards were the board's fixed `--card-width`: 105px of a 123px
+cell at 1277x821, positioned by 35px and 20px offsets, so the cascade was wider than the zone it
+was in and reached over its neighbours at any small window, and a dozen cards ran straight
+through the zone's border and over the rows around it. `--card-width` is still what a card is
+where no zone has sized it: a dialog's, and a slot's fallback outside the two zones that hold
+them.
 
 **A marker on a card is a share of the card, digits included.** The damage counter's circle
 has always been one (`--slot-width / 2.5`, in both slots) while the number in it was the
@@ -246,8 +261,8 @@ Two things are not sized this way, and each is deliberate:
 - **A zone's name** is sized by its own words. Nor is it a container: a size container
   is laid out as if it had no contents, which for a name whose whole size *is* its
   contents is a name that collapses to nothing.
-- **The table's stack** — its cards are the zone's *width* and not its height, because a
-  stack taller than the cell is scrolled by the cell rather than fitted into it (above, and
-  [board.md](board.md)). Its cards are read by looking at them, at the size its zone gives
-  them, and it is the one place on the board holding cards that is not a slot (see the bench
-  and the active spot for what a slot does instead).
+- **The table's stack** — its cards are the zone's card like any pile's, and the one thing
+  taken off that is the bar the stack scrolls with; what makes it a stack rather than a pile is
+  that the cell scrolls it rather than fitting it, and that its cascade's step down is a share
+  of the card (above, and [board.md](board.md)). It is the one place on the board holding cards
+  that is not a slot (see the bench and the active spot for what a slot does instead).

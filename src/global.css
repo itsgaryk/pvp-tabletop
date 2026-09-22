@@ -174,26 +174,27 @@ img:where(.zone-card).card {
    --slot-card-share: calc(105 / 139);
 
    /*
-      The table's stack, which is the one place a card is sized by its zone's *width* alone:
-      the stack is a cascade rather than a pile that draws one card, a stack taller than the
-      cell is scrolled by the zone rather than fitted into it (see board/Temp.svelte), and a
-      cascade a little wider than a card has to fit the width it is given.
+      The table's stack. Its cards are **the card every other zone gives** - whichever of
+      the zone's width and height is reached first, less `--card-gap` - with one thing taken
+      off the width: the bar the stack scrolls with, which is real room in a zone that
+      scrolls down. (The hand's row takes the same bar's thickness off its height, for the
+      same reason.)
 
-      What that width gives a card is what is left of the zone after the pile's own `p-1` on
-      both sides, a `--card-gap` so the cascade does not touch the zone's edge, and the bar
-      the zone scrolls with - times this share, which is the one card of the cascade: every
-      second card steps `--table-offset` to the right, so the cascade is `1 + 20/105` cards
-      wide and one card is `105/125` of the room. Both steps are shares of the card for the
-      reason the fan's are: a cascade that kept its pixels while its cards shrank would be a
-      cascade of a different size than the cards it is made of.
+      It is written here, as a variable, rather than left to `img:where(.zone-card).card`,
+      which draws exactly this card, because the cascade's *step* is a share of the card and
+      a share needs a length: `--table-step` is 35/105 of this, and it is what the offsets
+      the markup places the stack with read. A pile's card is placed by nothing, so it needs
+      no name for its size.
 
-      One rule for both halves, because they are one stack drawn in a cell they share (see
-      docs/board.md), and `100cqw` is that cell - the nearest size container.
+      One rule for both halves, because the two tables are one stack drawn in a cell they
+      share (see docs/board.md), and `100cqw`/`100cqh` are that cell - the nearest size
+      container.
    */
-   --table-card-share: calc(105 / 125);
-   --table-card-width: calc((100cqw - 8px - var(--card-gap) - var(--scrollbar)) * var(--table-card-share));
+   --table-card-width: min(
+      calc(100cqw - 2 * var(--card-gap) - var(--scrollbar)),
+      calc((100cqh - 2 * var(--card-gap)) * var(--card-ratio))
+   );
    --table-step: calc(var(--table-card-width) * calc(35 / 105));
-   --table-offset: calc(var(--table-card-width) * calc(20 / 105));
 
    /*
       The bar a zone that scrolls draws, as the thickness of it: a height for the row that

@@ -19,14 +19,15 @@ time this trap has bitten.** `max-width: 100%` on every `img` (the reset) plus a
 is a smaller image — written up below for the table's own wrapper, and again for a slot whose
 fan reserved more room than its zone had. Putting the table's stack into a flex line to centre
 it is the same trap from the other side: the stack is `width: max-content`, a flex item is
-shrinkable by default, and the cascade plus the 20px it reserves for its every-second-card step
-did not fit the cell — so the *line* squeezed the stack, and the cards followed it down through
-their own `max-width: 100%`. The symptom was a table of cards **94.8px wide in a cell with room
-for 105**, which is subtle enough to read as "the cards look a bit small" rather than as a bug.
-`flex: none` on the stack is the fix, and the general rule is the one the card-sizing rules are
-built on: whatever a card is *drawn in* may not resize it. Three appearances of one trap is not
-a coincidence — it is what a percentage `max-width` does on a board whose every container is a
-box that some later change of layout can narrow.
+shrinkable by default, and the cascade plus the step it reserved to the right did not fit the
+cell — so the *line* squeezed the stack, and the cards followed it down through their own
+`max-width: 100%`. A table of cards a few per cent narrower than the card its zone gives is
+what that looks like, which reads as "the cards look a bit small" rather than as a bug — and it
+was found by measuring a card against the size its own zone should have given it, never by
+looking at it. `flex: none` on the stack is the fix, and the general rule is the one the
+card-sizing rules are built on: whatever a card is *drawn in* may not resize it. Three
+appearances of one trap is not a coincidence — it is what a percentage `max-width` does on a
+board whose every container is a box that some later change of layout can narrow.
 
 **A synthetic `keydown` with no `code` throws inside the board's own handler, and the key then
 does nothing at all.** The board reads the digit keys out of `e.code` — `parseInt(e.code.slice(-1))`

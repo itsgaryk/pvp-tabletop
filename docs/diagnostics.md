@@ -252,8 +252,9 @@ What it measures, through the browser's own geometry and hit testing:
   one that hides itself), and both ends of it are reachable — the first card at the top, the
   last at the bottom, which is the assertion that catches a centred stack hiding its own start
 - nothing of the stack is the topmost element at any of the four points just outside the zone
-- the cards are a share of the cell's width, the whole cascade fits the room the zone has, and
-  no card is cropped
+- the cards are **the card the zone gives** — the same rule the deck's own card is measured
+  against on the same board, so the two cannot drift — and the whole cascade fits the room the
+  zone has, so no card is cropped
 - the damage counter's circle *and* its digit are shares of the card in both zones that hold a
   Pokemon — the same ratios at 1277x821 and at 900x620 — and the digit fits inside the circle
   at the smaller one

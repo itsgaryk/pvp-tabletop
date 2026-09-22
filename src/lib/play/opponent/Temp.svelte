@@ -72,7 +72,7 @@
    <Vertical>
       <div class="table-zone" on:contextmenu={onCtxStack}>
          <div class="table-stack relative w-max"
-            style="margin-bottom: calc({$table.length - 1} * var(--table-step)); margin-right: {$table.length > 1 ? 'var(--table-offset)' : '0px'}"
+            style="margin-bottom: calc({$table.length - 1} * var(--table-step))"
             on:dblclick={() => openOppPile(table)}>
 
             {#each $table as card, i (card._id)}
@@ -81,7 +81,7 @@
                   class:selected={$solo && $cardSelection.includes(card)}
                   class:dragged={$solo && $dragging && $cardSelection.includes(card)}
                   src="{cardImage(card, 'xs')}" alt={card.name} draggable="false"
-                  style="bottom: calc({-i} * var(--table-step)); left: {i % 2 !== 0 ? 'var(--table-offset)' : '0px'}; z-index: {$solo && $cardSelection.includes(card) ? 12 : i + 1}"
+                  style="bottom: calc({-i} * var(--table-step)); z-index: {$solo && $cardSelection.includes(card) ? 12 : i + 1}"
                   on:click={(e) => onClick(e, card)}
                   on:contextmenu={(e) => onCtx(e, card)}
                   use:dnd={cardDnd(card)}>

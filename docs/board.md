@@ -115,18 +115,19 @@ The `X` key still takes the whole table to hand with nothing selected, which is 
 move that key is for; it leaves nothing selected behind it.
 
 **The stack is a cascade, and the cell holds it by scrolling it.** A card is laid over the
-one above at a step that is a share of the card — 35/105 down, and every second one 20/105
-to the right — so the stack reads as a cascade at any size, and the cards are the *width*
-of the zone they are in (`--table-card-width`, one rule in `global.css` for both halves,
-because the two tables are one stack drawn in a cell they share). A card is not also fitted
-to the cell's height: the cell is about two cards tall at 1277x821 and a game can put a
-dozen on the table, so a stack taller than the cell is scrolled by it
+one above at a step *down* that is a share of the card (35/105), and only down: a step to the
+right would make the stack wider than the card it is made of, and a card on the table is **the
+card every other zone gives** — the zone's width or its height, whichever is reached first,
+less the bar the stack reserves for scrolling (`--table-card-width`, one rule in `global.css`
+for both halves, because the two tables are one stack drawn in a cell they share). A card is
+not also fitted to the cell's height: the cell is about two cards tall at 1277x821 and a game
+can put a dozen on the table, so a stack taller than the cell is scrolled by it
 (`Vertical.svelte`), with the bar drawn only while there is something to scroll and always
 visible when there is. What that replaced was worse than untidy: the cascade was drawn
 straight through the zone's border and over the rows around it, and the cards were a fixed
-105px wide, so at a small window the stack was wider than the cell it is in and reached
-over its neighbours. The stack is centred in the cell while it fits — and *gives that up*
-when it does not (`safe center`), because a centred box that overflows a scroll container
+105px of their own, so at a small window the stack was wider than the cell it is in and
+reached over its neighbours. The stack is centred in the cell while it fits — and *gives that
+up* when it does not (`safe center`), because a centred box that overflows a scroll container
 has its first cards above the start edge, where no wheel and no bar reaches them.
 
 **Reading a pile** — *View All* on a deck, discard or lost zone — is a grid of every card

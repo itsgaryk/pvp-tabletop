@@ -226,28 +226,32 @@ check('and a pile front is the only image in its component', wrongFronts.length 
    wrongFronts.join(', '))
 
 /*
-   The table's stack is the one stack of cards that is not fitted *both* ways: a stack
-   taller than the cell is scrolled by its zone rather than shrunk into it (see
-   board/Temp.svelte), so its cards are the zone's **width**, and they are one
-   `--table-card-width` in global.css that both halves take - the two tables are one stack
-   drawn in a cell they share. What must not come back is the board's fixed `--card-width`,
-   which is what a card is where no zone has sized it, and it is what a table's cards were
-   before: a card too wide for its zone at a small window, drawn over its neighbours.
+   The table's stack draws **the card every zone draws** - the same `min()` of the zone's
+   width and its height, less `--card-gap` - with one thing taken off the width: the bar the
+   stack scrolls with. It is written as a variable rather than left to
+   `img:where(.zone-card).card` because the cascade's step is a share of the card, and a
+   share needs a length to be a share of. What must not come back is the board's fixed
+   `--card-width`, which is what a table's cards were before: a card of its own size rather
+   than the zone's, too wide for the cell at a small window and drawn over its neighbours.
 */
 const tables = zoneFiles.filter((f) => /[\\/]Temp\.svelte$/.test(f.path))
 
 const tableVars = [ ...globalCode.matchAll(/--table-card-width:\s*([^;]+);/g) ]
 check('global.css declares the table\'s card size once', tableVars.length === 1, `${tableVars.length} declarations`)
-check('and it still spends the zone\'s width, the bar and the cascade\'s overhang',
-   tableVars.length === 1 && squash(tableVars[0][1]).includes('100cqw') &&
-   /--scrollbar/.test(tableVars[0][1]) && /--table-card-share/.test(tableVars[0][1]))
+check('and it is the zone\'s card, less the bar the stack scrolls with',
+   tableVars.length === 1 &&
+   squash(tableVars[0][1]).includes(squash('min(calc(100cqw - 2 * var(--card-gap) - var(--scrollbar))')) &&
+   /--card-ratio/.test(tableVars[0][1]) && /100cqh/.test(tableVars[0][1]))
+check('and the cascade\'s step is a share of it rather than a pixel',
+   /--table-step:\s*calc\(var\(--table-card-width\)\s*\*/.test(globalCode) && !/--table-offset/.test(globalCode),
+   'a step to the right would make the stack wider than the card it is made of')
 
 const tablePoints = tables.filter((f) => /width:\s*var\(--table-card-width\)/.test(f.source))
 check('both tables take their card size from it', tables.length === 2 && tablePoints.length === 2,
    `${tablePoints.length} of ${tables.length} tables`)
 
 const tableFronts = tables.filter((f) => !/<img[^>]*zone-card/.test(f.source))
-check('and neither table wears .zone-card, which fits a card both ways',
+check('and neither table wears .zone-card, whose size has no name for a step to be a share of',
    tableFronts.length === tables.length)
 const gameBlock = /\.game\s*\{([\s\S]*?)\n\s*\}/.exec(boardCode)
 check('while the board\'s --card-width is still the fixed size a card is where no zone sized it',
