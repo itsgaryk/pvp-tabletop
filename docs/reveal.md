@@ -19,6 +19,38 @@ nothing is moved, nothing is drawn, and closing the window needs no cleanup at a
 — the deck is exactly where it was, in the same order, until *Close & Shuffle* says
 otherwise.
 
+## Why this is not "Reveal Hand"
+
+The board already had a *Reveal Hand*, and it is a different thing wearing a similar
+name. It is worth writing down, because the obvious next question is why two features
+that both "show cards to the other player" share no components.
+
+**Reveal Hand is a standing flag on a zone; a Reveal is one act about a deck.** The
+flag is `handRevealed` (one of the three per-zone visibility flags, see
+[board.md](board.md)), and it is read in exactly three places: `board/Hand.svelte`
+toggles it and shares `handToggle`, `opponent/Hand.svelte` reveals that hand with it,
+and `Board.svelte` tints the hand row. It shows nothing by itself — the opponent's
+hand is *always on their board*, and the flag only decides whether those cards are
+drawn as faces or card backs, in place, until it is switched off again. There is no
+window, no set of cards, and no ending: nothing to close and nothing to shuffle.
+
+| | Reveal Hand | Reveal Top X / Look at Top X |
+| --- | --- | --- |
+| what it is | a standing per-zone flag | one act about a deck |
+| what it shows | every card in a zone, always there | the top X, named once, as ids |
+| where it is drawn | in place, in the zone | a window, over the board |
+| how it ends | toggled off | Close / Close & Shuffle |
+| reaches whom | the other player, via `handToggle` | a batch, via `cardsRevealed` |
+| may be acted on | no — they are not yours to move | yes, by the permission above |
+
+So there was no component to reuse: the flag's three readers are a toggle, a boolean,
+and a CSS class, and none of that is a pile window. What *is* shared is the machinery
+underneath both: the same `Card` a pile's view draws, the same `Popup`, the same
+`cardback`-or-face decision at the card, and the same rule that a card of the other
+player's stays theirs. The window a Reveal opens is deliberately the panel
+`Inspection.svelte` is, because what it shows is the same kind of thing — cards held by
+a pile — while Reveal Hand has no panel to reuse in the first place.
+
 ## The permission: "allowed to take action on this opponent card"
 
 A card a Reveal or a Look is showing may be **acted on as the other player's**. It
