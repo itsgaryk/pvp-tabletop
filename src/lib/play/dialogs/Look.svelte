@@ -71,9 +71,17 @@
       {/each}
    </div>
 
+   <!--
+      Close, and Close &amp; Shuffle while there is still a shuffle to make. A Look is
+      private, so only this player ever sees the pair - but the flag is the batch's,
+      the same field the Reveal window reads, so the two windows cannot disagree about
+      whether the deck has been shuffled.
+   -->
    <svelte:fragment slot="buttons">
       <button class="action" on:click={() => popup.close()}>Close</button>
-      <button class="action" on:click={lookCloseAndShuffle}>Close &amp; Shuffle</button>
+      {#if !$look?.shuffled}
+         <button class="action" on:click={lookCloseAndShuffle}>Close &amp; Shuffle</button>
+      {/if}
    </svelte:fragment>
 </Popup>
 

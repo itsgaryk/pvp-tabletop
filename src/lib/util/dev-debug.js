@@ -55,6 +55,9 @@ export async function devDebug () {
             revealOpen: reveal.revealOpen.get(),
             lookOpen: reveal.lookOpen.get(),
             ownerHere: reveal.revealOwnerHere(),
+            /* which batch is still following its deck - see `watched` in reveal.js */
+            watched: reveal.watched(),
+            trailed: reveal.trace.length,
             trail: reveal.trace
          }
       },

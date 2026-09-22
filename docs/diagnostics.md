@@ -193,6 +193,13 @@ opponent's window never opened), and an action taken on another player's card wa
 performed against the wrong board's stores (so the card landed nowhere while both logs
 said it had moved). Both are written up in [gotchas.md](gotchas.md).
 
+**Run it once, on a tree nobody is editing.** Vite reloads a page the moment a file it
+serves changes, and a board mid-reload is an empty board — so a run started while
+something is being written reports a cascade that begins with a plausible-looking
+"2 cards where 3 were revealed" and ends with rooms that look dead. One edit, then one
+run; two green runs in a row mean nothing if something was written between them
+([gotchas.md](gotchas.md)).
+
 ## Does a selected prize glow?
 
 ```sh

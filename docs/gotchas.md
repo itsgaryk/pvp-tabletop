@@ -865,6 +865,53 @@ levels away. The fix is the near half's shape, which had always rendered its men
 unconditionally and gated the *call* instead (`board/Pile.svelte`): a menu is an overlay on a
 zone, not the zone.
 
+**A pile changed silently, because `update` was handed the array it already had.** Every method of
+`pile()` in `src/lib/stores/custom/cards.js` used to mutate the array in place and `return v`:
+
+```js
+push: (val) => update(v => { v.push(val); return v })
+```
+
+Svelte's `writable` does not notify when the value it is handed equals the one it holds, and for an
+array that means the same reference — so **`push` never told a subscriber anything**. The only
+notifications a deck produced were the two `clear()` calls at each end of a load, both of them
+while it was *empty*. The rest of the app got away with it because a board re-renders for other
+reasons in the same click, so a badge or a row that read `$deck` and was re-rendered anyway looked
+live.
+
+What did not get away with it is a subscription: the view a Reveal or a Look keeps of the deck it
+is showing was short by every card that arrived after it looked, and no amount of waiting fixed it
+— the deck was complete on both boards and the window stayed at two cards. Three rounds of browser
+testing went into "the mirror must be missing a card" before a trace showed the mirror holding all
+three ids and the *view* holding two.
+
+Every method that changes a pile now hands the store a **new array** (`slots().add`/`remove` with
+it), which is the rule a store is built on: **a store that does not notify is not a store.** The
+tell is a component that reads a pile and is *usually* right — that is not reactivity, it is luck
+about what else changed.
+
+**`tools/reveal-check.mjs` cannot be run while the tree is being edited, and its failures look like
+the app's.** Vite hot-reloads or full-reloads a page the moment a file it serves changes, and a
+board mid-reload is an empty board: the check then reports a cascade starting at "the two boards
+disagree about a card" and ending with rooms that look dead. Measured here, the dev server logged
+`[vite] page reload src/lib/stores/reveal.js` at the exact minute a run collapsed, and a run on a
+quiet server minutes later was green with no code change at all.
+
+It is worth writing down because the failure is *shaped* like a real fault — the first assertion to
+go is a genuine-looking "2 cards where 3 were revealed" — and because the obvious response (run it
+again) is what hides it: the second run starts from pages that are fresh. One edit, then one run;
+and a green run only means something if nothing was written between it and the one before.
+
+**A mirror never mirrors a private deck's order, and a check must not ask it to.** A shuffle of a
+deck is not an event that moves cards, so nothing carries the new order to a mirror: `shareShuffle`
+tells the other board *that* the deck was shuffled and that board shuffles its own copy. The two
+boards therefore hold the same cards in different orders, and only the owner's order is the real one
+— which is the point, since a deck's order is exactly the information the opponent is missing.
+
+The first version of that assertion compared the two decks id by id and failed on 47 vs 47: the
+same cards, a different order, and nothing wrong. What holds is the invariant — a shuffle moved
+nothing in or out of the deck — and that is what is asserted now.
+
 **A shortcut that re-implements a menu entry is a second copy of that entry's rule, and the
 copy is the one that goes stale.** `V` is View All of the deck, and so is the deck menu's own
 *View All* entry — but they were not the same code. The menu entry called the deck's

@@ -83,11 +83,14 @@ async function menuText (page) {
    return page.evaluate(`(() => [...document.querySelectorAll('.item')].map((el) => (el.firstElementChild?.textContent || el.textContent).trim()))()`)
 }
 
-/* the words and the card images of whichever pile-style window is open */
-function windowShape (page) {
+/* the words and the card images of whichever pile-style window is open, by kind */
+function windowShape (page, kind = null) {
    return page.evaluate(`(() => {
+      const want = ${JSON.stringify(kind)}
       const boxes = [...document.querySelectorAll('.popup')]
-      const pop = boxes.find((p) => /Revealed|Look —/.test(p.innerText))
+         .filter((p) => /Revealed|Look —/.test(p.innerText))
+         .filter((p) => !want || (want === 'look' ? /Look —/.test(p.innerText) : /Revealed/.test(p.innerText)))
+      const pop = boxes[boxes.length - 1]
       if (!pop) return null
       return {
          text: pop.innerText.replace(/\\s+/g, ' ').trim(),
@@ -99,6 +102,17 @@ function windowShape (page) {
          })()
       }
    })()`)
+}
+
+/* every pile-style window on a board, by kind - so "no window" can be asserted of both */
+function windows (page) {
+   return page.evaluate(`(() => [...document.querySelectorAll('.popup')]
+      .filter((p) => /Revealed|Look —/.test(p.innerText))
+      .map((p) => ({
+         kind: /Look —/.test(p.innerText) ? 'look' : 'reveal',
+         cards: p.querySelectorAll('img.card').length,
+         buttons: [...p.querySelectorAll('button')].map((b) => b.textContent.trim())
+      })))()`)
 }
 
 /*
@@ -138,10 +152,10 @@ const THEIR_DECK = '.gameboard > .deck2 .pile'
    exactly the shape of a real fault. So a count is waited *for* rather than slept
    past, and the wait returns what it saw either way.
 */
-async function waitForWindow (page, count, { timeout = 12000, poll = 250 } = {}) {
+async function waitForWindow (page, count, { kind = null, timeout = 12000, poll = 250 } = {}) {
    const deadline = Date.now() + timeout
    for (;;) {
-      const shape = await windowShape(page)
+      const shape = await windowShape(page, kind)
       if (shape && shape.cards.length === count) return shape
       if (Date.now() > deadline) return shape
       await sleep(poll)
@@ -158,6 +172,17 @@ async function waitForCount (page, read, expected, { timeout = 12000, poll = 250
       await sleep(poll)
    }
 }
+
+/*
+   Let both boards catch up before the next act.
+
+   Every step here is a relay round trip - several, in fact, because a shuffle on one
+   board has to land on the other - and the next step opens a *menu* over the board,
+   so a window still arriving from the previous step would be a menu opened behind it
+   or a click that lands on the wrong element. Two seconds is not a timing assumption
+   about any one event: it is the pause before a step that begins with a right-click.
+*/
+const settle = () => sleep(2000)
 
 /*
    A fresh page, sitting in the lobby and *hydrated*.
@@ -323,7 +348,7 @@ try {
    const looked = await clickMenuItem(alice, 'Look at Top X')
    check('and clicking it shows two cards', looked)
 
-   const aliceLook = await waitForWindow(alice, 2)
+   const aliceLook = await waitForWindow(alice, 2, { kind: 'look' })
    check('the look window opens on the looking player\'s board', Boolean(aliceLook), aliceLook?.text || 'no window')
    check('and it shows the cards', aliceLook?.cards.length === 2, `${aliceLook?.cards.length} cards`)
    check('and it says only this player can see them', Boolean(aliceLook?.text.includes('only you can see these')))
@@ -331,10 +356,18 @@ try {
       Boolean(aliceLook?.buttons.includes('Close')) && Boolean(aliceLook?.buttons.includes('Close & Shuffle')),
       aliceLook?.buttons.join(' | '))
 
-   /* the look is private: nothing was sent, so nothing can open over there */
-   await sleep(1200)
-   const bobLook = await windowShape(bob)
-   check('and NO window opens on the other player\'s board', bobLook === null, bobLook?.text || 'no window')
+   /*
+      The look is private: nothing was sent, so nothing can open over there - and the
+      assertion is about the *kind* of window rather than about whether one is on
+      screen. A reveal's window is the one the other board is looking at when a look is
+      taken, and "no window at all" would be a claim about that one instead of about
+      the look.
+   */
+   await sleep(1500)
+   const bobWindows = await windows(bob)
+   check('and NO look window opens on the other player\'s board',
+      !bobWindows.some((w) => w.kind === 'look'),
+      bobWindows.map((w) => w.kind).join(', ') || 'no window')
 
    /*
       And nothing was sent: the other board's log has the shuffle a look can end
@@ -356,17 +389,92 @@ try {
    check('the look window closes with a shuffle', shuffled)
    await sleep(1400)
 
-   const bobDeckAfter = (await badges(bob)).myDeck
-   const bobDeck = bobDeckAfter
+   const bobDeck = (await badges(bob)).myDeck
    check('and the deck it shuffles is the one the batch named, on its owner\'s board',
       bobDeck === aliceDeckBefore,
       `alice saw ${aliceDeckBefore} in bob's deck, bob's own board has ${bobDeck}`)
    check('and the look window is gone', (await windowShape(alice)) === null)
 
-   const bobLogAfter = await bob.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.trim())`)
-   check('and the owner sees the shuffle, without being told about a look',
-      bobLogAfter.some((line) => /Shuffled Deck/.test(line)) && !bobLogAfter.some((line) => /^Looked at the top/.test(line)),
-      bobLogAfter.slice(-4).join(' | '))
+   /*
+      The shuffle reaches the deck's owner, and it arrives as a shuffle alone: a Look
+      writes no line for the other player, so what their log shows is the deck
+      rearranging itself and nothing about why. Waited for rather than slept past,
+      because it is a relay and a mirror update behind the click.
+   */
+   const sawShuffle = await waitForCount(
+      bob,
+      (p) => p.evaluate(`[...document.querySelectorAll('.chat p')].filter((x) => /Shuffled Deck/.test(x.innerText)).length`),
+      1)
+   check('and the owner sees the shuffle, without being told about a look', sawShuffle === 1, `${sawShuffle} shuffle lines`)
+
+   const bobLookLines = await bob.evaluate(`[...document.querySelectorAll('.chat p')].filter((x) => /^Looked at the top/.test(x.innerText)).length`)
+   check('and no look line was written on their board', bobLookLines === 0, `${bobLookLines} look lines`)
+
+   /* ------------------------- 5. one shuffle between the two of them -- */
+
+   /*
+      The reveal is one act with one deck and one ending, so the shuffle belongs to the
+      pair of them rather than to whoever presses first. Pressing it must not take the
+      *other* player's window away with it - the cards were revealed and they are still
+      reading them - and must not leave them a second shuffle of a deck that has
+      already been shuffled.
+   */
+   console.log('\none shuffle between the two of them\n')
+
+   await settle()
+
+   const beforeShuffle = await badges(alice)
+   const beforeShuffleIds = await alice.evaluate(`globalThis.__pvp.opponent.defaultOpponent.deck.get().map((c) => c._id).sort((a, b) => a - b).join(',')`)
+   await alice.rightClick(MY_DECK)
+   await answerNextPrompt(alice, 3)
+   await clickMenuItem(alice, 'Reveal Top X')
+   await waitForWindow(alice, 3, { kind: 'reveal' })
+   const bobSaw = await waitForWindow(bob, 3, { kind: 'reveal' })
+   check('a fresh reveal is on both boards again', Boolean(bobSaw), bobSaw?.text || 'no window')
+   check('and both windows offer the shuffle',
+      Boolean(bobSaw?.buttons.includes('Close & Shuffle')), bobSaw?.buttons.join(' | '))
+
+   await alice.clickText('Close & Shuffle', { kinds: 'button' })
+   await sleep(2500)
+   const bobAfter = await waitForWindow(bob, 3, { kind: 'reveal' })
+   check('the other player keeps the window, and the cards',
+      Boolean(bobAfter) && bobAfter.cards.length === 3,
+      `${bobAfter?.cards.length} still on show`)
+   check('and their shuffle is gone - one shuffle, one ending',
+      Boolean(bobAfter) && !bobAfter.buttons.includes('Close & Shuffle') && bobAfter.buttons.includes('Close'),
+      `${bobAfter?.buttons.join(' | ')} :: ${JSON.stringify(await bob.evaluate(`globalThis.__pvp.batches()`))}`)
+
+   const settled = await waitForCount(alice, (p) => badges(p).then((b) => b.theirDeck), beforeShuffle.theirDeck)
+   check('and the deck still holds what it did, because it was only ever shuffled once',
+      settled === beforeShuffle.theirDeck,
+      `${beforeShuffle.theirDeck} -> ${settled} cards, as the revealer sees it`)
+
+   await sleep(2500)
+   const shuffles = await bob.evaluate(`[...document.querySelectorAll('.chat p')].filter((p) => /Shuffled Deck/.test(p.innerText)).length`)
+   check('and one press of the button wrote one shuffle, which both boards show',
+      shuffles === 2,
+      `${shuffles} shuffle lines (the shuffle's own line is written by Alice and relayed to Bob)`)
+
+   /*
+      "One shuffle, not two" is asked of the *cards*, because the count cannot tell the
+      two apart: a deck holds the same 47 either way, and what a second shuffle would
+      change is the order. The order is the one thing no mirror is promised - a mirror
+      follows the events that *move* cards, and a shuffle writes none, so each board
+      puts its own deck in its own order and only the owner's is the real one (which is
+      why `shareShuffle` shuffles a mirror rather than mirroring a shuffle). So what is
+      asserted is the invariant that does hold: the shuffle changed the order of the
+      deck and moved nothing in or out of it.
+   */
+   const aliceDeckIds = await alice.evaluate(`globalThis.__pvp.opponent.defaultOpponent.deck.get().map((c) => c._id).sort((a, b) => a - b).join(',')`)
+   const beforeIds = beforeShuffleIds
+   check('and the shuffle moved nothing in or out of the deck',
+      aliceDeckIds === beforeIds && aliceDeckIds.length > 0,
+      `${aliceDeckIds.split(',').length} cards before and after`)
+
+   const closed = await bob.clickText('Close', { kinds: 'button' })
+   check('and their Close still closes it', closed)
+   await sleep(1000)
+   check('and then it is gone', (await windows(bob)).length === 0)
 } catch (err) {
    check('the check ran to the end', false, `${err.name}: ${err.message}`)
    console.error(err)

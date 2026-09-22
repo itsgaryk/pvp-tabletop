@@ -174,15 +174,24 @@ one component. They differ in three ways that are rules rather than styles:
 - **the ending** — Close & Shuffle shuffles the deck the batch names, which for a
   Look is the other player's
 
-Both carry **Close** and **Close & Shuffle**, the pair the deck's own view already
-has, and both are the same fixed-width grid (one full row of 136px cards) so a
-reveal of two opens the same window a reveal of ten does.
+Both carry **Close** and **Close & Shuffle**, they are the same fixed-width grid (one full row of
+136px cards) so a reveal of two opens the same window a reveal of ten does, and **the shuffle
+belongs to the pair of them**: one reveal is one act with one deck and one ending, so once either
+player has shuffled, the other player's window — which is still open, and still showing the cards —
+loses the button and keeps only Close. The same `shuffled` flag rides the `backToDeck` event, so
+which button each player has never depends on which of them pressed it.
 
-A batch is a **live view of the deck it was taken from**, not a frozen list: the
-window shows the batch's cards that are *still in that deck*, and a card that has
-been moved goes from the window and stops answering clicks. A copy of the list taken
-at reveal time would keep offering a card that has already been sent somewhere, and
-the click would do nothing at all, silently.
+A **frozen batch** is what makes that possible, and it is also what keeps the other player's window
+alive at all: a window draws the batch's cards *that are still in the deck*, and a shuffle leaves
+none of them there — so without freezing, the cards would vanish, the window would close itself, and
+the button that would have closed it would go with it. Freezing is an explicit act rather than
+something the view works out for itself, because "a card that was moved" and "a deck that was
+shuffled" are different answers to what is on show.
+
+Until it is frozen, a batch is a **live view of the deck it was taken from**, not a copy: the window
+shows the batch's cards that are *still in that deck*, and a card that has been moved goes from the
+window and stops answering clicks. A copy of the list taken at reveal time would keep offering a
+card that has already been sent somewhere, and the click would do nothing at all, silently.
 
 That view is a **store of its own** (`revealView` / `lookView`), refreshed by a
 subscription to the deck, and it has to be: the card is moved on the *owner's* board,

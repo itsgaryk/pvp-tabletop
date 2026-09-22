@@ -112,6 +112,23 @@ let theirDeckStore = null
 let watching = null
 
 /*
+   Which batch is following its deck, for `tools/reveal-check.mjs` through
+   `$lib/util/dev-debug.js`.
+
+   One slot rather than one per kind, because only one window is ever the live one: a
+   new batch of either kind stops the last one's watch. It is a read of the store's own
+   state, not a rule anywhere - what a shuffle is *about* is asked of the half an event
+   names (see the `backToDeck` handler).
+*/
+export function watched () {
+   const batch = watching?.batch
+   if (!batch) return null
+   if (batch === reveal.get()) return 'reveal'
+   if (batch === look.get()) return 'look'
+   return 'stale'
+}
+
+/*
    Every `applyReveal` this client has run, kept for `tools/reveal-check.mjs`.
 
    A reveal is applied by two different routes - the revealer applies its own batch
@@ -125,31 +142,45 @@ export const trace = []
 const decks = () => ({ mine: myDeckStore, theirs: theirDeckStore })
 
 /*
-   `player.js` registers its deck here. Importing it would be a cycle - player.js
-   imports connection.js, this module imports connection.js and opponent.js, and
-   opponent.js imports player.js - and the note in connection.js is the long
-   account of why a cycle here is a 500 on every page load rather than a subtlety.
+   `player.js` registers its deck here, and `opponent.js` registers the mirror's.
+
+   Neither is an import, and that is the point: player.js imports this module, this
+   module is imported by components on both halves, and importing either board back
+   would point the import graph at itself - which is a 500 on every page load rather
+   than a subtle bug (the note in connection.js is the long account of it). What this
+   module needs is one store from each board, and a registration is one direction of
+   dependency where an import is two.
 */
 export function registerOwnDeck (deck) {
    myDeckStore = deck
 }
 
-/* and the far half's, registered by opponent.js for the same reason */
+/* the far half's deck, registered by opponent.js for the same reason */
 export function registerTheirDeck (deck) {
    theirDeckStore = deck
 }
 
 /*
-   What a window is showing right now: the batch's ids read back off the deck, top
-   first, in the deck's own objects.
+   What a window is showing right now.
+
+   Two answers, and which one applies is the batch's own state:
+
+   - **live**, the ordinary case: the batch's ids read back off the deck, top first,
+     in the deck's own objects. A card that has left the deck is simply not in the
+     answer, which is what makes the window shrink as cards are acted on.
+   - **frozen**, once the reveal has been ended with a shuffle: what was on show at
+     that moment, kept as it is (`freeze`). The cards were revealed and the reveal is
+     still on screen, so they stay - and the other player, whose window is still open,
+     keeps the cards and the one button that closes it.
 
    Ids rather than objects, and that is not a detail: a **mirror holds copies of the
    cards, not the cards themselves** (`applyBoardState` reloads the list and `reset`
    builds fresh objects from it - see `copy` in custom/board.js), so a batch of card
-   objects could not be matched against the board receiving it at all. A card that has
-   left the deck is simply not in the answer, which is what makes the window shrink.
+   objects could not be matched against the board receiving it at all.
 */
 function viewOf (batch) {
+   if (batch.frozen) return batch.frozen
+
    const deck = decks()[batch.ownerHere]
    if (!deck) return []
 
@@ -163,32 +194,58 @@ function viewOf (batch) {
    Put a batch on screen, and keep it there.
 
    `which` is the store the batch belongs to (`reveal` or `look`) and `view` is the
-   list store the window draws. Setting the batch is what subscribes to its deck: the
-   subscription refreshes `view` on every change to that deck, so a card that is moved
-   out of it leaves the window at once - including on the *owner's* own board, where
-   the move writes no event at all (a player's own events are not handed back to
-   them, see relay/client.js), which is the case that made a computed list wrong.
+   list store the window draws. Setting the batch is what starts the two things that
+   keep it honest, and both are needed:
 
-   `watching` guards against a subscription from a replaced batch: two reveals in a
-   row would otherwise both be feeding one window.
+   **A subscription to the deck** refreshes `view` on every change to it, so a card
+   that is moved out of the deck leaves the window at once - including on the
+   *owner's* own board, where the move writes no event at all (a player's own events
+   are not handed back to them, see relay/client.js), which is the case that made a
+   computed list wrong.
+
+   **A poll while the view is incomplete** covers the other direction: a batch that
+   names cards this board does not hold *yet*. The two events that set a reveal up -
+   the full board state and the reveal itself - are separate, and the board state can
+   still be in flight when the reveal lands, so a view read once would be short by
+   those cards for ever. The subscription cannot be relied on to fix it: `pile.push`
+   mutates the array in place and calls `set` with the same object, and Svelte's
+   writable does not notify when a value equals itself, so a deck can be filled
+   without a single notification. The poll asks until the deck has caught up, and
+   stops by itself when it has.
+
+   `watching` guards against a timer or subscription from a replaced batch: two
+   reveals in a row would otherwise both be feeding one window.
 */
 function setBatch (which, view, batch) {
-   if (watching?.stop) watching.stop()
+   stopWatching()
 
    which.set(batch)
    view.set(viewOf(batch))
 
    const deck = decks()[batch.ownerHere]
-   const stop = deck ? deck.subscribe(() => view.set(viewOf(batch))) : null
-   watching = { stop, token: batch }
+   if (!deck) return true
 
+   const stop = deck.subscribe(() => view.set(viewOf(batch)))
+   const timer = setInterval(() => {
+      const now = viewOf(batch)
+      if (now.length === batch.cards.length) return
+      view.set(now)
+   }, 250)
+
+   watching = { stop, timer, batch }
    return true
 }
 
-/* drop the batch and its subscription: nothing is on show any more */
-function clearBatch (which, view) {
+/* drop a batch's subscription and its poll: nothing is on show any more */
+function stopWatching () {
    if (watching?.stop) watching.stop()
+   if (watching?.timer) clearInterval(watching.timer)
    watching = null
+}
+
+/* forget the batch entirely: nothing is on show any more */
+function clearBatch (which, view) {
+   stopWatching()
 
    which.set(null)
    view.set([])
@@ -211,7 +268,7 @@ function clearBatch (which, view) {
 */
 function pileFor (senderOwner, pileName) {
    if (pileName !== 'deck') return null
-   return decks()[senderOwner === 'mine' ? 'mine' : 'theirs'] || null
+   return decks()[senderOwner] || null
 }
 
 /* the sender's word for a half, said in this board's words (and back again) */
@@ -360,27 +417,75 @@ export function closeReveal () {
 /*
    Close a Reveal and shuffle the deck it was about - the button beside Close.
 
-   A reveal shows the top of a deck to the table, and the deck it showed is the
-   one that is now unknown: the *whole* point of the ending is that the order the
-   cards were read in does not survive it. So the shuffle is shared, and the
-   window is closed here whatever the other player does with theirs - the two
-   windows are each player's own reading of the same batch.
+   A reveal shows the top of a deck to the table, and the deck it showed is the one
+   that is now unknown: the *whole* point of the ending is that the order the cards
+   were read in does not survive it. So the shuffle is shared, and this window is
+   closed here - its player has said they are done with it.
+
+   The batch is **frozen** first, and that is what the other player's window depends
+   on. A window draws the batch's cards that are still in the deck, and a shuffle
+   leaves none of them there: without freezing, the cards would vanish from the
+   *other* player's window the instant this button was pressed, and the window -
+   which closes itself when it has nothing to show - would take its own buttons with
+   it. That is a player losing a window they were still reading.
+
+   And it is marked **shuffled**, which is what stops the deck being shuffled twice:
+   the other player's window is still open, and their footer now offers Close alone.
+   The reveal is a shared act, so its ending is one shuffle between the two of them.
 */
 export function revealCloseAndShuffle () {
    const batch = reveal.get()
-   const owner = batch ? localOwner(batch.owner) : null
-   const pile = owner ? pileFor(batch.owner, batch.pileName) : null
-
    revealOpen.set(false)
+   if (!batch) return
+
+   freeze(reveal, revealView)
+   shareShuffle(batch)
+}
+
+/*
+   Shuffle the deck a batch is about, and tell the other player.
+
+   The pile is found with `ownerHere` - the batch's word in *this* board's terms -
+   because that is the field both kinds of batch have: a Reveal's `owner` is the
+   sender's word, while a Look has none at all because a look is always about the far
+   half. `ownerHere` is the same pile either way, which is what makes this work for
+   both.
+
+   The **event** carries the sender's word, which here is `ownerHere` itself: on the
+   board that sends it, "the half I am looking at" is the same string this board would
+   write for the other board's deck, and `backToDeck`'s handler flips it once on the
+   way in (see `localOwner`). Flipping it here as well sent `theirs` where the wire
+   means `mine`, and the receiving board turned it back into `theirs` - so the shuffle
+   was applied to the wrong deck and the batch it was about was never found. It looked
+   like the event arriving with nothing to do.
+*/
+function shareShuffle (batch) {
+   const pile = pileFor(batch.ownerHere, batch.pileName)
    if (!pile) return
 
    pile.shuffle()
-   /*
-      The event carries the *sender's* word for the half, which is the batch's own
-      (see `localOwner`): this board's 'mine' is the other board's 'theirs'.
-   */
-   share('backToDeck', { owner: batch.owner })
+   share('backToDeck', { owner: batch.ownerHere, shuffled: true })
    publishLog('Shuffled Deck')
+}
+
+/*
+   Stop a batch following its deck, keeping what it is showing as it stands, and mark
+   it shuffled.
+
+   Freezing is an explicit act rather than something the view works out for itself,
+   because the two are different answers to "what is on show": a card that is *moved*
+   leaves the window (it is no longer one of the cards that were revealed), while a
+   deck that is *shuffled* does not (the cards were revealed, and the reveal is still
+   on screen). Only the caller knows which of the two it is doing.
+*/
+function freeze (which, view) {
+   const batch = which.get()
+   if (!batch || batch.frozen) return
+
+   batch.frozen = view.get()
+   batch.shuffled = true
+   which.set(batch)
+   stopWatching()
 }
 
 /*
@@ -413,12 +518,11 @@ export function closeLook () {
 export function lookCloseAndShuffle () {
    lookOpen.set(false)
 
-   const pile = pileFor('theirs', 'deck')
-   if (!pile) return
+   const batch = look.get()
+   if (!batch) return
 
-   pile.shuffle()
-   share('backToDeck', { owner: 'theirs' })
-   publishLog('Shuffled Deck')
+   freeze(look, lookView)
+   shareShuffle(batch)
 }
 
 /*
@@ -575,14 +679,31 @@ react('cardsRevealed', (data) => {
 /*
    Their shuffle of the deck a Reveal or a Look was about.
 
-   A shuffle is the *deck's* state rather than a window's, so it is applied
-   whichever windows either player has closed: the order the cards were read in is
-   gone either way, and a mirror that skipped it would hold an order its owner no
-   longer has.
+   A shuffle is the *deck's* state rather than a window's, so it is applied whichever
+   windows either player has closed: the order the cards were read in is gone either
+   way, and a mirror that skipped it would hold an order its owner no longer has.
+
+   It is also the other half of "one shuffle between the two of them": the board that
+   did **not** press the button still has its window open, so its batch is frozen where
+   it stands and marked shuffled - the cards stay on screen and its Close & Shuffle
+   becomes a Close. Without that, the shuffle would empty the window's view, the
+   window would close itself, and the button that would have closed it would go with
+   it.
+
+   Which batch it is about is asked of the **half the event names**, not of "the open
+   batch": a board keeps the last reveal *and* the last look, and either may be the one
+   a window is still showing. So this freezes the batch whose deck the shuffle is of,
+   and a board that has no batch about that deck has nothing to do.
 */
-react('backToDeck', ({ owner }) => {
-   const pile = pileFor(localOwner(owner), 'deck')
+react('backToDeck', ({ owner, shuffled }) => {
+   const here = localOwner(owner)
+   const pile = pileFor(here, 'deck')
    if (pile) pile.shuffle()
+
+   if (!shuffled) return
+
+   if (reveal.get()?.ownerHere === here) freeze(reveal, revealView)
+   else if (look.get()) freeze(look, lookView)
 })
 
 /*

@@ -106,15 +106,25 @@
    </div>
 
    <!--
-      Close, and Close &amp; Shuffle: the same pair the deck's own view carries,
-      for the same reason. A shuffle is the *deck's* state rather than the
-      window's, so it is shared with the other player - and the deck it is about is
-      the one the batch names, which is why the action comes from the store rather
-      than being written here (see `revealCloseAndShuffle`).
+      Close, and Close &amp; Shuffle: the same pair the deck's own view carries, for
+      the same reason. A shuffle is the *deck's* state rather than the window's, so it
+      is shared with the other player - and the deck it is about is the one the batch
+      names, which is why the action comes from the store rather than being written
+      here (see `revealCloseAndShuffle`).
+
+      **Once either player has shuffled, the shuffle is gone from both windows** and
+      Close is all that is left. A reveal is one act with one deck and one ending: the
+      other player's window is still open when one of them presses the button, and
+      offering them a second shuffle of a deck that has been shuffled would be two
+      endings for one gesture - and a deck rearranged a second time for no reason at
+      all. The `shuffled` flag arrives with the event, so which button each player has
+      never depends on which of them pressed it.
    -->
    <svelte:fragment slot="buttons">
       <button class="action" on:click={() => popup.close()}>Close</button>
-      <button class="action" on:click={revealCloseAndShuffle}>Close &amp; Shuffle</button>
+      {#if !$reveal?.shuffled}
+         <button class="action" on:click={revealCloseAndShuffle}>Close &amp; Shuffle</button>
+      {/if}
    </svelte:fragment>
 </Popup>
 
