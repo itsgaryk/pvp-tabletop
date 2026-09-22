@@ -3,6 +3,7 @@
    import { cardImage } from '$lib/util/assets.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import Pile from './Pile.svelte'
+   import Vertical from '$lib/components/scroll/Vertical.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import { solo } from '$lib/stores/solo.js'
@@ -68,24 +69,26 @@
 </script>
 
 <Pile pile={table} name="Table" displayCount={false} showMenu={$solo} selectAll={false}>
-   <div class="h-full flex justify-center items-center" on:contextmenu={onCtxStack}>
-      <div class="relative w-max"
-         style="margin-bottom: {($table.length - 1) * 35}px; margin-right: {$table.length > 1 ? 20 : 0}px"
-         on:dblclick={() => openOppPile(table)}>
+   <Vertical>
+      <div class="table-zone" on:contextmenu={onCtxStack}>
+         <div class="table-stack relative w-max"
+            style="margin-bottom: calc({$table.length - 1} * var(--table-step)); margin-right: {$table.length > 1 ? 'var(--table-offset)' : '0px'}"
+            on:dblclick={() => openOppPile(table)}>
 
-         {#each $table as card, i (card._id)}
-            <img class="card table-card"
-               class:stacked={i > 0}
-               class:selected={$solo && $cardSelection.includes(card)}
-               class:dragged={$solo && $dragging && $cardSelection.includes(card)}
-               src="{cardImage(card, 'xs')}" alt={card.name} draggable="false"
-               style="bottom: {-i * 35}px; left: {i % 2 !== 0 ? 20 : 0}px; z-index: {$solo && $cardSelection.includes(card) ? 12 : i + 1}"
-               on:click={(e) => onClick(e, card)}
-               on:contextmenu={(e) => onCtx(e, card)}
-               use:dnd={cardDnd(card)}>
-         {/each}
+            {#each $table as card, i (card._id)}
+               <img class="card table-card"
+                  class:stacked={i > 0}
+                  class:selected={$solo && $cardSelection.includes(card)}
+                  class:dragged={$solo && $dragging && $cardSelection.includes(card)}
+                  src="{cardImage(card, 'xs')}" alt={card.name} draggable="false"
+                  style="bottom: calc({-i} * var(--table-step)); left: {i % 2 !== 0 ? 'var(--table-offset)' : '0px'}; z-index: {$solo && $cardSelection.includes(card) ? 12 : i + 1}"
+                  on:click={(e) => onClick(e, card)}
+                  on:contextmenu={(e) => onCtx(e, card)}
+                  use:dnd={cardDnd(card)}>
+            {/each}
+         </div>
       </div>
-   </div>
+   </Vertical>
 
    <svelte:fragment slot="menu">
       <ContextMenuOption click={() => openOppPile(table)} text="View All" />
@@ -93,6 +96,25 @@
 </Pile>
 
 <style>
+   /* the near half's zone, scroller and all: board/Temp.svelte, in full */
+   .table-zone {
+      min-height: 100%;
+      width: 100%;
+      display: flex;
+      justify-content: safe center;
+      align-items: safe center;
+   }
+
+   /* the near half's stack and the width it keeps, in full: board/Temp.svelte */
+   .table-stack {
+      flex: none;
+   }
+
+   /* the near half's card, sized by the zone's width, in full: board/Temp.svelte */
+   img.card.table-card {
+      width: var(--table-card-width);
+   }
+
    /* the near half's stack, and the reasons for this, in full: board/Temp.svelte */
    .table-card {
       position: relative;

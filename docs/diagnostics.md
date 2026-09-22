@@ -15,6 +15,7 @@ least once.
 | "Did those cards land in the order that was chosen?" | `node tools/deck-order-check.mjs` (see [below](#is-the-deck-in-the-order-that-was-chosen)) |
 | "Does a selected prize glow, and is looking at one logged?" | `node tools/prize-check.mjs` (see [below](#does-a-selected-prize-glow)) |
 | "Does the Active spot hold a fan of any length?" | `node tools/fan-check.mjs` (see [below](#does-the-active-spot-hold-a-fan-of-any-length)) |
+| "Does the table's stack stay in its cell, and does a marker scale with its card?" | `node tools/zone-fit-check.mjs` (see [below](#does-the-tables-stack-stay-in-its-cell)) |
 | "Is reading the whole deck still written in the log?" | `node tools/view-log-check.mjs` (see [below](#is-reading-the-deck-written-in-the-log)) |
 | "Is a card still the size of its zone, from one place?" | `node tools/card-sizing-check.mjs` (see [below](#is-a-card-still-the-size-of-its-zone)) |
 | "Does the board still render at all?" | `node tools/render-check.mjs` (see [below](#does-the-board-still-render)) |
@@ -230,6 +231,38 @@ browser, so it needs what the other browser checks need: the dev server, the sta
 and deck API, and a browser on CDP (`tools/dev-servers.ps1`, then
 `node tools/fan-check.mjs`). It fails loudly on the board as it was before the fix — the
 Pokemon walked 421 → 329 CSS px across the twelve lengths, and the fan left the zone.
+
+## Does the table's stack stay in its cell?
+
+```sh
+node tools/zone-fit-check.mjs
+```
+
+Two reports, one subject — something drawn at a size its box did not give it. The table is the
+one zone whose cards are sized by its *width* alone and scrolled down when a stack is taller
+than the cell, and it is a cell it shares with the other half; the damage counter is a circle
+that was a share of its card while the number in it was the page's own font size, so on a small
+Pokemon it stood out of the circle on every side.
+
+What it measures, through the browser's own geometry and hit testing:
+
+- the table's zone is the cell, less the pile's own padding, and it is the element that scrolls
+- a stack that fits does not scroll, draws no bar, and is centred; a stack taller than the cell
+  scrolls, draws a bar that takes its own width (a bar that is *drawn* rather than a floating
+  one that hides itself), and both ends of it are reachable — the first card at the top, the
+  last at the bottom, which is the assertion that catches a centred stack hiding its own start
+- nothing of the stack is the topmost element at any of the four points just outside the zone
+- the cards are **the card the zone gives** — the same rule the deck's own card is measured
+  against on the same board, so the two cannot drift — and the whole cascade fits the room the
+  zone has, so no card is cropped
+- the damage counter's circle *and* its digit are shares of the card in both zones that hold a
+  Pokemon — the same ratios at 1277x821 and at 900x620 — and the digit fits inside the circle
+  at the smaller one
+
+It answers the card images itself, for the reason `fan-check.mjs` does: a stand-in deck's card
+names are ones no image host serves, and cards with no picture have no height, which is a
+table that never reaches the bottom of its cell. `node tools/zone-fit-check.mjs` after
+`tools/dev-servers.ps1`.
 
 ## Is reading the deck written in the log?
 

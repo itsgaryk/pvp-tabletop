@@ -1,5 +1,59 @@
 # Things that cost somebody an afternoon
 
+**Styling a scrollbar with the *standard* two properties hands it back to the platform, which
+may be hiding it.** A zone that scrolls has to say so — that is the point of the bar — and
+`scrollbar-width: thin` with `scrollbar-color` is the modern pair that looks like the way to
+say it. In Chrome those two make the browser paint *its own* bar, and a machine set to hide
+scrollbars until the pointer is over them then draws an **overlay** bar: the width it takes out
+of the box is zero (so nothing in the layout reserves it, and the cards sized against the zone
+are sized against a zone that grows by the bar's width when it appears), and it fades out
+again the moment the pointer leaves — *"I have to hover the mouse over to see it"*. Styling
+`::-webkit-scrollbar` instead is what makes the bar a thing in the layout: it is drawn when the
+box can scroll, it takes its own width out of the box, and `overflow-y: auto` still keeps it
+away entirely when there is nothing to scroll. The tell is measurable and worth measuring —
+`offsetWidth - clientWidth` is the bar's width, and it is **0 for an overlay bar** and the
+bar's own thickness for a drawn one (`tools/zone-fit-check.mjs` asserts a drawn bar is at least
+6px, and asserts the reservation is 0 when nothing overflows).
+
+**Centring is the one thing a scroll container cannot do, and `safe center` is the half of it
+that it can.** The table's stack is a cascade that can be taller than the cell it is drawn in,
+so the cell scrolls it — and the stack has always been *centred* in that cell. Those two are
+quietly incompatible: a flex item centred on an axis it overflows is placed with its middle on
+the container's middle, so the overflow is split between the two ends, and the half of it above
+the container's *start* edge is not part of the scrollable area at all. No wheel reaches it, no
+bar drags to it, and `scrollTop` cannot go negative — a player with thirteen cards on the table
+would simply never see the first one or two, which reads as the stack starting somewhere in its
+own middle. `justify-content: safe center` (and `align-items: safe center`) is the keyword for
+what was actually wanted: centre it *while it fits*, and line it up with the start edge when it
+does not. Writing the check found it: "the last card is reachable when scrolled to" passes
+under plain centring, so what has to be asserted is both that the scroll position reaches
+`scrollHeight - clientHeight` *and* that the first card is inside the box at position 0.
+
+**A flex box is a box that will resize what is in it, and a card in a flex line is the third
+time this trap has bitten.** `max-width: 100%` on every `img` (the reset) plus a narrower box
+is a smaller image — written up below for the table's own wrapper, and again for a slot whose
+fan reserved more room than its zone had. Putting the table's stack into a flex line to centre
+it is the same trap from the other side: the stack is `width: max-content`, a flex item is
+shrinkable by default, and the cascade plus the step it reserved to the right did not fit the
+cell — so the *line* squeezed the stack, and the cards followed it down through their own
+`max-width: 100%`. A table of cards a few per cent narrower than the card its zone gives is
+what that looks like, which reads as "the cards look a bit small" rather than as a bug — and it
+was found by measuring a card against the size its own zone should have given it, never by
+looking at it. `flex: none` on the stack is the fix, and the general rule is the one the
+card-sizing rules are built on: whatever a card is *drawn in* may not resize it. Three
+appearances of one trap is not a coincidence — it is what a percentage `max-width` does on a
+board whose every container is a box that some later change of layout can narrow.
+
+**A synthetic `keydown` with no `code` throws inside the board's own handler, and the key then
+does nothing at all.** The board reads the digit keys out of `e.code` — `parseInt(e.code.slice(-1))`
+is how `1`..`9` draw that many cards — so `new KeyboardEvent('keydown', { key: '1' })` with no
+`code` gives `undefined.slice`, the handler throws, and the key is ignored. What makes it
+expensive is that nothing surfaces: the event dispatched, the handler ran, no dialog appeared,
+and a check that means to draw a card before moving one instead moves the cards already in hand
+— so it looks like it works, until a loop waiting for a count it will never reach spins until
+the runner times out with no output at all. Every key a check sends needs its `code`
+(`tools/zone-fit-check.mjs` derives one).
+
 **A fan that reserves its own length in a *fixed-width* line is a fan that resizes the cards
 in it.** The report was *"when you start to attach a lot of cards to the active Pokémon the
 layout starts to fall apart and cards spread apart"*, with three pictures: the same fan fine on

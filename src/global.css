@@ -174,12 +174,44 @@ img:where(.zone-card).card {
    --slot-card-share: calc(105 / 139);
 
    /*
-      The bar a sideways-scrolling zone draws at its own bottom edge (`Horizontal.svelte`,
-      which styles it). It is part of the box a zone hands its row, so a row that fills
-      its zone has to leave it room the way it leaves room for a padding - otherwise the
-      row is 10px past the bottom of the zone the moment it starts to scroll. The hand's
-      row is the bottom row of the board, so 10px past it is a scrollbar on the whole
-      board (see Board.svelte).
+      The table's stack. A card on the table is **the card a pile draws** - the cardback in
+      the deck's zone, or the top card in a discard's - which is what a player reads the board
+      by, and every one of those is a card in a zone one board *row* tall. The table's cell is
+      two rows (the grid gives it rows 3 and 4), so what it gives a card is that cell's height
+      halved: the same row a pile's card is sized by, and so the same card. Not the cell's
+      *whole* height, which is what made a card on the table twice the size of every other card
+      on the board.
+
+      The width is a *limit* rather than the measure - a pile sits in a narrower column than
+      the table does - and the limit is what the cascade costs it: every second card steps
+      `--table-offset` to the right, so the stack is `1 + 20/105` cards wide and a card is
+      `--table-card-share` of the room there is. The bar the stack scrolls with comes off that
+      room too: it is real room in a zone that scrolls down, the way the hand's row takes the
+      same thickness off its height, and it is reserved whether or not the bar is showing so the
+      cards are one size and stay that size as a stack grows past the cell.
+
+      It is written here, as a variable, rather than left to `img:where(.zone-card).card`,
+      because the cascade's steps are shares of the card and a share needs a length:
+      `--table-step` and `--table-offset` are shares of this, and that is what the offsets the
+      markup places the stack with read. One rule for both halves, because the two tables are
+      one stack drawn in a cell they share (see docs/board.md), and `100cqw`/`100cqh` are it.
+   */
+   --table-card-share: calc(105 / 125);
+   --table-card-width: min(
+      calc((100cqh / 2 - 2 * var(--card-gap)) * var(--card-ratio)),
+      calc((100cqw - 2 * var(--card-gap) - var(--scrollbar)) * var(--table-card-share))
+   );
+   --table-step: calc(var(--table-card-width) * calc(35 / 105));
+   --table-offset: calc(var(--table-card-width) * calc(20 / 105));
+
+   /*
+      The bar a zone that scrolls draws, as the thickness of it: a height for the row that
+      scrolls sideways (`Horizontal.svelte`, which styles it) and a width for the stack that
+      scrolls down (see board/Temp.svelte). It is part of the box a zone hands its row, so a
+      row that fills its zone has to leave it room the way it leaves room for a padding -
+      otherwise the row is 10px past the bottom of the zone the moment it starts to scroll.
+      The hand's row is the bottom row of the board, so 10px past it is a scrollbar on the
+      whole board (see Board.svelte).
    */
    --scrollbar: 10px;
 }

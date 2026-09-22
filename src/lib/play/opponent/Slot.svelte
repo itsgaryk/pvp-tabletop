@@ -174,7 +174,7 @@
    use:dnd={dndConfig}>
 
    {#if $damage}
-      <span class="counter absolute bottom-1 left-1 z-15 rounded-full p-4 bg-red-500 text-white font-bold flex justify-center items-center">{$damage}</span>
+      <span class="counter absolute bottom-1 left-1 z-15 rounded-full bg-red-500 text-white font-bold flex justify-center items-center">{$damage}</span>
    {/if}
 
    <StatusMarker status={$status} />
@@ -274,9 +274,14 @@
       @apply border-green-500;
    }
 
-   /* rotated back by the flipped half this slot is shown in (see Board.svelte) */
+   /* rotated back by the flipped half this slot is shown in (see Board.svelte), and a
+      share of the card like the near half's, digits included: board/Slot.svelte has the
+      arithmetic and what it was before */
    .counter {
-      width: calc(var(--slot-width) / 2.5);
-      height: calc(var(--slot-width) / 2.5);
+      --size: calc(var(--slot-width) / 2.5);
+      width: var(--size);
+      height: var(--size);
+      font-size: calc(var(--size) / 2);
+      line-height: 1;
    }
 </style>
