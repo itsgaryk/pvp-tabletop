@@ -6,7 +6,7 @@ different audiences, and that is the whole of the difference between them:
 | | Shown to | Window opens on | Ends with |
 | --- | --- | --- | --- |
 | **Reveal** | both players | both boards | Close / Close & Shuffle |
-| **Look** | the player who looked | that player's board only | Close / Close & Shuffle |
+| **Look** | the player who looked | that player's board only | Close & Shuffle |
 
 Both are entries on a deck's own right-click menu — *Reveal Top X* on either deck,
 *Look at Top X* on the opponent's — and both are asked for with the browser's
@@ -82,6 +82,47 @@ and so it can sit *beside* the selection ring rather than instead of it
 (`opponent/Card.svelte`). Without it there is nothing on screen to say which cards
 answer — a Reveal's cards are the other player's, so the default assumption is that
 they are inert, and a player who assumes that never finds the menu.
+
+The pulse is an **affordance and not a rule**, and a Look turns it off (`pulse={false}`).
+In a Reveal it distinguishes the one or two cards of the other player's from the cards of
+the player's own around them. In a Look *every* card in the window answers, so a glow on
+all of them is decoration — and worse than decoration, it made a chosen card's own ring
+hard to read. What replaces it is a line in the header saying what a click does
+(`Look.svelte`), because the ring that appears *after* a click is then the only feedback
+there is, and a window with no hint and no pulse reports itself as "I cannot select the
+cards" (which is how that was reported).
+
+### One card or several
+
+The permission is per card and the selection is the board's own, so a window's cards are
+selected the way every other card on the board is: click one, **Ctrl-click** to add
+another, **Ctrl+A** over the window for all of them. Right-clicking any of them gives the
+same menu, and its entries act on **everything picked up that is in the same pile** — so
+three cards out of a reveal can go to the opponent's discard with one entry. Two details
+make that read honestly rather than mysteriously:
+
+- the menu's heading says `2 cards` rather than the clicked card's name, and *Attach*, the
+  one entry that can only take a single card, says `Attach the First to Their Active`
+- what bounds it is the pile, not the window: a request names **one** pile, so the cards
+  carried are the selected ones in the same pile as the clicked card. In a Reveal or a
+  Look that is the whole batch, and it is also what keeps a card of the opponent's
+  selected on the board *behind* the window from being swept up with them.
+
+### Dragging a card out of a window
+
+A card in one of these windows can also be dragged onto the other player's half: dropping
+it on a zone is the same request the menu entry for that zone makes (`actionForPile` →
+`dropRevealedCard` in `oppAction.js`), so it lands in the owner's zone and not the
+player's. The gesture is the board's own drag (`pointerdown` and a five-pixel threshold,
+not HTML5 drag-and-drop), and it is wired on the far half's zones — `opponent/Pile.svelte`,
+`Bench.svelte`, `Active.svelte` — because those are the drop targets that belong to the
+cards' owner.
+
+One thing to know before changing it: **a drag carries the whole selection**, exactly as a
+menu entry does. A player who has picked up three cards and drags one of them sends all
+three. That is deliberate — it is the same answer the menu gives — but it is also why
+`tools/reveal-check.mjs` drags the card that is left *after* its two-card menu move rather
+than one of the two that are still selected.
 
 ## Why an action is a request, and not a move
 

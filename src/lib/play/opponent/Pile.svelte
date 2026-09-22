@@ -10,6 +10,7 @@
       soloSlotToDiscard, soloSlotToPile,
       onOpponentHalf, onOpponentSlot
    } from '$lib/stores/solo.js'
+   import { dropRevealedCard, isDraggingRevealed } from '$lib/stores/oppAction.js'
 
    export let pile
    export let name = null
@@ -58,17 +59,29 @@
    }
 
    /*
-      Dropping onto a pile of the far half. In solo that half is yours, so a card
-      dragged from it lands here; a card dragged from your own board is handed
-      over the same way the other piles accept it.
+      Dropping onto a pile of the far half. Two gestures arrive here and they are
+      different things:
+
+         - **in solo**, that half is yours, so a card dragged from one of its zones
+           moves between them on this board, and nothing crosses between the halves
+         - **a card out of a Reveal or a Look**, which is not on the board at all: the
+           drop is a request to its owner (`dropRevealedCard`), the same request the
+           card's menu makes
+
+      Both are answered in `onDrop`; this only says whether *something* can land here,
+      which is what draws the highlight under the pointer.
    */
-   /* only the far half's own cards land here: nothing crosses between halves */
-   const allowDrop = () => $solo && $source && $source !== pile && (
-      onOpponentHalf($source) ||
-      ($source === 'slot' && onOpponentSlot($draggedCard))
-   )
+   const allowDrop = () =>
+      isDraggingRevealed($draggedCard, $source) ||
+      Boolean($solo && $source && $source !== pile && (
+         onOpponentHalf($source) ||
+         ($source === 'slot' && onOpponentSlot($draggedCard))
+      ))
 
    function onDrop () {
+      /* a card out of a window is a request to its owner, not a move on this board */
+      if (dropRevealedCard(pile, $draggedCard, $cardSelection)) return
+
       if (!$solo || !$source) return
 
       /* a Pokemon in play dropped on a pile goes there with everything under it */

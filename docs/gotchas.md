@@ -1113,6 +1113,65 @@ already written against; and it is one object per client, so the two boards cann
 about what it says. The general rule is worth stating: **a per-card flag is a claim about a
 card, and a card here does not belong to one board.** See [reveal.md](reveal.md).
 
+**A `$:` statement reading a store can lose its *other* inputs, and the failing answer looks like a
+perfectly reasonable one.** This is the same family as "a `$:` cannot see a store that a plain
+function call reads", and it is the harder half, because the statement *does* re-run — just never
+at the moment that matters. The heading of the menu for a card of the other player's was written
+
+```js
+$: picked = acting($cardSelection)
+```
+
+and that compiles to a dependency on `$cardSelection` **alone**: not on `card`, not on `pile`,
+even though `acting` reads both. Svelte does not follow a function call to collect what it reads
+unless it can inline the function, so the dependency list was one item long. The menu is opened
+*after* the selection (a right-click picks the card up and then calls `open`), so the last run of
+that statement happened while `card` was still `null`; `acting` answered with the empty list, and
+the heading fell back to the clicked card's own name — `Card60` for a two-card selection, which is
+a plausible answer for a menu about that card, so nothing on screen looked broken.
+
+Three things made it expensive, and all three are worth recognising again:
+
+- **the value was stale, not wrong.** `picked` was `[]` while a direct call in the same update
+  block returned both cards; two readings of one expression disagreed, which is a shape that sends
+  you looking for a second component or a second copy of the state
+- **a debug probe of my own was the first suspect and then the cause.** An `if (import.meta.env.DEV)`
+  block in the component's instance script read `$cardSelection` before Svelte had set up the store
+  subscriptions, threw on every load, and left the *whole component* failing to construct — so the
+  first "the heading says one card" reading came from a page where the menu was not working at all.
+  When a probe cannot explain what you see, suspect the probe
+- **the fix is to stop asking Svelte to infer the inputs.** `open()` and a subscription to the
+  selection now call one `refresh()` that sets both the heading and the list the entries act on, so
+  the two are the same answer by construction rather than by two reactive statements agreeing. When
+  a `$:` depends on a *situation* rather than on one value, that is usually the sign that the moment
+  to work it out is a call.
+
+**A window that closes when its grid empties takes its own button with it.** Both of these windows
+opened with `cards.length` and closed on it too: "this window is over" was read off "there is
+nothing left in the grid". The two are not the same question, and the difference only shows when
+the player *acts on every card they were shown*: the view empties, the window closes itself, and
+the **Close & Shuffle button goes with it** — so a Look ends with the looked-at cards discarded and
+the deck they came from never shuffled, which is the one ending a card that says "look at the top
+X" has. It read as *the look window closes with a shuffle* failing while the shuffle was still
+owed, and the shuffle reaching the owner failed behind it, because no button had been pressed at
+all. Both windows now close on the batch being **ended** (`$revealOpen` / `$lookOpen`), and an
+empty window with its endings on it is the honest picture: the batch is still live and the deck has
+not been put back yet. The tell for this family is a close condition that mentions the *content* of
+a view — **ask whose decision the closing is.**
+
+**A class that carries a border writes the "off" state or it draws one.** `opponent/Card.svelte`
+wore `class="border-2 rounded-md"` with `class:actionable` adding the visible ring. `border-2` sets
+a width; the colour came from the user-agent default, so **every** card of the far half was drawn
+with a light grey 2px ring — reported as *"opponent's cards in the hand zone now have a permanent
+white border/glow"*. The near half's card had always written `border-transparent` beside it, which
+is why only one half was wrong. A utility that sets a width, a background or a font for a state has
+to set the *neutral* value next to it, or the neutral state is whatever the browser picked.
+
+**A `div.border-2` in a popup is a line box, not the card.** That same wrapper had **no height**
+where it sat, so a check that grabbed its centre aimed the pointer at the row rather than at the
+card and reported the drag as failed. `img.card`'s own parent is the element drawn at a card's
+size; a check about a *card* should measure the card.
+
 **A batch that is a copy of a list keeps offering cards that have already left.** The window a
 Reveal opens is a view of the top of a deck, so the obvious implementation is to take the cards
 at reveal time and render that list. The symptom is nothing like a bug: the player right-clicks

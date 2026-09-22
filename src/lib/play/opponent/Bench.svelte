@@ -7,6 +7,7 @@
    import { source, draggedCard } from '$lib/dnd/store.js'
    import { cardSelection, resetSelection, selectSlot, selectionByPile } from '$lib/stores/player.js'
    import { solo, soloCardToPlay, soloSlotToBench, onOpponentHalf, onOpponentSlot } from '$lib/stores/solo.js'
+   import { dropRevealedCard, isDraggingRevealed } from '$lib/stores/oppAction.js'
 
    /* which player's board this component shows */
    export let store = defaultOpponent
@@ -17,13 +18,25 @@
       drop the player's own Bench accepts. A Pokemon in play lands here only when
       it is that half's Active, which is the Active being benched, the way your own
       moves between the two spots.
+
+      A card out of a Reveal or a Look is the third: it is not on the board, so the drop
+      is a request to its owner (`dropRevealedCard`). That is a card put into play as a
+      Pokemon of theirs, which is the one drop this half cannot make for itself - the
+      slot it becomes is built by the owner's own `cardsBenched` event.
    */
-   const allowDrop = () => $solo && (
-      ($source === 'slot' && onOpponentSlot($draggedCard) && $draggedCard === $active) ||
-      ($source !== 'slot' && onOpponentHalf($source) && !$bench.includes($source))
-   )
+   const allowDrop = () =>
+      isDraggingRevealed($draggedCard, $source) ||
+      Boolean($solo && (
+         ($source === 'slot' && onOpponentSlot($draggedCard) && $draggedCard === $active) ||
+         ($source !== 'slot' && onOpponentHalf($source) && !$bench.includes($source))
+      ))
 
    function onDrop () {
+      if (dropRevealedCard(store.bench, $draggedCard, $cardSelection)) {
+         resetSelection()
+         return
+      }
+
       if (!$solo || !$source) return
 
       if ($source === 'slot') {
