@@ -93,18 +93,17 @@
    <Vertical>
       <div class="table-zone" on:contextmenu={onCtxStack}>
          <div class="table-stack relative w-max"
-            style="margin-bottom: calc({$table.length - 1} * var(--table-step))"
+            style="margin-bottom: calc({$table.length - 1} * var(--table-step)); margin-right: {$table.length > 1 ? 'var(--table-offset)' : '0px'}"
             on:dblclick={() => openPile(table)}>
 
             {#each $table as card, i (card._id)}
                <!--
                   One card of the stack, drawn where the stack puts it: the first card is in
                   the flow and sizes the stack, and every card after it is lifted out of the
-                  flow and laid over the one above by a step that is a share of the card, so
-                  the stack reads as a cascade at any card size. The step is down and only
-                  down: a step to the right would make the stack wider than the card it is
-                  made of, and a card on the table is the card every other zone gives (see
-                  `--table-card-width`).
+                  flow and laid over the one above by a step that is a share of the card - one
+                  step down, and every second card one step across, which is the zig-zag the
+                  stack has always been drawn with. Both are shares rather than pixels so the
+                  cascade keeps its shape at any card size (see `--table-card-width`).
 
                   The card's own image carries the click, the selection and the drag, and
                   its z-index is its place in the stack - a selected card comes to the front,
@@ -116,7 +115,7 @@
                   class:selected={$cardSelection.includes(card)}
                   class:dragged={$dragging && $cardSelection.includes(card)}
                   src="{cardImage(card, 'xs')}" alt={card.name} draggable="false"
-                  style="bottom: calc({-i} * var(--table-step)); z-index: {$cardSelection.includes(card) ? 12 : i + 1}"
+                  style="bottom: calc({-i} * var(--table-step)); left: {i % 2 !== 0 ? 'var(--table-offset)' : '0px'}; z-index: {$cardSelection.includes(card) ? 12 : i + 1}"
                   on:click={(e) => onClick(e, card)}
                   on:contextmenu={(e) => onCtx(e, card)}
                   use:dnd={cardDnd(card)}>

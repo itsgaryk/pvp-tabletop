@@ -410,9 +410,12 @@ check('and the bar it scrolls with is drawn rather than floating',
    board row tall, so this is the size a player reads the board by */
 const pileCard = (zone) => Math.min(zone.w - 2 * 4, (zone.h - 2 * 4) * 0.7241)
 
-/* and the card the table draws: that same row's height at the card's shape, capped by the
-   cell's width, less the bar the stack reserves whether or not it is showing */
-const tableCard = (cell, bar) => Math.min((cell.h / 2 - 2 * 4) * 0.7241, cell.w - 2 * 4 - bar)
+/* and the card the table draws: that same row's height at the card's shape, or the cell's
+   width less the bar and the share the cascade's step across costs it - whichever is smaller */
+const tableCard = (cell, bar) => Math.min(
+   (cell.h / 2 - 2 * 4) * 0.7241,
+   (cell.w - 2 * 4 - bar) * (105 / 125)
+)
 const expected = tableCard(t.cell, t.barWidth)
 const deckCard = t.pileCard ? pileCard(t.pileZone) : null
 const cascade = t.cards.length

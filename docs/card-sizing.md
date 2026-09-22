@@ -105,13 +105,16 @@ markup places the stack with read. One rule for both halves, because the two tab
 stack drawn in a cell they share; the check (`tools/zone-fit-check.mjs`) measures the card a
 pile draws on the same board and asserts the table's is that size, so the two cannot drift.
 
-**The cascade steps down and only down.** Every second card used to step 20px to the right, and
-that is what made the cards small: a stack wider than one card has to leave the extra width out
-of the card, so a card was `105/125` of the zone to make room for a step nothing else on the
-board has. The size is worth more than the zig-zag, and a stack that is *wider* than the card it
-is made of is a stack that cannot be kept inside its zone at all — which is how it was reported.
-What the stack scrolls as is `(n - 1)` steps of `--table-step` down, which the zone holds by
-scrolling, and the cell is as tall as it is.
+**The cascade steps down, and every second card one step across.** Both steps are shares of the
+card — 35/105 down and 20/105 across, the zig-zag a table has always been drawn with — so the
+cascade keeps its shape at any card size, and the step *across* is what the width limit above
+pays for: a stack is `1 + 20/105` cards wide, so a card is `105/125` of the room the cell has.
+The size is what the share is for rather than the other way round: the step costs the card a
+sixth of the cell's width, and the cell is wide enough (it is two board rows and 1.5 columns)
+that this only binds where the cell is narrow, at which point a card on the table is a couple
+of per cent smaller than a pile's rather than six times wider than the cell. What the stack
+scrolls as is `(n - 1)` steps of `--table-step` down, which the zone holds by scrolling, and
+the cell is as tall as it is.
 
 **Before any of this**, a table's cards were the board's fixed `--card-width`: 105px of a 123px
 cell at 1277x821, positioned by 35px and 20px offsets, so the cascade was wider than the zone it

@@ -238,14 +238,19 @@ const tables = zoneFiles.filter((f) => /[\\/]Temp\.svelte$/.test(f.path))
 
 const tableVars = [ ...globalCode.matchAll(/--table-card-width:\s*([^;]+);/g) ]
 check('global.css declares the table\'s card size once', tableVars.length === 1, `${tableVars.length} declarations`)
-check('and it is the card a pile draws: one board row tall, capped by the cell\'s width',
+check('and it is the card a pile draws: one board row tall, and the step across is paid for',
    tableVars.length === 1 &&
    squash(tableVars[0][1]).includes(squash('(100cqh / 2 - 2 * var(--card-gap)) * var(--card-ratio)')) &&
-   /100cqw/.test(tableVars[0][1]) && /--scrollbar/.test(tableVars[0][1]),
+   /--table-card-share/.test(tableVars[0][1]) && /--scrollbar/.test(tableVars[0][1]),
    'the cell is two rows, and a pile - the card a player reads the board by - is one')
-check('and the cascade\'s step is a share of it rather than a pixel',
-   /--table-step:\s*calc\(var\(--table-card-width\)\s*\*/.test(globalCode) && !/--table-offset/.test(globalCode),
-   'a step to the right would make the stack wider than the card it is made of')
+check('and the zig-zag is a share of the card, both ways',
+   /--table-step:\s*calc\(var\(--table-card-width\)\s*\*/.test(globalCode) &&
+   /--table-offset:\s*calc\(var\(--table-card-width\)\s*\*/.test(globalCode) &&
+   tables.every((f) => /left:\s*\{i % 2 !== 0 \? 'var\(--table-offset\)'/.test(f.source)),
+   'the stack steps down, and every second card one step across')
+check('and the cascade\'s step down is a share of it rather than a pixel',
+   /--table-step:\s*calc\(var\(--table-card-width\)\s*\*/.test(globalCode),
+   'a step that kept its pixels would be a cascade of a different size than its cards')
 
 const tablePoints = tables.filter((f) => /width:\s*var\(--table-card-width\)/.test(f.source))
 check('both tables take their card size from it', tables.length === 2 && tablePoints.length === 2,
