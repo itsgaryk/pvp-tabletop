@@ -357,9 +357,26 @@ function applyReveal ({ owner, pileName, cards }, senderIsMe = false) {
    }
 
    const ownerHere = senderIsMe ? owner : localOwner(owner)
-   const ids = found.map((card) => card._id)
-   const batch = { owner, senderIsMe, ownerHere, pileName, cards: ids }
 
+   /*
+      The record is the ids the event **named**, not the ones this board could find at
+      this instant, and that is load-bearing rather than tidy. The two events that set a
+      reveal up are separate - the full board state and the reveal itself - so the board
+      state can still be in flight when the reveal lands, and the batch then names cards
+      this board does not hold yet. Keeping only what was found made that state
+      permanent: the batch's record became "the two of the three I happened to have",
+      the view matched it, and the healing poll below saw a batch that was complete and
+      stopped looking. The third card never arrived, and the window stayed at two.
+
+      Naming all of them makes the record the truth and the *view* the thing that fills
+      in: a card that is not here yet is simply not on show, and the poll keeps asking
+      until the deck has it. Measured, this was the difference between the other board
+      showing two cards of the three revealed in about half of runs and showing three
+      every time.
+   */
+   const ids = cards.slice()
+
+   const batch = { owner, senderIsMe, ownerHere, pileName, cards: ids }
    batch.pile = asPile(batch)
    setBatch(reveal, revealView, batch)
 

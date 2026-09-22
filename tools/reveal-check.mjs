@@ -471,14 +471,35 @@ try {
 
    await answerNextPrompt(alice, 3)
    check('and Reveal Top X can still be taken', await clickMenuItem(alice, 'Reveal Top X'))
-   await waitForWindow(alice, 3, { kind: 'reveal' })
-   const bobSaw = await waitForWindow(bob, 3, { kind: 'reveal' })
-   check('a fresh reveal is on both boards again', Boolean(bobSaw), bobSaw?.text || 'no window')
+   const aliceSaw = await waitForWindow(alice, 3, { kind: 'reveal' })
+   check('a fresh reveal is on the revealer\'s board', Boolean(aliceSaw), aliceSaw?.text || 'no window')
+
+   /*
+      The other board must show **all three**, and this is exact rather than tolerant.
+
+      It was tolerant for a while, and that was the wrong call: the other board was
+      coming up a card short, and the missing card was not a mirror that had not caught
+      up yet. `applyReveal` kept only the ids it could find *at that instant*, so a
+      batch that arrived before the board state was recorded as "the two of the three I
+      happen to have" - permanently, because the healing poll then saw a complete batch
+      and stopped looking. Fixing that (the record is now every id the event names) is
+      what made this exact again, and it was found by refusing to relax the assertion
+      any further: two boards disagreeing about what was revealed is exactly what this
+      check exists for.
+   */
+   const bobSaw = await waitForWindow(bob, aliceSaw?.cards.length ?? 3, { kind: 'reveal' })
+   check('a fresh reveal is on both boards again',
+      Boolean(aliceSaw) && Boolean(bobSaw),
+      `${aliceSaw?.cards.length} on the revealer's board, ${bobSaw?.cards.length} on the other`)
+   check('and the other board shows the same cards in the same order',
+      Boolean(bobSaw) && JSON.stringify(bobSaw.cards) === JSON.stringify(aliceSaw?.cards),
+      `${bobSaw?.cards.length} vs ${aliceSaw?.cards.length} cards`)
    check('and both windows offer the shuffle',
       Boolean(bobSaw?.buttons.includes('Close & Shuffle')), bobSaw?.buttons.join(' | '))
 
    await alice.clickText('Close & Shuffle', { kinds: 'button' })
    await sleep(2500)
+
    const bobAfter = await waitForWindow(bob, 3, { kind: 'reveal' })
    check('the other player keeps the window, and the cards',
       Boolean(bobAfter) && bobAfter.cards.length === 3,

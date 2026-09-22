@@ -923,6 +923,38 @@ check again on a quiet tree, while the *idle close* means the check needs to ans
 were true in the same afternoon, so a run could be made green by fixing either one and then go red
 again for the other — which is what made this look like flakiness for longer than it should have.
 
+**A batch that keeps only what it could find is a batch that is permanently short, and the poll that
+heals it will agree that it is finished.** The last fault of this feature, and the one worth the most,
+because *two* wrong conclusions were drawn about it before anybody looked at the record.
+
+A Reveal arrives as an event naming card ids, and the board receiving it resolves those ids against
+its **mirror** of the deck. `applyReveal` kept the ids it found at that instant:
+
+```js
+const found = gather(source, cards)
+reveal.set({ cards: found.map(card => card._id), ... })   // the two of the three I have
+```
+
+The two events that set a reveal up — the full board state and the reveal — are separate, and the
+board state can still be in flight when the reveal lands, so "the cards this board can find right
+now" is not the set the event named. Worse, the record then *agreed* with the view: the healing poll
+added earlier compares the view's length against the batch's record and stops when they match, so a
+batch recorded as two of three was complete as far as everything downstream could tell. The third
+card never appeared, in about half of runs, and the check's own tolerance made the rest quiet.
+
+The fix is one word — the record is the ids the event **named**, not the ones it found — and it is
+the general shape: **a record of what was asked for must not be silently rewritten into what was
+achieved.** Anything that later asks "is this batch complete?" is asking the record, and a record
+built from the answer to its own question cannot answer it.
+
+What made this expensive was not the code but the method around it. It was first put down to the
+mirror being a card behind (plausible: the check spends its whole run moving that deck's cards), then
+to a pre-existing mirror weakness, and both times the response was to make the *assertion* more
+tolerant — compare a prefix instead of the whole list, read the count from the batch instead of
+expecting three. Each of those is a way of not finding it, and the giveaway was that the tolerance
+had to keep growing: when an assertion needs to be relaxed twice for the same symptom, the symptom is
+a bug and the assertion is the only thing still telling the truth.
+
 **A mirror never mirrors a private deck's order, and a check must not ask it to.** A shuffle of a
 deck is not an event that moves cards, so nothing carries the new order to a mirror: `shareShuffle`
 tells the other board *that* the deck was shuffled and that board shuffles its own copy. The two
