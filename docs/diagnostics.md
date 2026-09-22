@@ -193,11 +193,19 @@ opponent's window never opened), and an action taken on another player's card wa
 performed against the wrong board's stores (so the card landed nowhere while both logs
 said it had moved). Both are written up in [gotchas.md](gotchas.md).
 
-**Run it once, on a tree nobody is editing.** Vite reloads a page the moment a file it
-serves changes, and a board mid-reload is an empty board — so a run started while
-something is being written reports a cascade that begins with a plausible-looking
-"2 cards where 3 were revealed" and ends with rooms that look dead. One edit, then one
-run; two green runs in a row mean nothing if something was written between them
+**Give it a quiet tree and a room it keeps alive.** Two things will otherwise fail in
+a way that looks like the code, and they need opposite fixes:
+
+- Vite reloads the pages whenever a file it serves changes — and `npm run build` and
+  `tools/render-check.mjs` count, because they write `.svelte-kit/generated/client/*`,
+  which `npm run dev` watches. A reloaded page is an empty board, so the run reports a
+  cascade starting at "2 cards where 3 were revealed". Edit or build, then run.
+- The check reads two boards for about a minute and appends almost nothing to the
+  relay, which is long enough for the room's idle prompt to close the room at the
+  servers' shortened windows. That is the same cascade from the other side, and the
+  check answers the prompt itself (`keepAlive`) rather than being run faster.
+
+Both were true in the same afternoon, which is what made it look like flakiness
 ([gotchas.md](gotchas.md)).
 
 ## Does a selected prize glow?

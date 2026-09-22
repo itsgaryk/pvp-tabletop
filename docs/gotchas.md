@@ -890,17 +890,38 @@ it), which is the rule a store is built on: **a store that does not notify is no
 tell is a component that reads a pile and is *usually* right — that is not reactivity, it is luck
 about what else changed.
 
-**`tools/reveal-check.mjs` cannot be run while the tree is being edited, and its failures look like
-the app's.** Vite hot-reloads or full-reloads a page the moment a file it serves changes, and a
-board mid-reload is an empty board: the check then reports a cascade starting at "the two boards
-disagree about a card" and ending with rooms that look dead. Measured here, the dev server logged
-`[vite] page reload src/lib/stores/reveal.js` at the exact minute a run collapsed, and a run on a
-quiet server minutes later was green with no code change at all.
+**A browser check that runs for a minute has to answer the room's idle prompt, and the failures when
+it does not look like the app's.** `tools/reveal-check.mjs` reads two boards for about sixty seconds —
+opening menus, revealing, looking, acting — and appends almost nothing to the relay, because a
+reveal is a view and a look is not sent at all. At the dev servers' shortened idle windows that is
+long enough for the room to prompt and then to **close**, and a closed room is not a failed
+assertion three sections later: it is an empty board and a lobby, so the cascade begins with "2
+cards where 3 were revealed" and ends with every board reading 0. A diagnostic added at the failing
+step said it plainly — `mode not a room, own deck 0` — which is the room being gone rather than a
+reveal that did not arrive.
 
-It is worth writing down because the failure is *shaped* like a real fault — the first assertion to
-go is a genuine-looking "2 cards where 3 were revealed" — and because the obvious response (run it
-again) is what hides it: the second run starts from pages that are fresh. One edit, then one run;
-and a green run only means something if nothing was written between it and the one before.
+`browser-check.mjs`'s panel section answers the same prompt for exactly this reason and says so in
+its own comment. The fix here is one `setInterval` clicking `.idle-go` while the check works; the
+lesson is that **the room's clock is part of a browser check's environment, not of the feature under
+test**, and a check that reads for longer than the idle window will fail eventually in a way that
+looks like the code.
+
+**And a build re-enters the dev server's own client entry, so `npm run build` reloads a running
+browser check.** The first version of this note said "do not run the check while editing files",
+and that was true but not the whole cause: `npm run build` and `tools/render-check.mjs` write
+`.svelte-kit/generated/client/*`, `npm run dev` **watches** that directory, and Vite answers by
+reloading the pages — the same empty boards and the same cascade, with nothing edited at all:
+
+```
+21:11:30 [vite] page reload .svelte-kit/generated/client/nodes/2.js
+21:11:30 [vite] page reload .svelte-kit/generated/client/app.js
+```
+
+The two faults are indistinguishable from the check's output and they have opposite fixes, which is
+why the distinction is worth keeping: a *page reload* from an edit or a build means start the
+check again on a quiet tree, while the *idle close* means the check needs to answer the prompt. Both
+were true in the same afternoon, so a run could be made green by fixing either one and then go red
+again for the other — which is what made this look like flakiness for longer than it should have.
 
 **A mirror never mirrors a private deck's order, and a check must not ask it to.** A shuffle of a
 deck is not an event that moves cards, so nothing carries the new order to a mirror: `shareShuffle`

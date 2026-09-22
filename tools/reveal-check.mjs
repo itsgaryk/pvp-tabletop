@@ -212,6 +212,30 @@ async function reset (page) {
    return false
 }
 
+/*
+   Answer the room's "Still playing?" while the check works.
+
+   This check spends about a minute reading two boards - opening menus, revealing,
+   looking, acting - and appending almost nothing to the relay, because a reveal is a
+   view and a look is not even sent. At the dev servers' shortened idle window that is
+   long enough for the room to prompt and then to *close*, and a closed room is not a
+   failed assertion three sections later: it is an empty board and a lobby, so the
+   cascade starts with "2 cards where 3 were revealed" and ends with every board
+   reading 0. Measured here: the step-5 diagnostic reported `mode not a room, own deck
+   0`, which is the room being gone rather than a reveal that did not arrive.
+
+   `browser-check.mjs`'s panel section answers the same prompt for the same reason, and
+   its note says the same thing: the idle windows are the room's clock rather than one
+   section's.
+*/
+function keepAlive (pages) {
+   return setInterval(() => {
+      for (const page of pages) {
+         page.evaluate(`(() => { const go = document.querySelector('.idle-go'); if (go) go.click(); return true })()`).catch(() => {})
+      }
+   }, 1500)
+}
+
 try {
    console.log('setting up two players\n')
 
@@ -220,6 +244,8 @@ try {
 
    const room = await alice.createRoom('Alice')
    check('a room was created', Boolean(room), room || 'no room code')
+
+   const answering = keepAlive([ alice, bob ])
 
    await bob.joinRoom(room, 'Bob')
    check('and the opponent is in it', (await bob.counts()).mode === 'room')
@@ -423,11 +449,28 @@ try {
 
    await settle()
 
+   /*
+      The board is checked before the menu is opened, because everything below depends
+      on it: a `badges()` of null is a board that is not there, and a null badge would
+      otherwise surface three assertions later as "the deck has 1 card".
+   */
    const beforeShuffle = await badges(alice)
+   const state = await alice.evaluate(`(() => ({
+      mode: document.body.innerText.includes('Leave Room') ? 'room' : 'not a room',
+      deck: globalThis.__pvp.player.deck.get().length,
+      theirDeck: globalThis.__pvp.opponent.defaultOpponent.deck.get().length
+   }))()`)
+   check('the revealer still has a dealt board to reveal from',
+      beforeShuffle.myDeck > 3 && state.mode === 'room',
+      `${beforeShuffle.myDeck} cards, mode ${state.mode}, own deck ${state.deck}, far deck ${state.theirDeck}`)
+
    const beforeShuffleIds = await alice.evaluate(`globalThis.__pvp.opponent.defaultOpponent.deck.get().map((c) => c._id).sort((a, b) => a - b).join(',')`)
    await alice.rightClick(MY_DECK)
+   const freshMenu = await menuText(alice)
+   check('and its deck menu still opens', freshMenu.some((t) => t.startsWith('Reveal Top X')), freshMenu.join(' | '))
+
    await answerNextPrompt(alice, 3)
-   await clickMenuItem(alice, 'Reveal Top X')
+   check('and Reveal Top X can still be taken', await clickMenuItem(alice, 'Reveal Top X'))
    await waitForWindow(alice, 3, { kind: 'reveal' })
    const bobSaw = await waitForWindow(bob, 3, { kind: 'reveal' })
    check('a fresh reveal is on both boards again', Boolean(bobSaw), bobSaw?.text || 'no window')
@@ -475,6 +518,8 @@ try {
    check('and their Close still closes it', closed)
    await sleep(1000)
    check('and then it is gone', (await windows(bob)).length === 0)
+
+   clearInterval(answering)
 } catch (err) {
    check('the check ran to the end', false, `${err.name}: ${err.message}`)
    console.error(err)
