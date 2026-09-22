@@ -7,9 +7,9 @@
    import { dragging } from '$lib/dnd/pointer.js'
    import cardback from '$lib/assets/cardback_int.png'
 
-   import { cardSelection as selection, selectCard } from '$lib/stores/player.js'
+   import { cardSelection as selection, selectCard, piles } from '$lib/stores/player.js'
    import { logPrizeLook } from '$lib/stores/logger.js'
-   const { openDetails, openCardMenu } = getContext('boardActions')
+   const { openDetails, openCardMenu, openOppCardActionMenu } = getContext('boardActions')
 
    export let card
    export let pile
@@ -83,12 +83,40 @@
       }
 
       /*
+         A window whose cards are not this player's to move out of a pile of theirs:
+         a Reveal and a Look both hand this component a *batch* instead of a pile -
+         the view of the top of the other player's deck - and every card in it is
+         the other player's. So the menu is the one for acting on somebody else's
+         card, which is what the reveal/look permission is for (see
+         docs/reveal.md); the ordinary menu would offer the player's own zones and
+         move the card nowhere.
+      */
+      if (isForeignPile(pile)) {
+         openOppCardActionMenu(e.clientX, e.clientY, card, revealed, pile)
+         return
+      }
+
+      /*
          The pile goes with it, because a card in a pile's *view* is a card whose
          menu finishes the view when one of its entries is taken (see
          Board.svelte's openCardMenu). A card on the board passes the same pile and
          nothing comes of it: there is no view open over the board's own zones.
       */
       openCardMenu(e.clientX, e.clientY, revealed, pile)
+   }
+
+   /*
+      Whether this card is in a window showing the other player's deck.
+
+      The test is whether the pile the card carries is one of *this* board's own
+      lists, which is exactly the question "is this card the player's to move" - and
+      it needs no flag to agree with it: a batch is a different object from the
+      mirror's own deck, so it is not in `piles()` and every card in it answers yes.
+      A card on the board is in one of those lists by definition, and the far half's
+      own zones never reach this component (they have `opponent/Card.svelte`).
+   */
+   function isForeignPile (p) {
+      return Boolean(p) && !piles().includes(p)
    }
 
 </script>

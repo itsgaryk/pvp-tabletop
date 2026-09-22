@@ -82,12 +82,16 @@ writeFileSync(entry, `
    import Board from '${p('lib/play/Board.svelte')}'
    import Connection from '${p('routes/Connection.svelte')}'
    import Page from '${p('routes/+page.svelte')}'
-   import { cards, cardSelection, deck, discard, bench, draw, hand, lz, moveSelection, resetBoard, resetSelection, attachSelection, selectCard, selectPile, shuffleAfterLeavingDeck, stadium, table, toBench } from '${p('lib/stores/player.js')}'
+   import { cards, cardSelection, deck, discard, bench, draw, hand, lz, moveSelection, resetBoard, resetSelection, attachSelection, selectCard, selectPile, shuffleAfterLeavingDeck, stadium, table, toBench, cardPile } from '${p('lib/stores/player.js')}'
    import { slot } from '${p('lib/stores/custom/cards.js')}'
+   import { reveal, look, isActionable, canReveal, topCount, revealTop, lookTop, resetRevealState } from '${p('lib/stores/reveal.js')}'
+   import { OPP_ACTIONS, opponentCardAction, respondToOpponentCardAction } from '${p('lib/stores/oppAction.js')}'
    import InspectionView from '${join(root, 'tools', 'pile-dialog.svelte').split(sep).join('/')}'
+   import RevealDialog from '${p('lib/play/dialogs/Reveal.svelte')}'
+   import LookDialog from '${p('lib/play/dialogs/Look.svelte')}'
    /* what a decklist import does: the list of cards, then the board built from it */
    const setDeck = (cards_) => { cards.set(cards_); resetBoard() }
-   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, deck, defaultOpponent, discard, draw, hand, lz, moveSelection, resetSelection, attachSelection, selectCard, selectPile, setDeck, shuffleAfterLeavingDeck, slot, stadium, table, toBench, InspectionView }
+   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, isActionable, look, LookDialog, lookTop, lz, moveSelection, OPP_ACTIONS, opponentCardAction, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, RevealDialog, revealTop, selectCard, setDeck, shuffleAfterLeavingDeck, slot, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
 `)
 
 const svelte = {
@@ -522,6 +526,185 @@ for (const [ half, zone ] of [ [ 'the player', p('lib', 'play', 'board', 'Temp.s
    check(`and every card of it is picked up on its own`,
       /selectCard\(card, table, holdingCtrlOrCmd\(e\)\)/.test(source))
 }
+
+/*
+   Reveal and Look: the two ways cards out of a deck are shown, and the one
+   property both of them exist to apply.
+
+   This is the half of the pair a render *can* answer, and it is the half that
+   matters most, because the property - "this opponent card may be acted on" - is
+   the part with no visible symptom when it is wrong. A card that is actionable and
+   should not be offers a menu that moves somebody else's card; a card that should
+   be and is not simply never answers, which reads exactly like the feature not
+   existing.
+
+   What is asserted here is the *rule* rather than a rendering:
+
+   - the permission is the batch and nothing else: a card is actionable while it is
+     in the Reveal batch or the Look batch, and not before, not after the batch is
+     replaced, and not after the board is cleared
+   - a batch is a view of a deck, so the same card object is in the far half's deck
+     *and* in the batch - and `cardPile` therefore answers null for it, which is how
+     a card in those windows is told apart from a card on the board
+   - the two windows render, with their cards and their two buttons
+   - both entries refuse solo, which is the rule the menus also state
+
+   Neither window can be opened by a click here - one is opened by a relay event
+   and the other by a menu entry - so they are rendered from a batch put into the
+   store directly, which is the same state the event would leave behind.
+*/
+mod.resetRevealState()
+check('a card is not actionable before anything has been shown', !mod.isActionable(get(mod.defaultOpponent.deck)[0] || {}))
+check('and nothing may be revealed in solo', mod.canReveal() === false, `canReveal = ${mod.canReveal()}`)
+
+check('and "the top X" is what the deck has when X is larger', mod.topCount(mod.deck, 999) === get(mod.deck).length)
+
+/*
+   The far half's deck, which a board state would have filled. This check has no
+   room and so no state to receive, so it is filled here - the same three cards a
+   `boardState` would move into it (`moveCards` in opponent.js).
+*/
+for (let i = 0; i < 6; i++) {
+   mod.defaultOpponent.deck.push({ _id: 9000 + i, name: `Their Card ${i + 1}`, set: 'sv1', number: String(i + 1) })
+}
+const farDeck = get(mod.defaultOpponent.deck)
+check('and the far half has a deck to reveal', farDeck.length > 2, `${farDeck.length} cards`)
+
+/*
+   The batch, in the shape a pile has - which is what `applyReveal` builds (see
+   `asPile` in reveal.js), and both halves of it matter:
+
+      `cards`  the record of the gesture: the ids that were shown, and what the
+               permission is asked about
+      `get()`  the *live* view of them: the cards that are still in the deck, which
+               is what the window draws
+
+   A copy of the list is the obvious implementation and it is wrong: the card would
+   stay in the window after it had been acted on, and the second click would do
+   nothing at all, silently (see docs/gotchas.md). So the batch is built here the
+   way the real one is built, by hand, because the real one arrives in an event that
+   needs a room.
+*/
+const shownCards = farDeck.slice(-3).reverse()
+const batch = {
+   name: 'deck',
+   source: farDeck,
+   get: () => shownCards.filter((card) => farDeck.includes(card)),
+   subscribe: (fn) => { fn(batch.get()); return () => {} }
+}
+mod.reveal.set({ owner: 'theirs', pileName: 'deck', cards: shownCards, pile: batch })
+
+check('a revealed card is actionable', mod.isActionable(shownCards[0]))
+check('and one that was not revealed is not', !mod.isActionable(farDeck[0]))
+/*
+   The card is in the far half's deck *and* in the batch - they are the same card
+   objects, which is what makes the batch an id-only event possible. So the card's
+   own pile is the far half's deck, and the batch is a different object from it:
+   that difference is the whole of how a card in one of these windows is told apart
+   from a card of this board's, and `board/Card.svelte` asks it of `piles()`.
+*/
+check('and the card is in the far half\'s deck, where the batch got it',
+   get(mod.defaultOpponent.deck).includes(shownCards[0]))
+/*
+   And the batch is *not* one of this board's own piles, which is the whole of how
+   a card in one of these windows is told apart from a card on the board:
+   `board/Card.svelte` asks whether the pile a card carries is in `piles()`, and a
+   batch is a different object from the mirror's deck it is a view of. The card's
+   own pile is `null` for this board - the far half's zones are the mirror's, and
+   this board's `piles()` is its own.
+*/
+check('and the batch is not one of this board\'s own piles',
+   mod.cardPile(shownCards[0]) === null,
+   'the far half\'s deck is not this board\'s pile, which is what the window is read by')
+check('and neither is the far half\'s deck', mod.cardPile(farDeck[0]) === null)
+
+const revealHtml = renders('the reveal window renders, with the cards on show', mod.RevealDialog, {
+   props: { renderOpen: true },
+   context: new Map([ [ 'boardActions', { openDetails () {}, openCardMenu () {}, openOppCardActionMenu () {} } ] ])
+})
+check('and it says both players can see them',
+   Boolean(revealHtml) && revealHtml.includes('both players can see these'))
+check('and it offers Close and Close &amp; Shuffle',
+   Boolean(revealHtml) && revealHtml.includes('Close') && revealHtml.includes('Close &amp; Shuffle'))
+check('and it shows the cards of the batch',
+   Boolean(revealHtml) && (revealHtml.match(/class="card"/g) || []).length === batch.get().length,
+   `${(revealHtml?.match(/class="card"/g) || []).length} cards, ${batch.get().length} on show`)
+
+/* the Look batch is the same shape, and the same permission */
+const lookedCards = farDeck.slice(-2).reverse()
+const lookPile = {
+   name: 'deck',
+   source: farDeck,
+   get: () => lookedCards.filter((card) => farDeck.includes(card))
+}
+mod.look.set({ pileName: 'deck', cards: lookedCards, pile: lookPile })
+check('a looked-at card is actionable too', mod.isActionable(lookedCards[0]))
+
+const lookHtml = renders('the look window renders, with the cards on show', mod.LookDialog, {
+   props: { renderOpen: true },
+   context: new Map([ [ 'boardActions', { openDetails () {}, openOppCardActionMenu () {} } ] ])
+})
+check('and it says only this player can see them',
+   Boolean(lookHtml) && lookHtml.includes('only you can see these'))
+check('and it offers Close and Close &amp; Shuffle',
+   Boolean(lookHtml) && lookHtml.includes('Close') && lookHtml.includes('Close &amp; Shuffle'))
+
+/*
+   And the batch is a *live* view of the deck rather than a copy of it, which is the
+   difference between a window that keeps offering a card that has been sent
+   somewhere and one that does not. A copy is the obvious implementation and it has
+   no visible symptom until a card is acted on: it stays in the window, and the
+   second click does nothing at all, silently (see docs/gotchas.md).
+
+   The two questions a move changes are asked here: what the window shows, and
+   whether the card still answers a click.
+*/
+const shown = shownCards[1]
+check('a card is on show while it is still in the deck', batch.get().includes(shown) && mod.isActionable(shown))
+
+farDeck.splice(farDeck.indexOf(shown), 1)
+check('and leaves the window the moment it is moved out of the deck',
+   !batch.get().includes(shown),
+   `${batch.get().length} of ${shownCards.length} still on show`)
+check('and stops answering clicks with it', !mod.isActionable(shown))
+
+mod.resetRevealState()
+check('and nothing is actionable once the board is cleared',
+   !mod.isActionable(shownCards[0]) && !mod.isActionable(farDeck[0]))
+
+/*
+   And the wiring, which a render cannot click: each deck's own menu offers the
+   entries, and a card of the far half's picks the right menu for the situation -
+   the local one in solo, the request one in a room.
+*/
+const ownDeckSource = readFileSync(join(src, 'lib', 'play', 'board', 'Deck.svelte'), 'utf8')
+const oppDeckSource = readFileSync(join(src, 'lib', 'play', 'opponent', 'Deck.svelte'), 'utf8')
+const oppCardSource = readFileSync(join(src, 'lib', 'play', 'opponent', 'Card.svelte'), 'utf8')
+const ownCardSource = readFileSync(join(src, 'lib', 'play', 'board', 'Card.svelte'), 'utf8')
+const oppActionSource = readFileSync(join(src, 'lib', 'stores', 'oppAction.js'), 'utf8')
+
+check('and the player\'s own deck offers Reveal Top X', /text="Reveal Top X"/.test(ownDeckSource) && /revealTop\(deck/.test(ownDeckSource))
+check('and no Look: a player cannot look at their own deck, they can read it',
+   !/Look at Top X/.test(ownDeckSource))
+check('and the opponent\'s deck offers both', /text="Reveal Top X"/.test(oppDeckSource) && /text="Look at Top X"/.test(oppDeckSource))
+check('and both are refused outside a room', /disabled=\{!canReveal\(\)\}/.test(ownDeckSource) && /disabled=\{!canReveal\(\)\}/.test(oppDeckSource))
+
+/*
+   The one hand-off that decides which menu a card of the far half's gets. It is a
+   line in a component that a render cannot click, so it is read - and read the
+   same way for both halves, because the *near* half must not be able to reach the
+   request menu at all: a card of the player's own is never somebody else's.
+*/
+check('and a card of the far half\'s takes the request menu in a room',
+   /openOppCardActionMenu\(e\.clientX, e\.clientY, card, revealed, pile\)/.test(oppCardSource) &&
+   /\$solo\) openOppCardMenu/.test(oppCardSource))
+check('and a card of the player\'s own only takes it inside a reveal or a look',
+   /isForeignPile\(pile\)/.test(ownCardSource) && /piles\(\)\.includes\(p\)/.test(ownCardSource) &&
+   /if \(isForeignPile\(pile\)\) \{\s*openOppCardActionMenu/.test(ownCardSource))
+check('and no action is taken on a card that does not answer',
+   /if \(!card \|\| !canActOn\(card\)\) return false/.test(oppActionSource))
+check('and the owner is the one who performs the move',
+   /react\('oppCardAction'/.test(oppActionSource) && /respondToOpponentCardAction/.test(oppActionSource))
 
 try { mod.exitSolo() } catch {}
 

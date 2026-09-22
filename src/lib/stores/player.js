@@ -8,6 +8,7 @@ import { fixOld } from './oldCards.js'
 import { s } from '$lib/util/strings.js'
 import { statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
 import { normalizeMarkerUsed } from '$lib/util/markers.js'
+import { registerOwnDeck } from './reveal.js'
 import { logStatus, logStatusCleared } from './logger.js'
 import {
    logMove, logSlotMove, logPickup, logPlacement,
@@ -955,3 +956,12 @@ react('abilityUpdated', ({ slotId, used }) => {
    slot.abilityUsed.set(Boolean(used))
    share('abilityUpdated', { slotId, used: Boolean(used) })
 })
+
+/*
+   Reveal and Look need this board's deck and cannot import it: `reveal.js` is
+   imported by components on both halves, and importing player.js from it would
+   point the import graph back at itself (see the note in connection.js). So the
+   deck is handed over instead - the same direction `onStadiumPlay` uses for the
+   answer a board gives another board.
+*/
+registerOwnDeck(deck)

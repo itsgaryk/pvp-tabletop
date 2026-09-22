@@ -143,6 +143,23 @@ anything's scrollable area — the wheel over it does nothing, and there is no b
 The panel takes its share of the window the same way the board does (see [The zones](#the-zones)), and
 the same is true of the multi-card selection dialog, which is the same grid.
 
+**Reveal and Look** are the other two ways cards come out of a deck, and they are
+about *who is shown them* rather than about moving them: a **Reveal** shows the top
+X cards to both players in a window on both boards, and a **Look** shows them to the
+one player who asked, in a window on their board alone. Both are entries on a deck's
+own menu — *Reveal Top X* on either deck, *Look at Top X* on the opponent's — and
+neither ever moves a card: they are views of the top of a deck, and the deck is
+exactly where it was until *Close & Shuffle* says otherwise.
+
+A card either window is showing may be acted on **as the other player's**, which is
+the "allowed to take action on this opponent card" property: it can be clicked and
+right-clicked like a card of the player's own, and its menu's entries land on the
+owner's half. That is one whole subject of its own — the property, the split between
+the player who asks and the board that owns the card, and the two names a half is
+called by — and it is written up in **[reveal.md](reveal.md)**. What belongs here is
+where the entries are: both are refused outside a room, and a spectator is not given
+the menu at all (see [Spectating](#spectating)).
+
 **Putting cards back in a chosen order** — *Search & Order Deck* on the deck — is the
 other half of a search: *Ciphermaniac's Codebreaking* is "search your deck for 2 cards,
 shuffle your deck, then put those cards on top of it in any order", and the order is the

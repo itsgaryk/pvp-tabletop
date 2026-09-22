@@ -875,3 +875,65 @@ the narrow one's left edge sat exactly the 20px step right of the other's (`left
 capture's scale). That is the arithmetic of the wrapper above, read off the screen — and it is
 worth doing rather than squinting at a screenshot: the numbers say *which* rule did it, and the
 same numbers in the old markup would all have been one width.
+
+**A permission written onto a card is a permission that leaks to the board the card came
+from.** The "allowed to take action on this opponent card" property that a Reveal and a Look
+need reads like a flag on the card — that is how it is worded, and the card is the thing the
+rule is about. It is the wrong shape, and not for a subtle reason: **a card object is shared
+between a board and its mirror within one client.** `opponent.js`'s `applyBoardState` moves the
+*same objects* out of the deck into the mirror's zones, and `cardsMoved` moves them by id, so
+the card the opponent's deck holds and the card this player's mirror holds are one object with
+two references. A `canAct` field written onto it would therefore be a field on the *owner's*
+own card as well, and the owner's own board would offer the "somebody else's card" menu for
+their own card — a menu whose every entry asks the other player to move it. It cannot be found
+by looking at one board, because each board does exactly what its own copy of the flag says.
+
+What replaced it is a property of the **batch** — the set of cards a Reveal or a Look is
+showing, held in `stores/reveal.js` — and a card is actionable exactly when it is one of them.
+Three things fall out of that, and each is why the shape is right rather than merely different:
+it cannot outlive the board it was about (the batch is reset with the board, and replaced
+wholesale by the next reveal); it cannot drift, because it *is* the record every move is
+already written against; and it is one object per client, so the two boards cannot disagree
+about what it says. The general rule is worth stating: **a per-card flag is a claim about a
+card, and a card here does not belong to one board.** See [reveal.md](reveal.md).
+
+**A batch that is a copy of a list keeps offering cards that have already left.** The window a
+Reveal opens is a view of the top of a deck, so the obvious implementation is to take the cards
+at reveal time and render that list. The symptom is nothing like a bug: the player right-clicks
+a revealed card, sends it to their discard, and the card **stays in the window**, still
+clickable — and the second click does nothing at all, silently, because the card is no longer
+in the deck the action looks it up in. Two independent-looking faults ("it did not disappear"
+and "the menu stopped working") out of one design decision.
+
+The batch is therefore a **live view of the deck it was taken from** — `get()` returns the
+batch's cards that are *still in that deck* — while the ids it was built from are kept as the
+record of the gesture, which is what the permission is checked against. So a card that has been
+acted on leaves the window and stops answering in the same moment, and a card moved back into
+the deck rejoins it. The tell to look for in a feature like this is a window whose contents are
+a snapshot: **ask what happens to a card in it after it moves.**
+
+**The two boards name a half the same way, which means the word has to be flipped exactly once
+and nobody notices when it is not.** A reveal is written by the player who made it, so its
+event says `mine` for *their* deck and `theirs` for the other one. Everything on the receiving
+side — the window's heading, the deck the Close & Shuffle button shuffles, the pile a card's
+menu acts on — wants the *reader's* word, where `mine` is this board's own deck. So an incoming
+batch has to be turned around (`localOwner` in `reveal.js`), and the failure when it is not is
+the worst kind here: the batch is gathered off the wrong deck, none of the ids are found in it,
+and **the window never opens on the other player's screen**. On the revealer's own board
+everything is perfect — their window is drawn from cards they already had, so the flip is never
+exercised there — which means the half of the feature that works is the half being looked at.
+`mine`/`theirs` is a second naming vocabulary for the same two halves that
+[terminology.md](terminology.md) already has four of, and it is worth knowing that before
+adding a fifth thing that names a half.
+
+**A menu that opens a card from another board has to be told *which* pile the card is in, and
+the pile may not be a pile.** A Reveal's window hands its cards the *batch* as their `pile`,
+because that is what every card component needs one for (`cardPile`, `selectPile` for Ctrl+A).
+The batch deliberately has the deck's own name (`deck`), so it reads exactly like one — and
+that is the trap: `board/Card.svelte` tells the two situations apart by asking whether the pile
+it was handed is one of *this* board's own lists (`piles()`), not by the name, because the name
+is the same on purpose. Two things then have to follow: the menu that acts on somebody else's
+card has to translate the batch back to the real deck before it can take the card out of
+anything, and the *near* half's card component must never reach that menu at all — a card of
+the player's own is never somebody else's. Both are asserted in `tools/render-check.mjs`,
+because neither has a symptom until the wrong menu opens on the wrong card.
