@@ -5,6 +5,7 @@ import { slot } from './custom/cards.js'
 import { socket } from './connection.js'
 import { fromRelay } from './timer.js'
 import { discardStadium } from './player.js'
+import { registerTheirDeck } from './reveal.js'
 import { normalizeStatus } from '$lib/util/status.js'
 import { normalizeMarkerUsed } from '$lib/util/markers.js'
 
@@ -71,6 +72,25 @@ export function createOpponent () {
          if (card) target.push(card)
       }
    }
+
+   /*
+      A card the event names that this board does not hold.
+
+      A mirror is handed cards in two ways - a full board state, and the moves that
+      follow - and a card can be named by a move *before* anything has told this board
+      it exists: a placement that puts a card onto a deck from a zone whose move this
+      board never saw. `removeCard` answers nothing for it, and the caller has to
+      decide between dropping it (which loses the card from the mirror for good) and
+      placing a stand-in, which is what `placeOrdered` needs to put the block in the
+      right order. The stand-in carries the id and nothing else, so it is a card-shaped
+      placeholder rather than a card: a full board state replaces it, and until then it
+      is what keeps the deck's *count* honest.
+
+      Only a caller that is putting a card *into* a pile uses this. A move between two
+      zones this board can see must not invent cards, or a stale event would grow the
+      board.
+   */
+   const missingCard = (id, pile) => ({ _id: id, name: null, _placeholder: true, _pile: pile?.name || null })
 
    const removeSlot = (s) => {
       if (!s) return
@@ -188,13 +208,23 @@ export function createOpponent () {
             is unreadable to everyone but its owner, and a full board state
             carries the order that matters.
 
-            `ids` names cards in the source pile, which is where an ordered move
-            takes them from: the list is not in the destination yet, so
-            `placeOrdered` finds nothing to relocate and simply puts the block
-            where it belongs.
+            `ids` names cards the *source* pile holds in the placement this was
+            written for, where they are already in the deck: the list is not in
+            the destination yet, so `placeOrdered` finds nothing to relocate and
+            simply puts the block where it belongs.
+
+            A placement can also be a card *joining* the deck - "To Top of Deck"
+            on a card in hand, which is an entry of the opponent-card menu - and
+            then the id is in neither pile1 nor pile2 of this board yet, because
+            this board never saw the card leave. That case used to fall out of
+            this branch entirely: `removeCard` answered nothing, the list came out
+            empty, and the card simply never arrived - a mirror quietly one card
+            short, in a count nobody is shown and a deck nobody can read. So the
+            cards this board does not have are not dropped: they are placed, which
+            is what `placeOrdered` does with a card it cannot find to relocate.
          */
          if (ordered) {
-            const list = ids.map(id => removeCard(id, pile1)).filter(Boolean)
+            const list = ids.map(id => removeCard(id, pile1) || missingCard(id, pile1))
             if (!list.length) return
 
             pile2.placeOrdered(list, { bottom: position === 'bottom' })
@@ -345,6 +375,19 @@ export function createOpponent () {
    own instances and assigns each one a player.
 */
 export const defaultOpponent = createOpponent()
+
+/*
+   The mirror's deck, handed to `reveal.js` so a Reveal or a Look can read the far
+   half's deck without importing this module - that import would be a cycle
+   (player.js imports reveal.js, this imports player.js, so reveal.js importing this
+   closes the loop, and a cycle here is a 500 on every page load rather than a subtle
+   bug: see the note in connection.js).
+
+   It is one direction only: reveal.js exposes `registerTheirDeck` and this calls it.
+   The registration is what reveal.js waits for, and a Reveal or a Look taken before
+   it lands has no far deck to read, which is the correct answer rather than an error.
+*/
+registerTheirDeck(defaultOpponent.deck)
 
 /* the default mirror must receive relay events like every other instance */
 register(defaultOpponent)

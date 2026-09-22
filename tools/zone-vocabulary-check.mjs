@@ -115,6 +115,30 @@ const getPileNames = new Set(getPileBlock
 check('the receiver resolves every board zone', same(boardPiles, getPileNames),
    `board: ${list(boardPiles)} | getPile: ${list(getPileNames)}`)
 
+/*
+   And so does the request in the other direction. `oppAction.js` reads the same
+   table the other way round - it is what turns an action's zone name back into a
+   pile on the board that owns the card - so a name it does not know is a card that
+   does not move, silently, exactly as `getPile` failing does.
+
+   One name is deliberately missing from it, and the check is written as a subset
+   rather than an equality so that the exception is stated here rather than
+   implied: `pickup` is the phase cards wait in while a multi-card selection is
+   resolved (see terminology.md), so a card is never *moved to* it by an action and
+   there is nothing for the request to name. Everything else has to be there.
+*/
+const oppActionSrc = read('src/lib/stores/oppAction.js')
+const oppPileBlock = /function oppPile \(name\) \{[\s\S]*?\n\}/.exec(oppActionSrc)
+const oppPileNames = oppPileBlock ? keysIn(oppPileBlock[0]) : new Set()
+const ACTION_SKIPS = new Set(['pickup'])
+
+check('and the action request knows every zone a card can be moved to',
+   isSubset(new Set([ ...getPileNames ].filter((n) => !ACTION_SKIPS.has(n))), oppPileNames),
+   `missing: ${list(new Set([ ...getPileNames ].filter((n) => !ACTION_SKIPS.has(n) && !oppPileNames.has(n))))}`)
+check('and names nothing the receiver does not resolve',
+   isSubset(oppPileNames, getPileNames),
+   `not a zone: ${list(new Set([ ...oppPileNames ].filter((n) => !getPileNames.has(n))))}`)
+
 /* both ends must agree on the shape of a slot's sub-pile name */
 const opponentSlotRegex = /const slotRegex = (\/.*?\/[a-z]*)/.exec(opponentSrc)
 const loggerSrc = read('src/lib/stores/logger.js')

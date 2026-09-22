@@ -5,6 +5,7 @@
    import cardback from '$lib/assets/cardback_int.png'
    import { share, spectating } from '$lib/stores/connection.js'
    import { logDeckView, logMove } from '$lib/stores/logger.js'
+   import { canReveal, revealTop } from '$lib/stores/reveal.js'
 
    import { deck, discard, lz, prizes, draw, shuffle } from '$lib/stores/player.js'
    const { openPile, openDeckOrder, openSelection } = getContext('boardActions')
@@ -70,6 +71,19 @@
       openPile(deck)
    }
 
+   /*
+      Reveal the top X cards of the player's own deck, to both players.
+
+      It is the opponent's deck's own entry with this deck behind it, and the whole
+      of it is `revealTop` in the store: which cards "the top" means, which half
+      owns the deck, and the event that shows the other player. What is here is the
+      question, which every "X" on this board asks with the browser's own prompt
+      (Draw X, View Top X, Order Top X).
+   */
+   function revealTopX () {
+      revealTop(deck, parseInt(prompt('Reveal how many cards from the top?')))
+   }
+
    /* the click that opens the deck needs to stop propagation,
    so that the document level listener to close the Popup on clickoutside is not immediately fired
    (same for discard and lost zone) */
@@ -88,6 +102,13 @@
       <ContextMenuOption click={() => pickX()} text="View Top X" shortcut="Alt+1...9" disabled={$spectating} />
       <ContextMenuOption click={() => pickX(true)} text="View Bottom X" disabled={$spectating} />
       <ContextMenuOption click={orderTopX} text="Order Top X" disabled={$spectating} />
+      <!--
+         Reveal, which is a shared act: the opponent is shown these cards too, and
+         either player may act on them afterwards. It is disabled rather than
+         absent outside a room - solo has nobody to reveal to - so the menu does
+         not change shape between the two modes (see docs/reveal.md).
+      -->
+      <ContextMenuOption click={revealTopX} text="Reveal Top X" disabled={!canReveal()} />
       <ContextMenuOption click={arrangeDeck} text="Search & Order Deck" disabled={$spectating} />
       <ContextMenuOption click={() => moveTop(discard)} text="Discard Top Card" disabled={$spectating} />
       <ContextMenuOption click={() => moveTop(lz)} text="Lost Zone Top Card" disabled={$spectating} />

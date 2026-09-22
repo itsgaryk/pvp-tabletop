@@ -3,62 +3,62 @@ import { shuffle } from '$lib/util/array.js'
 
 /**
  * Writable array store with some useful methods
+ *
+ * Every method that changes the pile **hands the store a new array**, and that is
+ * load-bearing rather than tidiness. These used to mutate the array in place and
+ * `return v`, and Svelte's `writable` does not notify when the value it is handed
+ * equals the one it holds - which for an array is the same reference. So a pile
+ * changed silently: `push` never told a subscriber anything, and the only
+ * notifications a deck ever produced were the `clear()` at each end of a load, both
+ * of them while it was *empty*.
+ *
+ * Nothing on the board minds (it re-renders because something else in the same click
+ * changed), and that is what made this expensive to find: the one thing that reads a
+ * pile through a subscription - the view a Reveal or a Look keeps of the deck it is
+ * showing - was short by whatever arrived after it looked, and no amount of waiting
+ * fixed it. A store that does not notify is not a store; `tools/reveal-check.mjs` is
+ * what caught it, two browsers apart.
  */
 export function pile (name = null) {
    const { get, set, subscribe, update } = writable([])
 
+   /* every change goes through here, so no method can forget to be seen */
+   const change = (fn) => {
+      update(v => {
+         const next = [ ...v ]
+         fn(next)
+         return next
+      })
+   }
+
    return {
       name,
       get, set, subscribe, update,
-      push: (val) => {
-         update(v => {
-            v.push(val)
-            return v
-         })
-      },
+      push: (val) => change(v => v.push(val)),
       pop: () => {
          let card = null
-         update(v => {
+         change(v => {
             card = v.pop()
-            return v
          })
          return card
       },
-      shuffle: () => {
-         update(v => {
-            shuffle(v)
-            return v
-         })
-      },
+      shuffle: () => change(v => shuffle(v)),
       clear: () => {
          set([])
       },
-      remove: (card) => {
-         update(v => {
-            v.splice(v.indexOf(card), 1)
-            return v
-         })
-      },
-      unshift: (val) => {
-         update(v => {
-            v.unshift(val)
-            return v
-         })
-      },
+      remove: (card) => change(v => {
+         const i = v.indexOf(card)
+         if (i >= 0) v.splice(i, 1)
+      }),
+      unshift: (val) => change(v => v.unshift(val)),
       shift: () => {
          let card = null
-         update(v => {
+         change(v => {
             card = v.shift()
-            return v
          })
          return card
       },
-      merge: (array) => {
-         update(v => {
-            v.push(...array)
-            return v
-         })
-      },
+      merge: (array) => change(v => v.push(...array)),
       /*
          Put a list of cards at one end of the pile as one move, in the order
          given: `ordered[0]` is the topmost, or the last card if the placement is
@@ -94,30 +94,25 @@ export function pile (name = null) {
 
          update(v => {
             const kept = v.filter(card => !ids.has(card._id))
-            const next = bottom
+            /* a new array, so the change is seen - see the note over `pile` */
+            return bottom
                ? [ ...ordered, ...kept ]
                : [ ...kept, ...ordered.slice().reverse() ]
-            v.splice(0, v.length, ...next)
-            return v
          })
       },
-      swap: (rem, add) => {
-         update(v => {
-            v.splice(v.indexOf(rem), 1, add)
-            return v
-         })
-      }
+      swap: (rem, add) => change(v => {
+         const i = v.indexOf(rem)
+         if (i >= 0) v.splice(i, 1, add)
+      })
    }
 }
 
 export function slots () {
    const { get, set, subscribe, update } = writable([])
 
+   /* new arrays, so a change is seen - the same reason the `pile` note gives */
    const add = (slot) => {
-      update(v => {
-         v.push(slot)
-         return v
-      })
+      update(v => [ ...v, slot ])
    }
 
    const remove = (slot) => {
@@ -129,8 +124,8 @@ export function slots () {
             do to the player's own Bench.
          */
          const i = v.indexOf(slot)
-         if (i >= 0) v.splice(i, 1)
-         return v
+         if (i < 0) return v
+         return [ ...v.slice(0, i), ...v.slice(i + 1) ]
       })
    }
 

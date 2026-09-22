@@ -772,6 +772,199 @@ component puts on an element, and nothing in the build checks either half of it.
 rule, then read what renders the element, then click it. The rules themselves — what each
 kind of selection is drawn with, and why — are in [selection.md](selection.md).
 
+**A `$:` statement cannot see a store that a function call reads, and the value it keeps is the
+one from before the store had anything in it.** The Reveal window's heading says which deck it is
+showing, and the answer is a field worked out when the batch is applied:
+
+```js
+$: owner = revealOwnerHere() === 'mine' ? 'Your deck' : "Your opponent's deck"
+```
+
+It read `Your opponent's deck` for a reveal of the player's own deck, and it read that for ever.
+`revealOwnerHere()` reads `reveal` with `get()` inside itself, and **Svelte decides what a
+reactive statement depends on by reading the statement** - a plain function call is a black box,
+so the statement was taken to depend on nothing. It ran once, during the component's
+initialisation, while the batch was still `null`, and then never again: the window opened with
+the right cards and the wrong heading, and closing and reopening it did not help, because a `$:`
+that has no dependencies does not re-run for anything.
+
+The fix is one character of thought and two characters of code: name the store in the statement
+(`$reveal?.ownerHere === ...`), or - better - have the store *push* the answer, so the component
+reads a field rather than recomputing a mapping. It is the same family as the two notes above it
+(`$topUpright` on a plain value throws; `pile?.length ?? 0` prints a wrong number), and it is the
+third way this one-character class of mistake shows up:
+
+| written | what happens |
+| --- | --- |
+| `$plainValue` | throws on mount, and the whole component is dead |
+| `store.length ?? 0` | renders, and calmly prints 0 |
+| `$plainFunction()` inside `$:` | runs once and keeps that answer for ever |
+
+None of them is visible to the build. What finds the third one is looking at the screen, which is
+why the whole feature was driven through two real browsers before it was called done.
+
+**A view that is not *pushed* is a snapshot, and the case that proves it is a board whose own
+move writes no event.** A Reveal's window shows the top of a deck, and a card that leaves that
+deck has to leave the window. The obvious implementation - a `get()` that filters the batch's ids
+against the deck - is right about *what* to show and wrong about *when to show it*: on the
+**owner's** board the card is moved by the board's own code, and a player's own events are never
+handed back to them (`emit` in relay/client.js skips the sender), so nothing the component
+subscribes to ever changes. The window went on drawing a card that was already in the discard,
+while the acting player's board - which *did* get an event - drew two.
+
+So the batch owns a **view store** (`revealView` / `lookView`) and subscribes to the deck it is a
+view of, refreshing that store on every change. The component reads `$revealView`, and the deck's
+own store is what moves it. The general rule: **if something is a live view of a store, something
+has to subscribe to that store** - a `get()` in a template is a read, not a subscription, and the
+two boards of this app do not receive the same events, so "it updates for me" is not evidence.
+
+**The two halves of a board are two tables of stores, and a name on the wire means a different
+store depending on which end reads it.** `oppAction.js` needs a pile by the name an event carries
+(`hand`, `deck`, `discard`, …), and it needs it on one of two boards: the acting player looks the
+card up in its **mirror** of the other half, and the card's **owner** looks it up in its **own**
+zones. Those are different stores with the same names, and one function for both ends was a bug
+that took an afternoon to find:
+
+```js
+function oppPile (name) { ... defaultOpponent.deck ... }   // used on BOTH ends
+```
+
+The owner's client found a card with the same id in its mirror of the *other* player's deck,
+removed **that** one, and then tried to move a card that was in none of its own piles -
+`moveSelection` silently does nothing with a card it cannot place. So the log said the card had
+moved (that line is written before the move), the acting player's window correctly shrank, and on
+both boards the card was still in the deck. Nothing threw, and the trace of it is two functions
+written out side by side (`oppPile` and `ownPile`) with the note saying why they are not one.
+
+The same trap one layer up is the `mine`/`theirs` flip in reveal.js, and it is worth treating
+every name in an event payload as **relative to its sender** until proven otherwise.
+
+**A mirror holds copies of the cards, not the cards.** This one is written down because it decides
+the shape of an entire feature and it is invisible from the outside: `opponent.js`'s
+`applyBoardState` reloads the card list and `reset()` builds **fresh objects** from it
+(`copy` in custom/board.js), so the object a Reveal window is showing on the acting board is not
+the object the mirror's deck holds. It has the same `_id` and it is not `===` it.
+
+Anything that matched a batch card by identity therefore found nothing, and the failure reads as
+an event that never arrived. What the wire carries is therefore **ids** and never card objects:
+the batch keeps ids, the view resolves them against the deck, and every lookup that has to cross
+between a board and its mirror is by `_id`. The tell is a feature that works perfectly on the
+board that started it and silently does nothing on the board that was told about it.
+
+**A `{#if}` around a component's whole subtree is a component that is not rendered, and `showMenu`
+gated the opponent's piles that way.** The far half's `Pile.svelte` wrapped *everything* -
+including the count badge and the cards - in `{#if showMenu}`, because the menu was the only
+reason it had ever needed to render anything else. The moment `showMenu` became a real condition
+(a room has a menu, a spectator does not) that turned into: a pile whose menu is not reachable is
+not drawn at all, so the far half's deck, discard and lost zone were **empty cells** with a
+working count badge floating where their contents should be.
+
+It survived a while because the DOM it left behind looks plausible and because the check that
+noticed it was about something else - "the opponent's deck menu is empty" - and the cause was two
+levels away. The fix is the near half's shape, which had always rendered its menu
+unconditionally and gated the *call* instead (`board/Pile.svelte`): a menu is an overlay on a
+zone, not the zone.
+
+**A pile changed silently, because `update` was handed the array it already had.** Every method of
+`pile()` in `src/lib/stores/custom/cards.js` used to mutate the array in place and `return v`:
+
+```js
+push: (val) => update(v => { v.push(val); return v })
+```
+
+Svelte's `writable` does not notify when the value it is handed equals the one it holds, and for an
+array that means the same reference — so **`push` never told a subscriber anything**. The only
+notifications a deck produced were the two `clear()` calls at each end of a load, both of them
+while it was *empty*. The rest of the app got away with it because a board re-renders for other
+reasons in the same click, so a badge or a row that read `$deck` and was re-rendered anyway looked
+live.
+
+What did not get away with it is a subscription: the view a Reveal or a Look keeps of the deck it
+is showing was short by every card that arrived after it looked, and no amount of waiting fixed it
+— the deck was complete on both boards and the window stayed at two cards. Three rounds of browser
+testing went into "the mirror must be missing a card" before a trace showed the mirror holding all
+three ids and the *view* holding two.
+
+Every method that changes a pile now hands the store a **new array** (`slots().add`/`remove` with
+it), which is the rule a store is built on: **a store that does not notify is not a store.** The
+tell is a component that reads a pile and is *usually* right — that is not reactivity, it is luck
+about what else changed.
+
+**A browser check that runs for a minute has to answer the room's idle prompt, and the failures when
+it does not look like the app's.** `tools/reveal-check.mjs` reads two boards for about sixty seconds —
+opening menus, revealing, looking, acting — and appends almost nothing to the relay, because a
+reveal is a view and a look is not sent at all. At the dev servers' shortened idle windows that is
+long enough for the room to prompt and then to **close**, and a closed room is not a failed
+assertion three sections later: it is an empty board and a lobby, so the cascade begins with "2
+cards where 3 were revealed" and ends with every board reading 0. A diagnostic added at the failing
+step said it plainly — `mode not a room, own deck 0` — which is the room being gone rather than a
+reveal that did not arrive.
+
+`browser-check.mjs`'s panel section answers the same prompt for exactly this reason and says so in
+its own comment. The fix here is one `setInterval` clicking `.idle-go` while the check works; the
+lesson is that **the room's clock is part of a browser check's environment, not of the feature under
+test**, and a check that reads for longer than the idle window will fail eventually in a way that
+looks like the code.
+
+**And a build re-enters the dev server's own client entry, so `npm run build` reloads a running
+browser check.** The first version of this note said "do not run the check while editing files",
+and that was true but not the whole cause: `npm run build` and `tools/render-check.mjs` write
+`.svelte-kit/generated/client/*`, `npm run dev` **watches** that directory, and Vite answers by
+reloading the pages — the same empty boards and the same cascade, with nothing edited at all:
+
+```
+21:11:30 [vite] page reload .svelte-kit/generated/client/nodes/2.js
+21:11:30 [vite] page reload .svelte-kit/generated/client/app.js
+```
+
+The two faults are indistinguishable from the check's output and they have opposite fixes, which is
+why the distinction is worth keeping: a *page reload* from an edit or a build means start the
+check again on a quiet tree, while the *idle close* means the check needs to answer the prompt. Both
+were true in the same afternoon, so a run could be made green by fixing either one and then go red
+again for the other — which is what made this look like flakiness for longer than it should have.
+
+**A batch that keeps only what it could find is a batch that is permanently short, and the poll that
+heals it will agree that it is finished.** The last fault of this feature, and the one worth the most,
+because *two* wrong conclusions were drawn about it before anybody looked at the record.
+
+A Reveal arrives as an event naming card ids, and the board receiving it resolves those ids against
+its **mirror** of the deck. `applyReveal` kept the ids it found at that instant:
+
+```js
+const found = gather(source, cards)
+reveal.set({ cards: found.map(card => card._id), ... })   // the two of the three I have
+```
+
+The two events that set a reveal up — the full board state and the reveal — are separate, and the
+board state can still be in flight when the reveal lands, so "the cards this board can find right
+now" is not the set the event named. Worse, the record then *agreed* with the view: the healing poll
+added earlier compares the view's length against the batch's record and stops when they match, so a
+batch recorded as two of three was complete as far as everything downstream could tell. The third
+card never appeared, in about half of runs, and the check's own tolerance made the rest quiet.
+
+The fix is one word — the record is the ids the event **named**, not the ones it found — and it is
+the general shape: **a record of what was asked for must not be silently rewritten into what was
+achieved.** Anything that later asks "is this batch complete?" is asking the record, and a record
+built from the answer to its own question cannot answer it.
+
+What made this expensive was not the code but the method around it. It was first put down to the
+mirror being a card behind (plausible: the check spends its whole run moving that deck's cards), then
+to a pre-existing mirror weakness, and both times the response was to make the *assertion* more
+tolerant — compare a prefix instead of the whole list, read the count from the batch instead of
+expecting three. Each of those is a way of not finding it, and the giveaway was that the tolerance
+had to keep growing: when an assertion needs to be relaxed twice for the same symptom, the symptom is
+a bug and the assertion is the only thing still telling the truth.
+
+**A mirror never mirrors a private deck's order, and a check must not ask it to.** A shuffle of a
+deck is not an event that moves cards, so nothing carries the new order to a mirror: `shareShuffle`
+tells the other board *that* the deck was shuffled and that board shuffles its own copy. The two
+boards therefore hold the same cards in different orders, and only the owner's order is the real one
+— which is the point, since a deck's order is exactly the information the opponent is missing.
+
+The first version of that assertion compared the two decks id by id and failed on 47 vs 47: the
+same cards, a different order, and nothing wrong. What holds is the invariant — a shuffle moved
+nothing in or out of the deck — and that is what is asserted now.
+
 **A shortcut that re-implements a menu entry is a second copy of that entry's rule, and the
 copy is the one that goes stale.** `V` is View All of the deck, and so is the deck menu's own
 *View All* entry — but they were not the same code. The menu entry called the deck's
@@ -875,3 +1068,65 @@ the narrow one's left edge sat exactly the 20px step right of the other's (`left
 capture's scale). That is the arithmetic of the wrapper above, read off the screen — and it is
 worth doing rather than squinting at a screenshot: the numbers say *which* rule did it, and the
 same numbers in the old markup would all have been one width.
+
+**A permission written onto a card is a permission that leaks to the board the card came
+from.** The "allowed to take action on this opponent card" property that a Reveal and a Look
+need reads like a flag on the card — that is how it is worded, and the card is the thing the
+rule is about. It is the wrong shape, and not for a subtle reason: **a card object is shared
+between a board and its mirror within one client.** `opponent.js`'s `applyBoardState` moves the
+*same objects* out of the deck into the mirror's zones, and `cardsMoved` moves them by id, so
+the card the opponent's deck holds and the card this player's mirror holds are one object with
+two references. A `canAct` field written onto it would therefore be a field on the *owner's*
+own card as well, and the owner's own board would offer the "somebody else's card" menu for
+their own card — a menu whose every entry asks the other player to move it. It cannot be found
+by looking at one board, because each board does exactly what its own copy of the flag says.
+
+What replaced it is a property of the **batch** — the set of cards a Reveal or a Look is
+showing, held in `stores/reveal.js` — and a card is actionable exactly when it is one of them.
+Three things fall out of that, and each is why the shape is right rather than merely different:
+it cannot outlive the board it was about (the batch is reset with the board, and replaced
+wholesale by the next reveal); it cannot drift, because it *is* the record every move is
+already written against; and it is one object per client, so the two boards cannot disagree
+about what it says. The general rule is worth stating: **a per-card flag is a claim about a
+card, and a card here does not belong to one board.** See [reveal.md](reveal.md).
+
+**A batch that is a copy of a list keeps offering cards that have already left.** The window a
+Reveal opens is a view of the top of a deck, so the obvious implementation is to take the cards
+at reveal time and render that list. The symptom is nothing like a bug: the player right-clicks
+a revealed card, sends it to their discard, and the card **stays in the window**, still
+clickable — and the second click does nothing at all, silently, because the card is no longer
+in the deck the action looks it up in. Two independent-looking faults ("it did not disappear"
+and "the menu stopped working") out of one design decision.
+
+The batch is therefore a **live view of the deck it was taken from** — `get()` returns the
+batch's cards that are *still in that deck* — while the ids it was built from are kept as the
+record of the gesture, which is what the permission is checked against. So a card that has been
+acted on leaves the window and stops answering in the same moment, and a card moved back into
+the deck rejoins it. The tell to look for in a feature like this is a window whose contents are
+a snapshot: **ask what happens to a card in it after it moves.**
+
+**The two boards name a half the same way, which means the word has to be flipped exactly once
+and nobody notices when it is not.** A reveal is written by the player who made it, so its
+event says `mine` for *their* deck and `theirs` for the other one. Everything on the receiving
+side — the window's heading, the deck the Close & Shuffle button shuffles, the pile a card's
+menu acts on — wants the *reader's* word, where `mine` is this board's own deck. So an incoming
+batch has to be turned around (`localOwner` in `reveal.js`), and the failure when it is not is
+the worst kind here: the batch is gathered off the wrong deck, none of the ids are found in it,
+and **the window never opens on the other player's screen**. On the revealer's own board
+everything is perfect — their window is drawn from cards they already had, so the flip is never
+exercised there — which means the half of the feature that works is the half being looked at.
+`mine`/`theirs` is a second naming vocabulary for the same two halves that
+[terminology.md](terminology.md) already has four of, and it is worth knowing that before
+adding a fifth thing that names a half.
+
+**A menu that opens a card from another board has to be told *which* pile the card is in, and
+the pile may not be a pile.** A Reveal's window hands its cards the *batch* as their `pile`,
+because that is what every card component needs one for (`cardPile`, `selectPile` for Ctrl+A).
+The batch deliberately has the deck's own name (`deck`), so it reads exactly like one — and
+that is the trap: `board/Card.svelte` tells the two situations apart by asking whether the pile
+it was handed is one of *this* board's own lists (`piles()`), not by the name, because the name
+is the same on purpose. Two things then have to follow: the menu that acts on somebody else's
+card has to translate the batch back to the real deck before it can take the card out of
+anything, and the *near* half's card component must never reach that menu at all — a card of
+the player's own is never somebody else's. Both are asserted in `tools/render-check.mjs`,
+because neither has a symptom until the wrong menu opens on the wrong card.

@@ -1,4 +1,4 @@
-﻿<script>
+<script>
    import { setContext, onMount } from 'svelte'
    import { dragging } from '$lib/dnd/pointer.js'
    import { source as dragSource } from '$lib/dnd/store.js'
@@ -43,11 +43,14 @@
    import Message from './dialogs/Message.svelte'
    import CardMenu from './dialogs/CardMenu.svelte'
    import SlotMenu from './dialogs/SlotMenu.svelte'
+   import Reveal from './dialogs/Reveal.svelte'
+   import Look from './dialogs/Look.svelte'
 
    import OppInspection from './dialogs/OppInspection.svelte'
    import OppSlotDetails from './dialogs/OppSlotDetails.svelte'
    import OppSlotMenu from './dialogs/OppSlotMenu.svelte'
    import OppCardMenu from './dialogs/OppCardMenu.svelte'
+   import OppCardActionMenu from './dialogs/OppCardActionMenu.svelte'
 
    import {
       hand, deck, discard, prizes, lz, table, stadium,
@@ -200,6 +203,7 @@
    let oppSlotModal
    let oppSlotMenu
    let oppCardMenu
+   let oppCardActionMenu
 
    function openPile (pile) {
       inspectionModal.open(pile)
@@ -298,6 +302,20 @@
       oppCardMenu.open(x, y, pile, card, revealed)
    }
 
+   /*
+      A card of the far half's that this player is allowed to act on, which is what
+      a Reveal or a Look hands over (see docs/reveal.md).
+
+      It is a menu of its own rather than the solo one above, because the two do
+      opposite things with the same words: the solo menu moves a card between the
+      far half's own zones on *this* board, and this one asks the card's owner to
+      move it on theirs. `opponent/Card.svelte` is what picks between them, and the
+      rule is the mode: solo is the local menu, a room is this one.
+   */
+   function openOppCardActionMenu (x, y, card, revealed = true, pile = null) {
+      oppCardActionMenu.open(x, y, card, revealed, pile)
+   }
+
    function startAE (evo = false) { // attach / evolve
       // close any open Deck or Discard pile, so that you can select the pokemon on board
       inspectionModal.close()
@@ -311,7 +329,7 @@
       openSelection,
       openSlotDetails, openOppSlotDetails,
       openDetails, showMessage,
-      openCardMenu, openSlotMenu, openOppSlotMenu, openOppCardMenu,
+      openCardMenu, openSlotMenu, openOppSlotMenu, openOppCardMenu, openOppCardActionMenu,
       startAE
    })
 
@@ -478,10 +496,20 @@
       <SlotDetails bind:this={slotModal} />
       <CardDetails bind:this={detailsModal} />
 
+      <!--
+         Reveal and Look: the two windows cards out of a deck are shown in. Both
+         are opened by their *store* rather than by a call - a Reveal arrives as an
+         event on the other player's board and a Look is taken from the deck's own
+         menu - so neither takes a `bind:this` (see the note in Reveal.svelte).
+      -->
+      <Reveal />
+      <Look />
+
       <OppInspection bind:this={oppInspectionModal} />
       <OppSlotDetails bind:this={oppSlotModal} />
       <OppSlotMenu bind:this={oppSlotMenu} />
       <OppCardMenu bind:this={oppCardMenu} />
+      <OppCardActionMenu bind:this={oppCardActionMenu} />
 
       <!--
          Whose board is on each half. The top player's label sits on the right,

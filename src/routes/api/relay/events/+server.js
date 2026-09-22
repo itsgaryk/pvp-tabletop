@@ -48,7 +48,21 @@ const EVENTS = new Set([
    'abilityUpdated',
    'prizeToggle',
    'handToggle',
-   'oppDamageUpdated'
+   'oppDamageUpdated',
+   /*
+      Reveal and Look. `cardsRevealed` states which cards are on show to both
+      players; `backToDeck` is the shuffle that ends such a window (the deck it
+      names is the one whose order is gone); `oppCardAction` is one player asking
+      the *owner* of a card to move it, which is the only way an action on the
+      other half can be performed at all - the owner's board is the authority for
+      its own cards (see docs/reveal.md).
+
+      A Look shares nothing, so it has no event: what is not in this list cannot
+      be relayed, which is the enforcement rather than a convention.
+   */
+   'cardsRevealed',
+   'backToDeck',
+   'oppCardAction'
 ])
 
 /*
