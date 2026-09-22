@@ -187,16 +187,18 @@ const settle = () => sleep(2000)
 /*
    A fresh page, sitting in the lobby and *hydrated*.
 
-   The second load is what matters: the first visit to a cold dev server can lose a
-   dynamic import while Vite is still warming up, and a page that did not hydrate
-   looks exactly like a board with nothing on it - every later check reads a null
-   badge and the failures all point at the feature rather than at the harness. So
-   this waits for the app's own client code to have run before it returns, and says
-   so if it never does.
+   The second load is what matters: the first visit can lose a dynamic import while the
+   app is still warming up, and a page that did not hydrate looks exactly like a board
+   with nothing on it - every later check reads a null badge and the failures all point
+   at the feature rather than at the harness. So this waits for the app's own client
+   code to have run before it returns, and says so if it never does.
 
-   `globalThis.__pvp` is set by `$lib/util/dev-debug.js`, which is imported behind
-   `devDebug()` in the page: development only, and a read of the stores rather than
-   a way to drive them (see that file).
+   What proves that differs by target, and the obvious probe is wrong in both
+   directions: `document.body.innerText` **includes the server-rendered markup**, so
+   "Create Room" is on screen before any client code has run, and a check that waits for
+   that text is satisfied instantly by a page that is still inert. So this waits for
+   `data-hydrated`, which `+page.svelte` sets in its `onMount` - the one mark that means
+   the same thing on a dev server and on a deployment, and the reason it exists.
 */
 async function reset (page) {
    await page.go(BASE)
@@ -204,7 +206,8 @@ async function reset (page) {
    await page.go(BASE)
 
    for (let i = 0; i < 40; i++) {
-      if (await page.evaluate(`Boolean(globalThis.__pvp && document.body.innerText.includes('Create Room'))`)) return true
+      const ready = await page.evaluate(`Boolean(document.documentElement.dataset.hydrated) && document.body.innerText.includes('Create Room')`)
+      if (ready) return true
       await sleep(500)
    }
 
@@ -448,6 +451,26 @@ try {
    console.log('\none shuffle between the two of them\n')
 
    await settle()
+
+   /*
+      This section reads the stores directly, so it needs the development handle and it
+      is skipped on a deployment. That is not a gap in the check: `globalThis.__pvp` is
+      set by `$lib/util/dev-debug.js`, which is behind `import.meta.env.DEV` on purpose -
+      a debug handle onto the stores is the last thing a production bundle should carry
+      - and sections 1 to 4 run fine against a deployment because they read the board
+      through the DOM. Which is exactly how the strongest verification of this feature
+      was done: the first four sections against the live URL, and this one locally.
+   */
+   const hasHandle = await alice.evaluate(`Boolean(globalThis.__pvp)`)
+   if (!hasHandle) {
+      console.log('  skip  the store-level shuffle rule - no development handle on this deployment')
+      console.log('        (sections 1-4 above exercised the feature against it)')
+      clearInterval(answering)
+      browser.detach()
+      console.log('')
+      console.log(`verdict: ${failures} failed - the reveal and look flow ran against ${BASE}`)
+      process.exit(failures ? 1 : 0)
+   }
 
    /*
       The board is checked before the menu is opened, because everything below depends

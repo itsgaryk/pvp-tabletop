@@ -20,9 +20,20 @@
    */
    $: onMenu = !$room && !$solo
 
-   /* the board is dark: there is no light mode to switch to */
+   /*
+      The board is dark: there is no light mode to switch to.
+
+      `data-hydrated` is set here, and it is here rather than in a check because there
+      is no other way for anything outside the app to know that the client has taken
+      over. A server-rendered page and a hydrated one look identical - the markup is the
+      same string - so a browser check that waits for a *word* on the page is satisfied
+      by the server's own output and sails on into a lobby that does nothing. That is
+      exactly the shape of the harness faults `docs/gotchas.md` collects, and the mark
+      costs one attribute: `document.documentElement.dataset.hydrated`.
+   */
    onMount(() => {
       document.documentElement.classList.add('dark')
+      document.documentElement.dataset.hydrated = 'true'
       devDebug()
    })
 </script>
