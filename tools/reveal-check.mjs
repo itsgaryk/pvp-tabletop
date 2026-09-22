@@ -185,6 +185,39 @@ async function waitForCount (page, read, expected, { timeout = 12000, poll = 250
 const settle = () => sleep(2000)
 
 /*
+   A real drag, through the browser's own input rather than through dispatched DOM
+   events: the board's drag is `pointerdown` on the card, past a five-pixel threshold,
+   over the target and `pointerup` on it (`$lib/dnd/pointer.js`), and a synthesized
+   `pointerdown` does not drive that - the stores are wired to the body's listeners,
+   which only the browser's own input events reach.
+
+   `from` and `to` are expressions evaluated *on the page*, so the caller can walk a
+   window's own markup. Returns false when either end is not there, rather than
+   throwing inside the evaluate.
+*/
+async function dragBetween (page, fromExpr, toExpr) {
+   const centre = (expr) => page.evaluate(`(() => {
+      const el = ${expr}
+      if (!el) return null
+      const r = el.getBoundingClientRect()
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+   })()`)
+
+   const from = await centre(fromExpr)
+   const to = await centre(toExpr)
+   if (!from || !to) return false
+
+   await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x, y: from.y, button: 'none' })
+   await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button: 'left', clickCount: 1 })
+   /* past the threshold first, or the drag never starts */
+   await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x + 12, y: from.y + 12, button: 'left' })
+   await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: to.x, y: to.y, button: 'left' })
+   await sleep(80)
+   await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: to.x, y: to.y, button: 'left', clickCount: 1 })
+   return true
+}
+
+/*
    A fresh page, sitting in the lobby and *hydrated*.
 
    The second load is what matters: the first visit can lose a dynamic import while the
@@ -272,6 +305,34 @@ try {
    check('and both were dealt a hand', start.myHand === 7 && startBob.myHand === 7,
       `${start.myHand} and ${startBob.myHand}`)
 
+   /*
+      Nothing on the far half wears a ring while nothing is on show.
+
+      This is the one to keep: `opponent/Card.svelte`'s wrapper needs Windi's
+      `border-transparent` or `border-2` draws in `currentColor`, and the symptom is a
+      pale ring on **every** card of the other half - the opponent's hand included, which
+      is exactly how it was reported. A border colour can be read, so it is asserted
+      rather than looked at, and it is asserted here, before any window is open, so that
+      a live pulse cannot be mistaken for it.
+   */
+   const idleFaces = await bob.evaluate(`(() => {
+      const out = {}
+      for (const [ name, sel ] of [ [ 'hand', '.gameboard > .hand2' ], [ 'prizes', '.gameboard > .prizes2' ], [ 'deck', '.gameboard > .deck2' ], [ 'discard', '.gameboard > .discard2' ] ]) {
+         const w = document.querySelector(sel + ' div.border-2')
+         out[name] = w ? getComputedStyle(w).borderTopColor : 'no card'
+      }
+      return out
+   })()`)
+   const clearish = (c) => c === 'rgba(0, 0, 0, 0)' || c === 'transparent'
+   /*
+      `no card` is a pass: a deck and a discard draw one face-down front, and whether it
+      is there at all depends on the pile being non-empty at this instant. What is being
+      asserted is the border of the cards that *are* on screen.
+   */
+   check('no card of the far half wears a ring while nothing is on show',
+      Object.values(idleFaces).every((c) => clearish(c) || c === 'no card'),
+      JSON.stringify(idleFaces))
+
    /* ------------------------------------------------------------------ 1. reveal -- */
 
    console.log('\nreveal: the player\'s own deck\n')
@@ -334,6 +395,22 @@ try {
    const moved = await clickMenuItem(bob, 'To Discard')
    check('and an entry can be taken', moved)
 
+   /*
+      The card leaves the *acting* board at once, before the round trip.
+
+      This is what a player feels as "the action is slow": the relay's own round trip is
+      about 1.7s here, measured on a plain move between the same two boards, so waiting
+      for it means the card sits where it was for two seconds after the button is
+      pressed. The move is applied on the acting board's mirror as it is requested
+      (`optimisticMove`), so this has to be true within a few hundred milliseconds - and
+      the point of asserting it *here*, before the owner's count is waited for, is that a
+      5s relay would fail it.
+   */
+   const actedFast = await waitForCount(bob, (p) => badges(p).then((b) => b.theirDiscard), beforeBob.theirDiscard + 1, { timeout: 700, poll: 40 })
+   check('and the acting board sees it move at once, without waiting for the relay',
+      actedFast === beforeBob.theirDiscard + 1,
+      `${beforeBob.theirDiscard} -> ${actedFast} within 700ms`)
+
    const landed = await waitForCount(alice, (p) => badges(p).then((b) => b.myDiscard), before.myDiscard + 1)
    check('the card lands in the OWNER\'s discard, not the acting player\'s',
       landed === before.myDiscard + 1,
@@ -345,7 +422,7 @@ try {
       `${beforeBob.myDiscard} -> ${afterBob.myDiscard}`)
 
    const seen = await waitForCount(bob, (p) => badges(p).then((b) => b.theirDiscard), beforeBob.theirDiscard + 1)
-   check('and the acting board sees it in the far half\'s discard',
+   check('and the acting board still shows it after the owner answers',
       seen === beforeBob.theirDiscard + 1,
       `${beforeBob.theirDiscard} -> ${seen}`)
 
@@ -373,17 +450,109 @@ try {
    check('the opponent\'s deck menu offers Reveal Top X', oppMenu.some((t) => t.startsWith('Reveal Top X')), oppMenu.join(' | '))
    check('and Look at Top X', oppMenu.some((t) => t.startsWith('Look at Top X')))
 
-   await answerNextPrompt(alice, 2)
+   /*
+      Three cards are looked at, and the *last* one is what the drag section below uses.
+      The `2` here is the number of cards this section asserts on, not the size of the
+      batch: the bulk move below takes two of them at once - which is the assertion it
+      exists for - and the drag then needs a card of its own still in the window. A batch
+      of exactly two left the drag asserting against an empty window, and reporting "the
+      drag failed" for "there was nothing to drag".
+   */
+   await answerNextPrompt(alice, 3)
    const looked = await clickMenuItem(alice, 'Look at Top X')
    check('and clicking it shows two cards', looked)
 
    const aliceLook = await waitForWindow(alice, 2, { kind: 'look' })
    check('the look window opens on the looking player\'s board', Boolean(aliceLook), aliceLook?.text || 'no window')
-   check('and it shows the cards', aliceLook?.cards.length === 2, `${aliceLook?.cards.length} cards`)
+   check('and it shows the cards', aliceLook?.cards.length === 3, `${aliceLook?.cards.length} cards`)
    check('and it says only this player can see them', Boolean(aliceLook?.text.includes('only you can see these')))
-   check('and it carries Close and Close & Shuffle',
-      Boolean(aliceLook?.buttons.includes('Close')) && Boolean(aliceLook?.buttons.includes('Close & Shuffle')),
-      aliceLook?.buttons.join(' | '))
+
+   /*
+      One action, and it is Close & Shuffle: a look at the other player's deck that put it
+      back in the order it was found is the one ending that is not the point of it. A
+      second button that only closed the window was a choice between the same thing and
+      less.
+   */
+   check('and its only action is Close & Shuffle',
+      Boolean(aliceLook) && aliceLook.buttons.length === 1 && aliceLook.buttons[0] === 'Close & Shuffle',
+      aliceLook?.buttons.join(' | ') || 'no buttons')
+
+   /*
+      And its cards do not pulse. The outline animation is a *Reveal's* affordance - one
+      or two cards of the other player's among cards of the player's own, with nothing
+      else to say which reply - while in a Look every card answers, so a glow on all of
+      them is decoration that makes a chosen card unreadable. Read off the wrapper rather
+      than the stylesheet, because the class is what the card wears.
+   */
+   const lookCards = await alice.evaluate(`(() => {
+      const pop = [...document.querySelectorAll('.popup')].find((x) => /Look —/.test(x.innerText))
+      if (!pop) return null
+      const ws = [...pop.querySelectorAll('div.border-2')]
+      return {
+         n: ws.length,
+         pulsing: ws.filter((w) => getComputedStyle(w).animationName !== 'none').length,
+         borders: [ ...new Set(ws.map((w) => getComputedStyle(w).borderTopColor)) ]
+      }
+   })()`)
+   check('and its cards do not pulse',
+      Boolean(lookCards) && lookCards.pulsing === 0,
+      `${lookCards?.pulsing} of ${lookCards?.n} pulsing`)
+   check('and they carry no ring of their own',
+      Boolean(lookCards) && lookCards.borders.every((c) => c === 'rgba(0, 0, 0, 0)' || c === 'transparent'),
+      JSON.stringify(lookCards?.borders))
+
+   /*
+      And a card in it can be picked out, which is the report this answers: with the pulse
+      gone there is nothing on screen that says a click does anything, so the ring after
+      the click and the line in the header are the whole of the feedback.
+   */
+   const picked = await alice.evaluate(`(() => {
+      const pop = [...document.querySelectorAll('.popup')].find((x) => /Look —/.test(x.innerText))
+      const imgs = [...pop.querySelectorAll('img.card')]
+      imgs[0].dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      imgs[1].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }))
+      return true
+   })()`)
+   await sleep(500)
+   const pickedNow = await alice.evaluate(`(() => {
+      const pop = [...document.querySelectorAll('.popup')].find((x) => /Look —/.test(x.innerText))
+      return {
+         selected: [...pop.querySelectorAll('div.border-2')].filter((w) => w.className.includes('selected')).length,
+         says: /picked out/i.test(pop.innerText) || /2 cards/.test(pop.innerText)
+      }
+   })()`)
+   check('and its cards can be picked out, one and then two',
+      picked && pickedNow.selected === 2,
+      `${pickedNow?.selected} wearing the selection ring`)
+
+   /*
+      And the menu acts on all of them at once. This is the multi-card half: the picked-up
+      cards are what an entry carries, the same as every other card menu on the board.
+   */
+   const beforeBulk = await badges(alice)
+   await alice.evaluate(`(() => {
+      const pop = [...document.querySelectorAll('.popup')].find((x) => /Look —/.test(x.innerText))
+      const w = [...pop.querySelectorAll('div.border-2')].find((x) => x.className.includes('selected'))
+      w.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 300, clientY: 300 }))
+      return true
+   })()`)
+   await sleep(700)
+   const bulkMenu = await menuText(alice)
+   const heading = await alice.evaluate(`(() => { const h = document.querySelector('.heading'); return h ? h.textContent.trim() : null })()`)
+   check('and the menu says it will act on both',
+      heading === '2 cards',
+      `heading "${heading}": ${bulkMenu.slice(0, 4).join(' | ')}`)
+
+   const bulkMoved = await clickMenuItem(alice, 'To Discard')
+   check('and one entry carries both cards', bulkMoved)
+   const bulkLanded = await waitForCount(
+      alice,
+      async (p) => p.evaluate(`globalThis.__pvp.opponent.defaultOpponent.discard.get().length`),
+      beforeBulk.theirDiscard + 2,
+      { timeout: 4000, poll: 60 })
+   check('and both land in the owner\'s discard from one entry',
+      bulkLanded === beforeBulk.theirDiscard + 2,
+      `${beforeBulk.theirDiscard} -> ${bulkLanded} in bob's discard`)
 
    /*
       The look is private: nothing was sent, so nothing can open over there - and the
@@ -397,6 +566,70 @@ try {
    check('and NO look window opens on the other player\'s board',
       !bobWindows.some((w) => w.kind === 'look'),
       bobWindows.map((w) => w.kind).join(', ') || 'no window')
+
+   /* -------------------------------------------- 3b. the same act, by dragging -- */
+
+   /*
+      A card out of a window can be dragged onto the other player's side, and it has to
+      go to *their* side - "dragging a card from the look window only allows placing it
+      to the player's own side" is what this section exists to keep from coming back.
+
+      The gesture is the browser's own input, because the board's drag is `pointerdown`
+      and a five-pixel threshold rather than HTML5 drag-and-drop (see `dragBetween`), and
+      the zone is the far half's discard: dropping a card there is the same request the
+      menu's *To Discard* makes (`actionForPile`), so the card must land in the owner's
+      discard and the actor's own must not move.
+
+      It runs *after* the two-card move above and takes the card that leaves behind, and
+      both halves of that matter. The two-card move is what the "one entry carries both
+      cards" assertion is about, so it needs a batch of two; and a Look is closed by its
+      shuffle, so a drag has to happen while the window is still up. A batch of two with
+      one card sent away by the menu before it leaves exactly one to drag - a check that
+      emptied the window first was asserting against a window with nothing in it, and
+      reporting "the drag failed" for "there was nothing to drag".
+   */
+   const beforeDrag = await badges(bob)
+   const dragCard = await alice.evaluate(`(() => {
+      const p = [...document.querySelectorAll('.popup')].find((x) => /Look —/.test(x.innerText))
+      const img = p?.querySelector('img.card')
+      return img ? img.getAttribute('alt') : null
+   })()`)
+
+   /*
+      The card to grab is the *image's wrapper* rather than the `div.border-2` itself: the
+      wrapper is what the window draws at a card's size, and the inner div is a
+      zero-height line box around it - grabbing its centre would aim the pointer at the
+      row rather than at the card, and a drag that starts nowhere is a drag that never
+      started. The zone is the far half's discard, which is a pile *or* its own box, so a
+      board that draws one rather than the other is still draggable onto.
+
+      The card is dropped on *Bob's* own discard, so it is read from Bob's board as
+      `myDiscard` - the `2` suffix is the far half from the reader's side, and
+      `badges(bob).theirDiscard` is Alice's pile, which is exactly the reading that made
+      this section look like a failure when the card had landed correctly.
+   */
+   check('and one card is left in the window for the drag', Boolean(dragCard), String(dragCard))
+
+   const dragged = await dragBetween(
+      alice,
+      `[...document.querySelectorAll('.popup')].find((p) => /Look —/.test(p.innerText))?.querySelector('img.card')?.parentElement`,
+      `document.querySelector('.gameboard > .discard2 .pile') || document.querySelector('.gameboard > .discard2')`)
+   check('a card out of the look window can be dragged onto the other player\'s board', dragged)
+
+   const draggedLanded = await waitForCount(bob, (p) => badges(p).then((b) => b.myDiscard), beforeDrag.myDiscard + 1)
+   check('and the drag puts it in the OWNER\'s discard, not the player\'s own',
+      draggedLanded === beforeDrag.myDiscard + 1,
+      `bob's own discard ${beforeDrag.myDiscard} -> ${draggedLanded}`)
+
+   const afterDrag = await badges(bob)
+   check('and the dragging player\'s own discard is untouched',
+      afterDrag.theirDiscard === beforeDrag.theirDiscard,
+      `alice's discard, as bob sees it: ${beforeDrag.theirDiscard} -> ${afterDrag.theirDiscard}`)
+
+   const dragAction = await alice.evaluate(`globalThis.__pvp.lastAction().sentTo`)
+   check('and the request said it came out of the deck',
+      dragAction?.action === 'discard' && dragAction?.from === 'deck',
+      JSON.stringify(dragAction))
 
    /*
       And nothing was sent: the other board's log has the shuffle a look can end

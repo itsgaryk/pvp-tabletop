@@ -47,8 +47,20 @@
    $: cards = $lookView
    $: pile = $look?.pile || null
 
-   $: if (popup && $lookOpen && cards.length && !popup.opened()) popup.open()
-   $: if (popup && !renderOpen && (!cards.length || !$lookOpen) && popup.opened()) popup.close()
+   /*
+      The window follows the batch: opened by a call, closed by the batch being ended
+      (`$lookOpen`), and **not** by the grid emptying - see the longer note in
+      `Reveal.svelte`, which is the same rule for the same reason. It matters more
+      here, because this window's only ending is Close & Shuffle: closing on
+      `!cards.length` took that button away exactly when a player had acted on every
+      card they looked at and still owed the deck a shuffle.
+
+      `$look` is in the condition for the same reason it is in Reveal's: a panel closed
+      by Escape or a click outside leaves `$lookOpen` true, so the next look has to be
+      noticed by its *batch* rather than by the flag.
+   */
+   $: if (popup && $look && $lookOpen && !popup.opened()) popup.open()
+   $: if (popup && !renderOpen && !$lookOpen && popup.opened()) popup.close()
 
    /* the whole batch: the same gesture a pile's view answers Ctrl+A with */
    function selectAll () {
@@ -62,23 +74,49 @@
       <div class="text-sm text-[var(--text-color-two)]">
          {cards.length} {cards.length === 1 ? 'card' : 'cards'} · only you can see these
       </div>
+      <!--
+         What a click does, said out loud, because nothing on the card says it: the Look
+         window's cards do not pulse (see `pulse` in opponent/Card.svelte), so a ring that
+         appears *after* a click is the only feedback there is - and "I cannot select the
+         cards" is what a window with no hint and no pulse reports as.
+      -->
+      {#if cards.length}
+         <div class="hint">
+            Click a card to pick it out, Ctrl-click to add, Ctrl+A for all — then right-click
+            one to act on your opponent's board, or drag one onto it.
+         </div>
+      {/if}
    </div>
 
    <div class="cards focus:outline-none inspection"
       tabindex="0" use:ctrlA on:ctrlA={selectAll}>
       {#each cards as card (card._id)}
-         <Card {card} {pile} revealed={true} />
+         <Card {card} {pile} revealed={true} pulse={false} />
       {/each}
    </div>
 
    <!--
-      Close, and Close &amp; Shuffle while there is still a shuffle to make. A Look is
-      private, so only this player ever sees the pair - but the flag is the batch's,
-      the same field the Reveal window reads, so the two windows cannot disagree about
-      whether the deck has been shuffled.
+      Close &amp; Shuffle, and nothing else, for as long as there is a shuffle to make.
+
+      A Look has one ending rather than two, because the deck it is of is the *other
+      player's*: looking at the top of somebody's deck and putting it back in the order
+      you found it is a look that leaves no trace but is also the one ending a card that
+      says "look at the top X" never has. The shuffle is what the look is for, and the
+      panel is finished when it happens - so a second button that only closed the window
+      was a choice between the same thing and less (reported as *the look window should
+      not have a Close button*).
+
+      Once the shuffle has been made the window stays open with its cards and its
+      **no** buttons at all: the ending has happened, and what is left is a reading that
+      the player closes the way every other panel in the app closes - Escape, or a click
+      outside (`closeLook`). That is the same shape the pile view has for a panel whose
+      one action has been taken.
+
+      Escape and an outside click are deliberately left working, because they are how a
+      Svelte `Popup` closes everywhere and taking them away would trap a window with no
+      button on it.
    -->
    <svelte:fragment slot="buttons">
-      <button class="action" on:click={() => popup.close()}>Close</button>
       {#if !$look?.shuffled}
          <button class="action" on:click={lookCloseAndShuffle}>Close &amp; Shuffle</button>
       {/if}
@@ -96,6 +134,12 @@
    .inspection {
       --card-width: 136px;
       --card-height: 189px;
+   }
+
+   .hint {
+      @apply text-xs mt-1;
+      color: var(--text-color-two);
+      max-width: 34rem;
    }
 
    button.action {

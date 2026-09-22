@@ -1,9 +1,11 @@
 <script>
-   import { getContext } from 'svelte'
+   import { getContext, onDestroy } from 'svelte'
+   import { get } from 'svelte/store'
    import ContextMenu from '$lib/components/ContextMenu.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import { spectating } from '$lib/stores/connection.js'
-   import { defaultOpponent, deck as oppDeck, active as oppActive } from '$lib/stores/opponent.js'
+   import { deck as oppDeck, active as oppActive } from '$lib/stores/opponent.js'
+   import { cardSelection } from '$lib/stores/player.js'
    import { OPP_ACTIONS, opponentCardAction } from '$lib/stores/oppAction.js'
 
    const { openDetails } = getContext('boardActions')
@@ -27,8 +29,17 @@
       other side, and each refuses the other's situation - `opponent/Card.svelte`
       opens the solo one in solo and this one in a room.
 
-      One card, not a selection: a card's menu speaks for the card that was
-      right-clicked, and `opponentCardAction` takes one.
+      One card or several. The entries act on **the window's selection**, not on the card
+      that was right-clicked, which is how every other card menu on this board behaves: a
+      card clicked is picked up, and the menu speaks for what is picked up (see
+      `CardMenu.svelte`). So a player can pick three cards out of a reveal with Ctrl-click
+      and send all three to their opponent's discard with one entry.
+
+      What bounds it is the *pile*: only the selected cards that are in the same pile as
+      the clicked one are carried, because a request names one pile and the owner reads it
+      that way. In a Reveal or a Look that is every card in the window - they are one
+      batch - and it is also what keeps a card of the opponent's selected on the board
+      behind the window from being swept up with them.
    */
 
    let menu
@@ -36,15 +47,64 @@
    let pile = null
    let revealed = true
 
+   /* what the entries act on and what the heading says - one answer, worked out in `refresh` */
+   let picked = []
+   let title = 'Hidden card'
+
    export function open (x, y, _card, _revealed = true, _pile = null) {
       card = _card
       revealed = _revealed
       pile = _pile
+      refresh()
       menu.open(x, y)
    }
 
+   /*
+      What an entry acts on: the clicked card together with the rest of the selection that
+      is in the same pile. The clicked card is always in it, whether or not it was
+      selected - right-clicking a card that is not picked up picks it up first
+      (`opponent/Card.svelte`), so this is the same answer for a card that was.
+
+      `pile.get` rather than `pile.get()`: a card in a window carries the *batch*, and
+      solo's own menu passes the far half's real pile. Both have `get`, and a batch
+      answers with the same cards the window is drawing.
+   */
+   function acting (selection = []) {
+      if (!card) return []
+
+      if (!selection.includes(card)) return [ card ]
+
+      const same = selection.filter((c) => (typeof pile?.get === 'function' ? pile.get().includes(c) : true))
+      return same.length ? same : [ card ]
+   }
+
+   /*
+      The heading, and *when* it is worked out, is the whole of this note.
+
+      It was written `$: picked = acting($cardSelection)`, and that compiled to a
+      dependency on `$cardSelection` **alone** - not on `card`, not on `pile` - so Svelte
+      only re-ran it when the selection changed. The menu is opened *after* the selection:
+      a right-click picks the card up (`opponent/Card.svelte`) and then calls `open`. So the
+      last run of that statement happened while `card` was still null, `acting` returned
+      the empty list, and the heading fell back to the clicked card's own name - `Card60`
+      for a two-card selection - and stayed there.
+
+      `open` and the selection are therefore the two moments this is worked out, and they
+      are explicit calls rather than a `$:` line, because a `$:` line is exactly what
+      quietly lost one of its inputs. `picked` is a plain variable: `act()` reads it, so
+      what an entry acts on and what the heading says are the same answer by construction.
+   */
+   function refresh () {
+      picked = acting(get(cardSelection))
+      title = !revealed || !card ? 'Hidden card' : (picked.length > 1 ? `${picked.length} cards` : card.name)
+   }
+
+   onDestroy(cardSelection.subscribe(() => {
+      if (card) refresh()
+   }))
+
    function act (action, options = {}) {
-      opponentCardAction(card, action, { ...options, pile })
+      opponentCardAction(picked, action, { ...options, pile })
       menu.close()
    }
 
@@ -57,13 +117,13 @@
 
 <ContextMenu
    bind:this={menu}
-   heading={revealed && card ? card.name : 'Hidden card'}
+   heading={title}
    headingClick={revealed && card ? show : null}>
 
    {#if card}
       <!--
-         The entries, in the player's own menu's order: a zone of theirs the card
-         goes to, and the two that put it into play as one of their Pokemon.
+         The entries, in the player's own menu's order: a zone of theirs the cards go
+         to, and the two that put a card into play as one of their Pokemon.
       -->
       <ContextMenuOption click={() => act(OPP_ACTIONS.HAND)} text="To Hand" disabled={$spectating} />
       <ContextMenuOption click={() => act(OPP_ACTIONS.DISCARD)} text="To Discard" disabled={$spectating} />
@@ -81,16 +141,20 @@
       <ContextMenuOption click={() => act(OPP_ACTIONS.TABLE)} text="To Table" disabled={$spectating} />
 
       <!--
-         *Attach* is the one entry that names a Pokemon of theirs, because it is the
-         one that goes *under* one rather than into play as one. There is no
-         equivalent of the player's own *Evolve*: an evolution needs a card the
-         board does not know is the right one, and the player's own menu lets the
-         board's own attach gesture decide that - which is a card of *theirs*
-         evolving, a move no card text hands to the other player.
+         *Attach* is the one entry that names a Pokemon of theirs, because it is the one
+         that goes *under* one rather than into play as one. There is no equivalent of the
+         player's own *Evolve*: an evolution needs a card the board does not know is the
+         right one, and the player's own menu lets the board's own attach gesture decide
+         that - which is a card of *theirs* evolving, a move no card text hands to the
+         other player.
+
+         It is also one of the two entries that act on a single card - "put these three
+         cards under your Active" is not a move either board has - so it says which card
+         it means when more than one is picked out.
       -->
       <ContextMenuOption
          click={() => act(OPP_ACTIONS.ATTACH)}
-         text="Attach to Their Active"
+         text={picked.length > 1 ? 'Attach the First to Their Active' : 'Attach to Their Active'}
          disabled={$spectating || !$oppActive} />
 
       <ContextMenuOption click={show} text="Show Details" />

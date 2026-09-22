@@ -5,6 +5,7 @@
    import { source, draggedCard } from '$lib/dnd/store.js'
    import { cardSelection, resetSelection, selectionByPile } from '$lib/stores/player.js'
    import { solo, soloCardToPlay, soloSlotToActive, onOpponentHalf, onOpponentSlot } from '$lib/stores/solo.js'
+   import { dropRevealedCard, isDraggingRevealed, OPP_ACTIONS } from '$lib/stores/oppAction.js'
 
    /* which player's board this component shows */
    export let store = defaultOpponent
@@ -15,13 +16,25 @@
       same drop the player's own Active accepts - and so can one of its Pokemon in
       play, which promotes it and sends the Active to the Bench. Only that half's
       own either way: nothing crosses between the halves.
+
+      A card out of a Reveal or a Look is the third gesture: it is not on the board, so
+      the drop is a request to its owner (`dropRevealedCard`), and the Active spot is
+      the one zone that is not a pile - which is why this is handled here as well as in
+      `opponent/Pile.svelte`.
    */
-   const allowDrop = () => $solo && (
-      onOpponentHalf($source) ||
-      ($source === 'slot' && onOpponentSlot($draggedCard))
-   )
+   const allowDrop = () =>
+      isDraggingRevealed($draggedCard, $source) ||
+      Boolean($solo && (
+         onOpponentHalf($source) ||
+         ($source === 'slot' && onOpponentSlot($draggedCard))
+      ))
 
    function onDrop () {
+      if (dropRevealedCard(store.active, $draggedCard, $cardSelection)) {
+         resetSelection()
+         return
+      }
+
       if (!$solo) return
 
       if ($source === 'slot') {

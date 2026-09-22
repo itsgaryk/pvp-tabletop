@@ -2,7 +2,7 @@ import { logMove } from './logger.js'
 import { share, react, spectating } from './connection.js'
 import {
    selectCard, resetSelection, moveSelection, toBench, toActive, toStadium,
-   findSlot,
+   findSlot, cardSelection,
    hand as myHand, discard as myDiscard, deck as myDeck, lz as myLz,
    prizes as myPrizes, table as myTable, stadium as myStadium,
    active as myActive
@@ -180,6 +180,69 @@ export function canActOn (card) {
 }
 
 /*
+   The action a drop onto one of the far half's zones means, by the pile it landed on.
+
+   The reverse of `optimisticTarget`, and the two are written out separately on purpose:
+   one answers "where does this action put the card", the other "what does dropping it
+   here mean", and a single table read in both directions is how a zone ends up mapped
+   to the wrong entry. The names compared are the stores' own, so a drop needs no
+   translation - the `2` suffix on a class is the only difference between the halves
+   (see board.md).
+*/
+export function actionForPile (pile) {
+   const o = defaultOpponent
+
+   if (pile === o.bench) return OPP_ACTIONS.BENCH
+   if (pile === o.discard) return OPP_ACTIONS.DISCARD
+   if (pile === o.lz) return OPP_ACTIONS.LZ
+   if (pile === o.prizes) return OPP_ACTIONS.PRIZES
+   if (pile === o.hand) return OPP_ACTIONS.HAND
+   if (pile === o.table) return OPP_ACTIONS.TABLE
+   if (pile === o.stadium) return OPP_ACTIONS.STADIUM
+   if (pile === o.deck) return OPP_ACTIONS.DECK_TOP
+
+   return null
+}
+
+/*
+   Whether a drag of a card out of a Reveal or a Look window is what is being dropped.
+
+   `$source` for one of those cards is the *batch* it was picked up from - the window
+   hands its cards a batch rather than a pile (see reveal.js) - and a batch is not one of
+   the board's own lists, which is the same test `board/Card.svelte` uses to tell a card
+   in a window from a card on the board.
+*/
+export function isDraggingRevealed (dragged, source) {
+   if (!dragged || !source || typeof source !== 'object') return false
+   if (defaultOpponent.piles().includes(source)) return false
+   return canActOn(dragged)
+}
+
+/*
+   A card dragged out of a Reveal or a Look window and dropped on one of the far half's
+   zones: the same request a menu entry makes, taken with the mouse instead.
+
+   The drag is the gesture a player already reaches for - a card of their own, onto the
+   place it goes - and a window's cards are the one kind of card that is not on the
+   board, so dropping one is how a player expects to place it. What it does *not* do
+   differently from the menu is move the card: the same `opponentCardAction`, the same
+   request to the owner, the same optimistic move, and the same refusal when the card is
+   not this player's to act on.
+
+   Returns whether the drop was this gesture's, so a caller can fall through to its own
+   handling - the far half's normal drop, or solo's - rather than swallowing it.
+*/
+export function dropRevealedCard (target, dragged, source) {
+   if (!isDraggingRevealed(dragged, source)) return false
+
+   const action = actionForPile(target)
+   if (!action) return false
+
+   opponentCardAction(dragged, action, { pile: source })
+   return true
+}
+
+/*
    Take a card out of the pile it is in, and leave the pile alone when it does not
    hold it.
 
@@ -209,61 +272,168 @@ export const trace = { sent: 0, answered: 0, sentTo: null, last: null }
 /* --------------------------------------------------------------- the player -- */
 
 /*
-   The player's move, as a request - and only a request.
+   The player's move: a request to the owner *per card*, and an optimistic move here so
+   the cards do not sit still for a round trip.
 
-   `card` is one of the cards a Reveal or a Look is showing, `action` is one of
-   OPP_ACTIONS, and `pile` is what the card was handed with - the batch a window gave
-   it, or one of the far half's own lists where the card is on the board.
+   `cards` is one card or a list of them - the selection a Reveal or a Look window is
+   holding - `action` is one of OPP_ACTIONS, and `pile` is what the cards were handed
+   with: the batch a window gave them, or one of the far half's own lists where they are
+   on the board.
 
-   **Nothing is moved on this board.** The owner's board is the only authority for
-   its own cards, so the card stays where it is until the owner's own events arrive
-   and the mirror follows them - the same path every other move takes, and the reason
-   a window shrinks at all (a batch is a live view of the deck, see reveal.js).
+   ---------------------------------------------------------------------------
+   Why one event per card
+   ---------------------------------------------------------------------------
 
-   Removing the card here as well - for a round trip's worth of feedback - is the
-   mistake this note exists for. It is a second source of truth for where a card is,
-   and it fails in a way that took an afternoon to find: the removal is invisible to
-   the owner (no event carries it), so the two boards quietly disagree about the deck,
-   and because the owner's reply then cannot find the card, **the card lands nowhere
-   at all** while both logs say it moved. The acting player's copy of the card is a
-   mirror of the owner's, and a mirror may not act on its own.
+   A selection can hold cards from more than one pile - the window's batch and, on the
+   board behind it, any of the far half's zones - and a `cardsMoved`-style event names
+   **one** `from` and one `to` (see docs/selection.md). Same reasoning here: the request
+   names the pile the card is in, so a selection that came from two of them has to travel
+   as two requests. It is also what the log reads as - one line per pile, naming what
+   left it - which is the shape the board's own moves have.
 
-   What travels is the **id** and the pile's name, never the card: the owner looks the
-   card up in its own pile, which is the only board that can answer with the object it
-   actually holds.
+   ---------------------------------------------------------------------------
+   Why it moves here at all, and how that is safe now
+   ---------------------------------------------------------------------------
+
+   The relay's round trip is the whole of what a player sees as "the action is slow":
+   measured on this host, a plain `cardsMoved` between two boards takes about 1.7s and
+   an `oppCardAction` about 1.9s, so the delay is the transport rather than anything
+   this module does. Waiting for it means the card sits where it was for two seconds
+   after the player pressed the button.
+
+   So the move is applied here at once, on the acting board's **mirror**, and the
+   owner's own events replace it when they arrive - which is the same end state by the
+   same path a plain move takes.
+
+   This is the second attempt at that, and the first one is worth remembering: it moved
+   the card *out* of the source and never into the destination, on the theory that the
+   owner's reply would place it. When the owner could not find the card - because this
+   board is a mirror and the card it removed was not the one the owner held - **the card
+   landed nowhere at all** while both logs said it had moved. The difference now is that
+   this is a *complete* move: it lands where the owner's event will land it, so the
+   owner's event is a confirmation rather than the other half of one.
+
+   `optimisticMove` is where that is done, and it says which actions it refuses to guess
+   at and why.
 */
-export function opponentCardAction (card, action, options = {}) {
+export function opponentCardAction (cards, action, options = {}) {
    if (spectating.get()) return false
-   if (!card || !canActOn(card)) return false
    if (!Object.values(OPP_ACTIONS).includes(action)) return false
 
+   const list = (Array.isArray(cards) ? cards : [ cards ]).filter(Boolean)
+   if (!list.length || !list.every(canActOn)) return false
+
    /*
-      Where the card is *said* to be. The batch's own pile name is preferred when a
+      Where the cards are *said* to be. The batch's own pile name is preferred when a
       window handed one over, because that is the deck the player was shown - so the
-      request names the pile the owner's board will recognise even if this board's
-      mirror has drifted.
+      request names the pile the owner's board will recognise even if this board's mirror
+      has drifted. The list is grouped by that name, because each request carries one.
    */
    const named = options.pile?.name || null
-   const pile = (named && oppPile(named)) || pileOf(card, defaultOpponent.piles())
-   if (!pile) return false
+   const groups = new Map()
 
-   /* the card as *this* board holds it, for the event and the log line */
-   const held = pile.get().find((c) => c._id === card._id) || card
+   for (const card of list) {
+      const pile = (named && oppPile(named)) || pileOf(card, defaultOpponent.piles())
+      if (!pile) continue
+      if (!groups.has(pile)) groups.set(pile, [])
+      groups.get(pile).push(card)
+   }
 
-   trace.sent += 1
-   trace.sentTo = { id: held._id, from: pile.name, action }
+   if (!groups.size) return false
 
-   share('oppCardAction', {
-      card: held._id,
-      from: pile.name,
-      action,
-      slotId: options.slotId || null
-   })
+   let sent = 0
 
-   logMove([ held ], pile.name, targetZone(action), { bottom: action === OPP_ACTIONS.DECK_BOTTOM })
+   for (const [ pile, group] of groups) {
+      /*
+         The cards as *this* board holds them: an object rather than the id, because the
+         optimistic move needs the reference the pile actually holds, and a batch's cards
+         are the same objects the mirror's deck holds only by id (`gather` in
+         reveal.js says why).
+      */
+      const held = group
+         .map((card) => pile.get().find((c) => c._id === card._id))
+         .filter(Boolean)
+
+      if (!held.length) continue
+
+      optimisticMove(held, pile, action)
+
+      const ids = held.map((card) => card._id)
+
+      share('oppCardAction', {
+         cards: ids,
+         from: pile.name,
+         action,
+         slotId: options.slotId || null
+      })
+
+      logMove(held, pile.name, targetZone(action), { bottom: action === OPP_ACTIONS.DECK_BOTTOM })
+
+      sent += held.length
+   }
+
+   if (!sent) return false
+
+   trace.sent += sent
+   trace.sentTo = { count: sent, action, from: [ ...groups.keys() ].map((p) => p.name).join('+') }
 
    resetSelection()
    return true
+}
+
+/*
+   Move the cards on this board's mirror at once, the way the owner's events will.
+
+   It is deliberately the *same* shape as what `opponent.js` does with an incoming
+   event - take the card out of the source pile and put it in the destination - so that
+   the owner's event, when it lands, is confirmation rather than a second move. The
+   places it declines to guess at are the two where a card lands somewhere that is not a
+   pile of that board's:
+
+      - **into play** (bench, active, attach): a slot with an id, which the owner's own
+        `cardsBenched` / `cardsAttached` event carries. Guessing it here would mean
+        inventing a slot id and hoping the owner's matches, and a wrong guess is a
+        phantom Pokemon on the board until the next full state.
+      - **the Stadium**, for the same reason: the owner's event clears the *other*
+        half of it as well, and half of that move is not this board's to make.
+
+   For those, the cards simply wait for the round trip, exactly as they did before.
+*/
+function optimisticMove (cards, source, action) {
+   const target = optimisticTarget(action)
+   if (!target || target === source) return false
+
+   let moved = false
+
+   for (const card of cards) {
+      if (!takeFrom(source, card)) continue
+
+      /* a placement onto a deck is content rather than order - see `shareShuffle` */
+      if (action === OPP_ACTIONS.DECK_BOTTOM) target.unshift(card)
+      else target.push(card)
+
+      moved = true
+   }
+
+   return moved
+}
+
+/* the pile of the far half an action lands in, for the ones this board can mirror */
+function optimisticTarget (action) {
+   switch (action) {
+      case OPP_ACTIONS.HAND:
+      case OPP_ACTIONS.DISCARD:
+      case OPP_ACTIONS.LZ:
+      case OPP_ACTIONS.PRIZES:
+      case OPP_ACTIONS.TABLE:
+      case OPP_ACTIONS.DECK_TOP:
+      case OPP_ACTIONS.DECK_BOTTOM:
+      case OPP_ACTIONS.DECK_SHUFFLE:
+         return oppPile(action === OPP_ACTIONS.DECK_TOP || action === OPP_ACTIONS.DECK_BOTTOM || action === OPP_ACTIONS.DECK_SHUFFLE ? 'deck' : action)
+      default:
+         /* into play, the Stadium, and anything new: wait for the owner */
+         return null
+   }
 }
 
 /* ---------------------------------------------------------------- the owner -- */
@@ -277,14 +447,22 @@ export function opponentCardAction (card, action, options = {}) {
    events, the log line and what the opponent's mirror does with them are then
    *the same* as if the owner had made the move, because it is the same code.
 
-   `from` is the pile the request names and the card is looked for *there*, not in
-   "wherever it is now": a request for a card that has since left that pile is
+   `from` is the pile the request names and the cards are looked for *there*, not in
+   "wherever they are now": a request for a card that has since left that pile is
    stale news - the owner drew it, or moved it - and the right answer is to do
    nothing rather than move whatever holds that id now.
+
+   One request carries one pile's cards, and the cards it names that are still there are
+   moved together: the board's own move takes the whole selection, so a multi-card
+   request lands as one move and one log line, exactly as a multi-card selection does on
+   the owner's own board (`docs/selection.md`). Cards the request names that are not in
+   `from` any more are left out rather than refusing the request, for the reason above.
 */
-export function respondToOpponentCardAction ({ card: id, from, action, slotId = null }) {
+export function respondToOpponentCardAction ({ card, cards, from, action, slotId = null }) {
+   const ids = cards || (card !== undefined ? [ card ] : [])
+
    trace.answered += 1
-   trace.last = { id, from, action, stage: 'received' }
+   trace.last = { ids, from, action, stage: 'received' }
 
    if (spectating.get()) {
       trace.last.stage = 'refused: spectating'
@@ -292,7 +470,7 @@ export function respondToOpponentCardAction ({ card: id, from, action, slotId = 
    }
 
    /*
-      The owner's *own* zones: this is the board the card belongs to, so the name on
+      The owner's *own* zones: this is the board the cards belong to, so the name on
       the wire is read against this table and not the mirror's (see `ownPile`).
    */
    const source = ownPile(from) || slotPile(from)
@@ -301,41 +479,51 @@ export function respondToOpponentCardAction ({ card: id, from, action, slotId = 
       return false
    }
 
-   const card = source.get().find((c) => c._id === id)
-   if (!card) {
-      trace.last.stage = `refused: card ${id} is not in ${source.name}`
+   const found = ids.map((id) => source.get().find((c) => c._id === id)).filter(Boolean)
+   if (!found.length) {
+      trace.last.stage = `refused: none of ${ids.join(',')} are in ${source.name}`
       return false
    }
 
-   trace.last.stage = 'found'
+   trace.last.stage = `found ${found.length} of ${ids.length}`
 
    /* the board's one selection is what its own moves work from */
    resetSelection()
-   selectCard(card, source, false)
+   selectCard(found[0], source, false)
+   for (const extra of found.slice(1)) selectCard(extra, source, true)
+
+   /*
+      The two entries that act on *one* card are the ones that name a place for it - a
+      Pokemon in play, and the attachment under one - so they take the first of the
+      cards and no more: "put these three cards under your Active" is not a move either
+      board has. Everything else is a move to a zone, which is the same for one card as
+      for three.
+   */
+   const card0 = found[0]
 
    switch (action) {
       case OPP_ACTIONS.BENCH:
-         if (slotId) return intoSlot(card, source, slotId)
+         if (slotId) return intoSlot(card0, source, slotId)
          toBench()
          return true
 
       case OPP_ACTIONS.ACTIVE:
-         if (slotId) return intoSlot(card, source, slotId)
+         if (slotId) return intoSlot(card0, source, slotId)
          toActive()
          return true
 
       case OPP_ACTIONS.ATTACH:
-         return attachToActive(card, source)
+         return attachToActive(card0, source)
 
       case OPP_ACTIONS.STADIUM:
          toStadium()
          return true
 
       case OPP_ACTIONS.DECK_SHUFFLE:
-         return shuffleIntoDeck(card, source)
+         return shuffleIntoDeck(found, source)
 
       default:
-         return plainMove(card, source, action)
+         return plainMove(source, action)
    }
 }
 
@@ -345,20 +533,19 @@ function mark (stage) {
 }
 
 /*
-   A card sent to one of the owner's own zones, with the event that zone's own
-   move writes.
+   A request's cards sent to one of the owner's own zones, with the event that zone's
+   own move writes.
 
-   `moveSelection` is the board's own move and it does all of this for every zone
-   it knows, so the only thing written out here is which pile an action names - and
-   the deck, which is the one destination `moveSelection` refuses when it is also
-   the source. A zone this does not know is a request that does nothing, rather
-   than a card dropped on the floor.
+   `moveSelection` is the board's own move and it does all of this for every zone it
+   knows - for the whole selection, which is how a multi-card request lands as one move
+   - so the only thing written out here is the deck, the one destination
+   `moveSelection` refuses when it is also the source.
 */
-function plainMove (card, source, action) {
+function plainMove (source, action) {
    const bottom = action === OPP_ACTIONS.DECK_BOTTOM
    /*
       The owner's *own* destination, for the same reason its source is (see
-      `ownPile`): this runs on the board that holds the card, so "discard" here is
+      `ownPile`): this runs on the board that holds the cards, so "discard" here is
       that board's own discard.
    */
    const target = ownPile(action === OPP_ACTIONS.DECK_BOTTOM ? 'deck' : action)
@@ -366,25 +553,29 @@ function plainMove (card, source, action) {
    if (!target) return false
 
    /*
-      A card going back onto the deck it came off is not a move `moveSelection`
-      will make: it skips a group whose source *is* the destination, which is
-      right for a card already where it was asked to go and wrong for the deck's
-      own top, where the card really does change place. So the deck is placed
-      directly, in the one order the store defines (`ordered[0]` is drawn first -
-      see `placeOrdered` in custom/cards.js).
+      Cards going back onto the deck they came off are not a move `moveSelection` will
+      make: it skips a group whose source *is* the destination, which is right for a
+      card already where it was asked to go and wrong for the deck's own top, where the
+      cards really do change place. So they are placed directly, in the one order the
+      store defines (`ordered[0]` is drawn first - see `placeOrdered` in
+      custom/cards.js).
    */
    if (target === myDeck) {
-      if (!takeFrom(source, card)) return false
+      const cards = cardSelection.get()
+         .map((card) => (takeFrom(source, card) ? card : null))
+         .filter(Boolean)
 
-      target.placeOrdered([ card ], { bottom })
+      if (!cards.length) return false
+
+      target.placeOrdered(cards, { bottom })
       share('cardsMoved', {
-         cards: [ card._id ],
+         cards: cards.map((card) => card._id),
          from: source.name,
          to: 'deck',
          position: bottom ? 'bottom' : 'top',
          ordered: true
       })
-      logMove([ card ], source.name, 'deck', { bottom })
+      logMove(cards, source.name, 'deck', { bottom })
 
       resetSelection()
       return true
@@ -395,18 +586,22 @@ function plainMove (card, source, action) {
 }
 
 /*
-   "Shuffle Into Deck", which is a move *and* a shuffle, for the same reason: a
-   card replaced into the deck it was already in has to be taken out and put back
-   before the deck is shuffled, or nothing is shuffled into anything.
+   "Shuffle Into Deck", which is a move *and* a shuffle, for the same reason: cards
+   replaced into the deck they were already in have to be taken out and put back before
+   the deck is shuffled, or nothing is shuffled into anything.
 */
-function shuffleIntoDeck (card, source) {
-   if (!takeFrom(source, card)) return false
+function shuffleIntoDeck (cards, source) {
+   const moved = cards
+      .map((card) => (takeFrom(source, card) ? card : null))
+      .filter(Boolean)
 
-   myDeck.push(card)
+   if (!moved.length) return false
+
+   myDeck.merge(moved)
    myDeck.shuffle()
 
-   share('cardsMoved', { cards: [ card._id ], from: source.name, to: 'deck' })
-   logMove([ card ], source.name, 'deck', { shuffle: true })
+   share('cardsMoved', { cards: moved.map((card) => card._id), from: source.name, to: 'deck' })
+   logMove(moved, source.name, 'deck', { shuffle: true })
 
    resetSelection()
    return true

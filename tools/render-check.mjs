@@ -721,7 +721,8 @@ check('and a card of the player\'s own only takes it inside a reveal or a look',
    /isForeignPile\(pile\)/.test(ownCardSource) && /piles\(\)\.includes\(p\)/.test(ownCardSource) &&
    /if \(isForeignPile\(pile\)\) \{\s*openOppCardActionMenu/.test(ownCardSource))
 check('and no action is taken on a card that does not answer',
-   /if \(!card \|\| !canActOn\(card\)\) return false/.test(oppActionSource))
+   /if \(!list\.length \|\| !list\.every\(canActOn\)\) return false/.test(oppActionSource),
+   'a selection with one card that does not answer is refused whole')
 check('and the owner is the one who performs the move',
    /react\('oppCardAction'/.test(oppActionSource) && /respondToOpponentCardAction/.test(oppActionSource))
 

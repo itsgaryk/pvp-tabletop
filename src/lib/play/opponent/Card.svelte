@@ -19,6 +19,18 @@
    export let revealed = true
 
    /*
+      Whether this card advertises itself with the pulse (see `.actionable`).
+
+      On in a Reveal, where a window of the other player's cards sits in a grid beside
+      cards of the player's own and nothing else says which reply; **off in a Look**,
+      where every card in the window is the player's to act on, so a pulse on all of
+      them is decoration - and worse than decoration, because a card that is always
+      glowing is a card that never reads as *chosen*. The Look window's cards still
+      answer a click and still take the selection ring; they just do not shout about it.
+   */
+   export let pulse = true
+
+   /*
       Whether this card may be acted on as the other player's.
 
       Two different situations answer yes, and they are the two ways this half is
@@ -38,6 +50,8 @@
       (`reveal.js`) rather than on the card object.
    */
    $: actionable = $solo || isActionable(card)
+   /* the pulse is a Reveal's affordance, not a Look's - see `pulse` above */
+   $: glowing = actionable && pulse
 
    /*
       A player may look at the far half's cards where they are on show - a Pokemon
@@ -59,21 +73,31 @@
    }
 
    /*
-      Dragging is the far half's own gesture, and it only ever carries a card of
-      the far half's. A card a Reveal has shown is not one of them: it is still in
-      the other player's deck, and a drag would have to be a request to *them* the
-      way a menu entry is - which the drag store has no shape for (`$source` is a
-      pile of this board). So a revealed card is moved from its menu, which is where
-      every move of another player's card is made.
+      Dragging is the far half's own gesture, and in solo it carries a card of that
+      half's between its zones.
+
+      A card a Reveal or a Look is showing is the *other* entry: it is not on the board
+      at all, so dragging it has nowhere of this board's to land - it is a request to its
+      owner, exactly as a menu entry is, and the far half's zones are what take it
+      (`opponent/Pile.svelte`, `opponent/Active.svelte`). So a dragged revealed card sets
+      the same two stores, and the batch it came from travels as the source because that
+      is what the drop needs to find the card on this board's mirror.
    */
    function onDragStart () {
-      if (!$solo) return
+      if ($solo) {
+         draggedCard.set(card)
+         source.set(pile)
+         return
+      }
+
+      if (!actionable) return
       draggedCard.set(card)
       source.set(pile)
    }
 
    function onDrag ({ $card }) {
-      if (!$solo || $card !== card) return
+      if ($card !== card) return
+      if (!$solo && !actionable) return
       if (!$selection.includes(card)) selectCard(card, pile, false)
    }
 
@@ -114,9 +138,9 @@
    on:click={onClick}
    on:contextmenu={onCtx}
    on:dblclick={onDetails}
-   class="border-2 rounded-md"
-   class:actionable
-   class:dragged={$solo && $dragging && $selection.includes(card)}
+   class="border-2 border-transparent rounded-md"
+   class:actionable={glowing}
+   class:dragged={$dragging && $selection.includes(card) && ($solo || actionable)}
    class:selected={actionable && $selection.includes(card)}
    use:dnd={dndConfig}>
    {#if revealed}
@@ -153,15 +177,22 @@
       only feedback a click gives is a ring that appears *after* it. A Reveal's
       cards are the other player's, so the default assumption is that they are
       inert, and a player who assumes that never finds the menu. So the cards that
-      answer are the ones that say so.
+      answer are the ones that say so - in a Reveal, where a card of the other
+      player's is only one or two of the cards on screen. In a Look every card in the
+      window answers, so there is nothing to single out and the caller turns the pulse
+      off (`pulse` above).
 
       It is an `outline` and not the `border` the selected state uses, and that is
-      not a style choice: the card already wears Windi's `border-2 border-transparent`
-      from its own markup, and a scoped rule here compiles to a class of the same
-      specificity, later in the sheet - so an outline is what can be drawn *beside*
-      the ring a selection draws rather than instead of it. The two are on screen
-      together the moment a revealed card is clicked, and a border would have been
-      one or the other.
+      not a style choice: the card wears Windi's `border-2 border-transparent` from its
+      own markup, and a scoped rule here compiles to a class of the same specificity,
+      later in the sheet - so an outline is what can be drawn *beside* the ring a
+      selection draws rather than instead of it. The two are on screen together the
+      moment a revealed card is clicked, and a border would have been one or the other.
+
+      That `border-transparent` is load-bearing and was dropped once: without it
+      `border-2` draws in `currentColor`, so **every** card of the other half's wore a
+      2px pale ring - a "permanent white border" on the opponent's hand, reported
+      exactly that way. A wrapper around a card is a box that draws things.
 
       It is a *pulse* because the difference has to be visible at a glance without
       being mistaken for a selection, which is `--selection-color` and is already

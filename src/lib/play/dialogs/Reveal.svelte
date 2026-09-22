@@ -80,9 +80,29 @@
       this is the one place the two are tied together. The `renderOpen` case never
       reaches it - that render has already opened the panel - and the close half is
       guarded so that it cannot shut a panel the render asked to be open.
+
+      What closes it is the batch being **ended**, not the grid running out of cards -
+      `$revealOpen` is that answer, and it is the only one used here. Closing on
+      `!cards.length` read "nothing left to show" as "the window is over", and the two
+      are not the same: the cards on show are a *view of the deck*, so acting on the
+      last one off a reveal empties it, and the window used to close itself the instant
+      the player did the thing the window exists to let them do. On a Look that took
+      the Close & Shuffle button with it - the player had moved the top two cards and
+      was left with no way to shuffle the deck they had just read, which is the one
+      ending that kind of card has (reported as *the look window closes with a
+      shuffle* failing, with the shuffle still owed). A window with no cards in it and
+      its endings still on it is the honest picture: the batch is still live, and the
+      deck has not been put back yet.
+
+      `$reveal` is in the condition as well as `$revealOpen`, and that is not
+      belt-and-braces either: a panel closed by a click outside or by Escape goes
+      through `Popup`'s own close, which does **not** tell this store - so `$revealOpen`
+      stays true across it, and the *next* batch then changes a store that is already
+      true. The open half would have had nothing new to see and the window would never
+      come back. The batch is the thing that is certainly new.
    */
-   $: if (popup && $revealOpen && cards.length && !popup.opened()) popup.open()
-   $: if (popup && !renderOpen && (!cards.length || !$revealOpen) && popup.opened()) popup.close()
+   $: if (popup && $reveal && $revealOpen && !popup.opened()) popup.open()
+   $: if (popup && !renderOpen && !$revealOpen && popup.opened()) popup.close()
 
    /* the whole batch, the same gesture a pile's view answers Ctrl+A with */
    function selectAll () {
@@ -96,6 +116,12 @@
       <div class="text-sm text-[var(--text-color-two)]">
          {cards.length} {cards.length === 1 ? 'card' : 'cards'} · both players can see these
       </div>
+      {#if cards.length}
+         <div class="hint">
+            Click a card to pick it out, Ctrl-click to add, Ctrl+A for all — then right-click
+            one to act on its owner's board, or drag one onto it.
+         </div>
+      {/if}
    </div>
 
    <div class="cards focus:outline-none inspection"
@@ -147,6 +173,12 @@
    .inspection {
       --card-width: 136px;
       --card-height: 189px;
+   }
+
+   .hint {
+      @apply text-xs mt-1;
+      color: var(--text-color-two);
+      max-width: 34rem;
    }
 
    button.action {
