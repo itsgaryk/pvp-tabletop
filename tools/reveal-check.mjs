@@ -185,6 +185,19 @@ async function waitForCount (page, read, expected, { timeout = 12000, poll = 250
 const settle = () => sleep(2000)
 
 /*
+   Close whatever panel is open, the way the app offers when a panel has no button of its
+   own: Escape, which `Popup` answers with `closed` (`use:escape`). A reveal before its
+   shuffle has one button and it is not *Close*, so a check that wants the windows out of
+   the way has to close them the way a player would.
+*/
+function closeWindow (page) {
+   return page.evaluate(`(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      return true
+   })()`)
+}
+
+/*
    A real drag, through the browser's own input rather than through dispatched DOM
    events: the board's drag is `pointerdown` on the card, past a five-pixel threshold,
    over the target and `pointerup` on it (`$lib/dnd/pointer.js`), and a synthesized
@@ -359,8 +372,15 @@ try {
       `${bobReveal?.cards.length} vs ${aliceReveal?.cards.length} cards`)
    check('and the other board names the same deck from its own side',
       Boolean(bobReveal?.text.includes("Your opponent's deck")), bobReveal?.text)
-   check('and it carries Close and Close & Shuffle',
-      Boolean(aliceReveal?.buttons.includes('Close')) && Boolean(aliceReveal?.buttons.includes('Close & Shuffle')),
+   /*
+      One ending, and it is the shuffle. A reveal whose window offered *Close* beside it
+      offered the player a way to put the deck back exactly as it was - which is the one
+      ending a reveal is not, since reading the top of a deck is the whole of why it was
+      shuffled. Escape and a click outside still close it without shuffling, and the
+      *Close* that appears after a shuffle is asserted in section 5.
+   */
+   check('and its only action is Close & Shuffle',
+      JSON.stringify(aliceReveal?.buttons) === JSON.stringify([ 'Close & Shuffle' ]),
       aliceReveal?.buttons.join(' | '))
 
    /* ------------------------------------------- 3. an action on the other player -- */
@@ -440,9 +460,14 @@ try {
 
    console.log('\nlook: the opponent\'s deck, privately\n')
 
-   /* close both reveal windows so nothing else is on screen */
-   await alice.clickText('Close', { kinds: 'button' })
-   await bob.clickText('Close', { kinds: 'button' })
+   /*
+      Close both reveal windows so nothing else is on screen - with **Escape**, which is
+      what a reveal without a *Close* button offers, and which closes a `Popup` without
+      shuffling anything. Clicking *Close* here was how this section used to do it, and
+      that button is now only on a window whose shuffle has already happened.
+   */
+   await closeWindow(alice)
+   await closeWindow(bob)
    await sleep(900)
 
    await alice.rightClick(THEIR_DECK)
@@ -631,6 +656,96 @@ try {
       dragAction?.action === 'discard' && dragAction?.from === 'deck',
       JSON.stringify(dragAction))
 
+   /* ------------------------------------ 3c. into play, and at once, not in 2s -- */
+
+   /*
+      A card dropped into the other player's *Bench* or *Active* spot is the same request
+      the menu's entries make, and it is the case the window used to swallow: the two
+      windows float over the middle of the board and are rendered *inside* it, so the
+      pointer is over the window the whole way down and the zone underneath never sees
+      the drop - "dragging into the opponent's bench or active zone closes the window",
+      which is what a drop that lands on nothing looks like. It is also the case where
+      the acting board could not put the card anywhere itself at first, so the card sat
+      in place for the relay's round trip while *To Discard*, one line away in the same
+      menu, was instant.
+
+      Both are asserted here: the zone takes the drop and highlights for it, the card is
+      in play on the acting board **at once**, the window is still open, and after the
+      round trip the mirror and the owner agree - which is the half that catches an
+      optimistic slot being left behind beside the owner's own.
+   */
+   const cardOf = (page, which) => page.evaluate(`(() => {
+      const p = [...document.querySelectorAll('.popup')].find((x) => /${which}/.test(x.innerText))
+      return p ? p.querySelectorAll('img.card').length : 0
+   })()`)
+
+   if (await cardOf(alice, 'Look —') === 0) {
+      await alice.rightClick(THEIR_DECK)
+      await answerNextPrompt(alice, 2)
+      await clickMenuItem(alice, 'Look at Top X')
+      await waitForWindow(alice, 2, { kind: 'look' })
+   }
+
+   const benchDrop = await dragBetween(
+      alice,
+      `[...document.querySelectorAll('.popup')].find((p) => /Look —/.test(p.innerText))?.querySelector('img.card')?.parentElement`,
+      `document.querySelector('.bench2 .bench-zone')`)
+   check('a card out of a window can be dragged into the opponent\'s bench', benchDrop)
+
+   const onBench = await waitForCount(
+      alice,
+      (p) => p.evaluate(`globalThis.__pvp.opponent.defaultOpponent.bench.get().length`),
+      1,
+      { timeout: 700, poll: 40 })
+   check('and it is in play on the acting board at once, not after the round trip',
+      onBench === 1,
+      `${onBench} on the other half's bench within 700ms`)
+
+   check('and the window is still open, showing what is left',
+      await cardOf(alice, 'Look —') > 0,
+      `${await cardOf(alice, 'Look —')} cards`)
+
+   const activeDrop = await dragBetween(
+      alice,
+      `[...document.querySelectorAll('.popup')].find((p) => /Look —/.test(p.innerText))?.querySelector('img.card')?.parentElement`,
+      `document.querySelector('.active2 .active-slot')`)
+   check('and into the opponent\'s active spot', activeDrop)
+
+   const onActive = await waitForCount(
+      alice,
+      (p) => p.evaluate(`Boolean(globalThis.__pvp.opponent.defaultOpponent.active)`),
+      true,
+      { timeout: 700, poll: 40 })
+   check('and that lands in play at once too', onActive === true, String(onActive))
+
+   /*
+      The round trip, then the two boards read the same: the owner's own events are the
+      authority, and the acting board's slot - made with an id of its own, because the
+      owner's has not arrived yet - must be gone by the time they are.
+   */
+   const shape = (page, which) => page.evaluate(`(() => {
+      const b = ${which === 'mirror' ? 'globalThis.__pvp.opponent.defaultOpponent' : 'globalThis.__pvp.player'}
+      const active = b.active.get()
+      return JSON.stringify({
+         bench: b.bench.get().map((s) => s.pokemon.get().map((c) => c._id)),
+         active: active ? active.pokemon.get().map((c) => c._id) : null
+      })
+   })()`)
+
+   const inPlay = await (async () => {
+      let last = { mine: null, theirs: null }
+      for (let i = 0; i < 60; i++) {
+         last = { mine: await shape(alice, 'mirror'), theirs: await shape(bob, 'owner') }
+         /* both boards, and the half of it that is in play rather than only in play's shape */
+         if (last.mine === last.theirs && /"bench":\[\[|"active":\[\d/.test(last.mine)) return last
+         await sleep(200)
+      }
+      return last
+   })()
+   check('and after the round trip the two boards hold the same Pokemon',
+      inPlay.mine === inPlay.theirs && /"bench":\[\[|"active":\[\d/.test(inPlay.mine),
+      `acting board ${inPlay.mine} | owner ${inPlay.theirs}`)
+
    /*
       And nothing was sent: the other board's log has the shuffle a look can end
       with, and no line about a look having been taken. A spectator is not checked
@@ -645,6 +760,19 @@ try {
    /* ---------------------------------------- 4. close and shuffle on both windows -- */
 
    console.log('\nclose and shuffle\n')
+
+   /*
+      The section above spends the look's cards on purpose (a drag into play, and one into
+      the discard before it), so the ending this section is about needs a look of its own.
+      A Look's only button is *Close & Shuffle*, and both windows follow the batch rather
+      than the grid: the ending has to be on screen whatever has happened to the cards.
+   */
+   if (await cardOf(alice, 'Look —') === 0) {
+      await alice.rightClick(THEIR_DECK)
+      await answerNextPrompt(alice, 2)
+      await clickMenuItem(alice, 'Look at Top X')
+      await waitForWindow(alice, 2, { kind: 'look' })
+   }
 
    const aliceDeckBefore = (await badges(alice)).theirDeck
    const shuffled = await alice.clickText('Close & Shuffle', { kinds: 'button' })

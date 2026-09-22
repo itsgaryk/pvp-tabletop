@@ -7,6 +7,7 @@
    import { createEventDispatcher, onMount } from 'svelte'
    import { closeAll } from '$lib/components/ContextMenu.svelte'
    import { clickOutside, escape } from '$lib/actions/customEvents.js'
+   import { dragging } from '$lib/dnd/pointer.js'
    const dispatch = createEventDispatcher()
 
    let isOpen = false
@@ -91,6 +92,7 @@
    <div class="popup m-8 z-20 bg-[var(--popup-color)] rounded-md border border-black w-max max-w-[calc(100vw-4rem)]"
       class:anchored
       class:centered
+      class:dragging={$dragging}
       use:clickOutside on:outclick={closed}
       use:escape on:esc={closed}>
 
@@ -197,5 +199,29 @@
       margin: 0;
       transform: translate(-50%, -50%);
       max-height: calc(100vh - 4rem);
+   }
+
+   /*
+      **A panel the pointer is over must not swallow a drop.**
+
+      A Reveal or a Look window floats over the middle of the board, and the panels are
+      rendered *inside* the board - `Board.svelte` has them as children of `.gameboard`,
+      beside the zones they cover. A drag from a window onto the other player's Bench
+      therefore has the pointer over the window the whole way, and the window's own grid
+      is what `document.elementFromPoint` answers with: the Bench never sees a
+      `pointerenter`, never highlights, and never receives the `pointerup` that would
+      make the request. The card went nowhere and the window stayed open, reported as
+      *dragging into the opponent's bench or active zone closes the window* - which is
+      what it looks like from the outside when the drop lands on the window and the
+      board underneath never hears about it.
+
+      While a drag is in flight the panel takes no pointer events at all, so the zones
+      under it are the ones the pointer is over. Nothing is lost: the drag started from
+      the panel, so the panel's own clicks are not the ones being made, `pointerenter`
+      and `pointerup` both bubble to the zones from wherever the pointer is, and the
+      class is gone the moment the drag ends.
+   */
+   .dragging {
+      pointer-events: none;
    }
 </style>

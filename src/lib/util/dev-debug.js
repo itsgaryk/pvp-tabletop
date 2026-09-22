@@ -29,9 +29,28 @@ export async function devDebug () {
    const reveal = await import('$lib/stores/reveal.js')
    const oppAction = await import('$lib/stores/oppAction.js')
    const connection = await import('$lib/stores/connection.js')
+   const dnd = await import('$lib/dnd/store.js')
+   const { get: dndSource } = await import('svelte/store')
 
    globalThis.__pvp = {
       player, opponent, reveal, oppAction, connection,
+      /*
+         What a drag is carrying, which is what a check about a drop has to ask: the
+         stores are module state rather than a store on the app's own handle, and "the
+         drop did nothing" and "the drag never started" look identical from the DOM.
+         `isBatch` is the same test `isDraggingRevealed` makes - a source that is not one
+         of the far half's own lists is a window's batch.
+      */
+      drag: () => {
+         const source = dndSource(dnd.source)
+         const card = dndSource(dnd.draggedCard)
+         return {
+            card: card?.name || null,
+            cardId: card?._id || null,
+            source: source ? (source.name || typeof source) : null,
+            isBatch: Boolean(source && !opponent.defaultOpponent.piles().includes(source))
+         }
+      },
       /* the pile counts the diagnostics panel reads, so a check and the panel agree */
       counts: () => ({
          deck: player.deck.get().length,

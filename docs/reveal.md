@@ -5,7 +5,7 @@ different audiences, and that is the whole of the difference between them:
 
 | | Shown to | Window opens on | Ends with |
 | --- | --- | --- | --- |
-| **Reveal** | both players | both boards | Close / Close & Shuffle |
+| **Reveal** | both players | both boards | Close & Shuffle, then Close |
 | **Look** | the player who looked | that player's board only | Close & Shuffle |
 
 Both are entries on a deck's own right-click menu — *Reveal Top X* on either deck,
@@ -39,7 +39,7 @@ window, no set of cards, and no ending: nothing to close and nothing to shuffle.
 | what it is | a standing per-zone flag | one act about a deck |
 | what it shows | every card in a zone, always there | the top X, named once, as ids |
 | where it is drawn | in place, in the zone | a window, over the board |
-| how it ends | toggled off | Close / Close & Shuffle |
+| how it ends | toggled off | Close & Shuffle, then Close |
 | reaches whom | the other player, via `handToggle` | a batch, via `cardsRevealed` |
 | may be acted on | no — they are not yours to move | yes, by the permission above |
 
@@ -118,11 +118,45 @@ not HTML5 drag-and-drop), and it is wired on the far half's zones — `opponent/
 `Bench.svelte`, `Active.svelte` — because those are the drop targets that belong to the
 cards' owner.
 
-One thing to know before changing it: **a drag carries the whole selection**, exactly as a
-menu entry does. A player who has picked up three cards and drags one of them sends all
+**The window gets out of the pointer's way while a drag is in flight**, and that is not a
+detail: the two windows float over the middle of the board and are rendered *inside* it
+(`Board.svelte` has them as children of `.gameboard`, beside the zones they cover), so a
+drag from a window down to the other player's Bench has the pointer over the window the
+whole way and `document.elementFromPoint` answers with the window's own grid. The zone
+never sees a `pointerenter`, never highlights, and never receives the `pointerup`, so the
+drop lands on nothing at all. `Popup` therefore takes `pointer-events: none` for as long
+as `$dragging` is true; the drag started from the panel, so nothing the panel was going to
+do with a click is lost, and the class is gone the moment the drag ends.
+
+One thing to know before changing the drag: **it carries the whole selection**, exactly as
+a menu entry does. A player who has picked up three cards and drags one of them sends all
 three. That is deliberate — it is the same answer the menu gives — but it is also why
 `tools/reveal-check.mjs` drags the card that is left *after* its two-card menu move rather
 than one of the two that are still selected.
+
+### Every entry is instant, including the ones that put a card into play
+
+An action on the other player's card is applied on the acting board's mirror at once
+(`optimisticMove`), so the card does not sit still for the relay's round trip. The zones
+that are *piles* — Hand, Discard, Lost Zone, Prizes, Table, Stadium, the deck — are the
+easy half: the card comes out of the mirror's pile and goes into another.
+
+**Bench and Active are the hard half**, because a Pokemon in play is a *slot* rather than
+a pile entry, and the slot is created by the owner's own event carrying an id this board
+cannot know in advance. The first version of the optimistic move left those two to the
+round trip for exactly that reason, and the result was a menu where *To Discard* was
+instant and *To Bench*, one line below it, took two seconds. So the acting board now
+makes the same move with a slot id of its own, and the seam that opens is closed on the
+other side: the owner's `cardsBenched` / `cardPromoted` handler takes the mirror's copy of
+the card out of play before it adds the owner's slot, so the board never draws two Pokemon
+holding one card. The owner's events stay the authority for what is on the board; the
+optimistic slot is a stand-in that the owner's own answer replaces.
+
+*Attach* is the one entry still left to the round trip, and it is the one that has to be:
+the card goes *under* a Pokemon of theirs whose attachments are the owner's to order, and
+"put this under your Active" has no shape on this side that the owner's `cardsAttached`
+would confirm rather than duplicate. The card still leaves the pile it was in at once, so
+the window does not go on offering a card that has been sent somewhere.
 
 ## Why an action is a request, and not a move
 
@@ -247,12 +281,20 @@ one component. They differ in three ways that are rules rather than styles:
 - **the ending** — Close & Shuffle shuffles the deck the batch names, which for a
   Look is the other player's
 
-Both carry **Close** and **Close & Shuffle**, they are the same fixed-width grid (one full row of
+Both windows carry **Close & Shuffle and never a Close beside it**, they are the same fixed-width grid (one full row of
 136px cards) so a reveal of two opens the same window a reveal of ten does, and **the shuffle
 belongs to the pair of them**: one reveal is one act with one deck and one ending, so once either
 player has shuffled, the other player's window — which is still open, and still showing the cards —
-loses the button and keeps only Close. The same `shuffled` flag rides the `backToDeck` event, so
+loses the shuffle and keeps only Close. The same `shuffled` flag rides the `backToDeck` event, so
 which button each player has never depends on which of them pressed it.
+
+A *Close* beside *Close & Shuffle* was the first shape both windows had, and it was wrong for the same
+reason in each: it offers a way to put the deck back exactly as it was found, which is the one ending a
+reveal is not. A reveal is taken *because* the top of the deck is about to be read, so the order it was
+read in is the thing that should not survive it; a Look ends with a shuffle because the deck belongs to
+somebody else. So the ending is one button that changes rather than two that sit together — **Close &
+Shuffle while the shuffle is owed, Close after it has happened** — and Escape or a click outside still
+closes either window without shuffling, which is how every panel in the app closes.
 
 A **frozen batch** is what makes that possible, and it is also what keeps the other player's window
 alive at all: a window draws the batch's cards *that are still in the deck*, and a shuffle leaves
