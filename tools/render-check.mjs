@@ -84,14 +84,14 @@ writeFileSync(entry, `
    import Page from '${p('routes/+page.svelte')}'
    import { cards, cardSelection, deck, discard, bench, draw, hand, lz, moveSelection, resetBoard, resetSelection, attachSelection, selectCard, selectPile, shuffleAfterLeavingDeck, stadium, table, toBench, cardPile } from '${p('lib/stores/player.js')}'
    import { slot } from '${p('lib/stores/custom/cards.js')}'
-   import { reveal, look, isActionable, canReveal, topCount, revealTop, lookTop, resetRevealState } from '${p('lib/stores/reveal.js')}'
+   import { reveal, revealView, look, lookView, isActionable, canReveal, topCount, revealTop, lookTop, resetRevealState } from '${p('lib/stores/reveal.js')}'
    import { OPP_ACTIONS, opponentCardAction, respondToOpponentCardAction } from '${p('lib/stores/oppAction.js')}'
    import InspectionView from '${join(root, 'tools', 'pile-dialog.svelte').split(sep).join('/')}'
    import RevealDialog from '${p('lib/play/dialogs/Reveal.svelte')}'
    import LookDialog from '${p('lib/play/dialogs/Look.svelte')}'
    /* what a decklist import does: the list of cards, then the board built from it */
    const setDeck = (cards_) => { cards.set(cards_); resetBoard() }
-   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, isActionable, look, LookDialog, lookTop, lz, moveSelection, OPP_ACTIONS, opponentCardAction, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, RevealDialog, revealTop, selectCard, setDeck, shuffleAfterLeavingDeck, slot, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
+   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, isActionable, look, LookDialog, lookTop, lookView, lz, moveSelection, OPP_ACTIONS, opponentCardAction, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, RevealDialog, revealTop, revealView, selectCard, setDeck, shuffleAfterLeavingDeck, slot, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
 `)
 
 const svelte = {
@@ -571,40 +571,42 @@ const farDeck = get(mod.defaultOpponent.deck)
 check('and the far half has a deck to reveal', farDeck.length > 2, `${farDeck.length} cards`)
 
 /*
-   The batch, in the shape a pile has - which is what `applyReveal` builds (see
-   `asPile` in reveal.js), and both halves of it matter:
+   The batch, in the shape `applyReveal` builds (see reveal.js), and all three parts
+   of it matter:
 
-      `cards`  the record of the gesture: the ids that were shown, and what the
-               permission is asked about
-      `get()`  the *live* view of them: the cards that are still in the deck, which
-               is what the window draws
+      `cards`      the record of the gesture: the ids that were shown, which is what
+                   the batch is recognized by
+      `ownerHere`  the half in this board's words, so the window can name it
+      `revealView` the ids resolved against the deck, in the deck's own objects,
+                   which is what the window draws and what the permission is asked
+                   against
 
-   A copy of the list is the obvious implementation and it is wrong: the card would
-   stay in the window after it had been acted on, and the second click would do
-   nothing at all, silently (see docs/gotchas.md). So the batch is built here the
-   way the real one is built, by hand, because the real one arrives in an event that
-   needs a room.
+   Ids rather than objects, and a *pushed* view rather than a computed list, are both
+   load bearing. A mirror holds copies of the cards rather than the cards themselves,
+   so a batch of objects could not be matched against the board that receives it; and
+   a view that is not pushed does not update when a card leaves the deck on the
+   owner's own board, where the move writes no event for anything to react to. Both
+   are in docs/gotchas.md.
 */
-const shownCards = farDeck.slice(-3).reverse()
-const batch = {
-   name: 'deck',
-   source: farDeck,
-   get: () => shownCards.filter((card) => farDeck.includes(card)),
-   subscribe: (fn) => { fn(batch.get()); return () => {} }
-}
-mod.reveal.set({ owner: 'theirs', pileName: 'deck', cards: shownCards, pile: batch })
+const shownIds = farDeck.slice(-3).reverse().map((card) => card._id)
+const batch = { owner: 'mine', senderIsMe: true, ownerHere: 'mine', pileName: 'deck', cards: shownIds }
+const viewOf = () => shownIds.map((id) => farDeck.find((card) => card._id === id)).filter(Boolean)
 
-check('a revealed card is actionable', mod.isActionable(shownCards[0]))
+batch.pile = { name: 'deck', get: viewOf, subscribe: (fn) => { fn(viewOf()); return () => {} } }
+mod.reveal.set(batch)
+mod.revealView.set(viewOf())
+
+check('a revealed card is actionable', mod.isActionable(viewOf()[0]))
 check('and one that was not revealed is not', !mod.isActionable(farDeck[0]))
 /*
-   The card is in the far half's deck *and* in the batch - they are the same card
-   objects, which is what makes the batch an id-only event possible. So the card's
-   own pile is the far half's deck, and the batch is a different object from it:
-   that difference is the whole of how a card in one of these windows is told apart
-   from a card of this board's, and `board/Card.svelte` asks it of `piles()`.
+   The card is in the far half's deck *and* in the batch, which is what makes the
+   batch an id-only event possible. So the card's own pile is the far half's deck,
+   and the batch is a different object from it: that difference is the whole of how a
+   card in one of these windows is told apart from a card of this board's, and
+   `board/Card.svelte` asks it of `piles()`.
 */
 check('and the card is in the far half\'s deck, where the batch got it',
-   get(mod.defaultOpponent.deck).includes(shownCards[0]))
+   get(mod.defaultOpponent.deck).includes(viewOf()[0]))
 /*
    And the batch is *not* one of this board's own piles, which is the whole of how
    a card in one of these windows is told apart from a card on the board:
@@ -614,7 +616,7 @@ check('and the card is in the far half\'s deck, where the batch got it',
    this board's `piles()` is its own.
 */
 check('and the batch is not one of this board\'s own piles',
-   mod.cardPile(shownCards[0]) === null,
+   mod.cardPile(viewOf()[0]) === null,
    'the far half\'s deck is not this board\'s pile, which is what the window is read by')
 check('and neither is the far half\'s deck', mod.cardPile(farDeck[0]) === null)
 
@@ -622,23 +624,29 @@ const revealHtml = renders('the reveal window renders, with the cards on show', 
    props: { renderOpen: true },
    context: new Map([ [ 'boardActions', { openDetails () {}, openCardMenu () {}, openOppCardActionMenu () {} } ] ])
 })
+check('and it names the deck it is showing',
+   Boolean(revealHtml) && revealHtml.includes('Your deck'), 'the batch is this board\'s own deck')
 check('and it says both players can see them',
    Boolean(revealHtml) && revealHtml.includes('both players can see these'))
 check('and it offers Close and Close &amp; Shuffle',
    Boolean(revealHtml) && revealHtml.includes('Close') && revealHtml.includes('Close &amp; Shuffle'))
 check('and it shows the cards of the batch',
-   Boolean(revealHtml) && (revealHtml.match(/class="card"/g) || []).length === batch.get().length,
-   `${(revealHtml?.match(/class="card"/g) || []).length} cards, ${batch.get().length} on show`)
+   Boolean(revealHtml) && (revealHtml.match(/class="card"/g) || []).length === mod.revealView.get().length,
+   `${(revealHtml?.match(/class="card"/g) || []).length} cards, ${mod.revealView.get().length} on show`)
 
 /* the Look batch is the same shape, and the same permission */
-const lookedCards = farDeck.slice(-2).reverse()
-const lookPile = {
-   name: 'deck',
-   source: farDeck,
-   get: () => lookedCards.filter((card) => farDeck.includes(card))
-}
-mod.look.set({ pileName: 'deck', cards: lookedCards, pile: lookPile })
-check('a looked-at card is actionable too', mod.isActionable(lookedCards[0]))
+const lookedIds = farDeck.slice(-2).reverse().map((card) => card._id)
+const lookedView = () => lookedIds.map((id) => farDeck.find((card) => card._id === id)).filter(Boolean)
+/*
+   The Look batch replaces the reveal as far as the permission is concerned: there is
+   one batch per question, and a Look taken after a Reveal is the newer answer about
+   what is on show (see `isActionable`).
+*/
+mod.reveal.set(null)
+mod.revealView.set([])
+mod.look.set({ ownerHere: 'theirs', pileName: 'deck', cards: lookedIds })
+mod.lookView.set(lookedView())
+check('a looked-at card is actionable too', mod.isActionable(lookedView()[0]))
 
 const lookHtml = renders('the look window renders, with the cards on show', mod.LookDialog, {
    props: { renderOpen: true },
@@ -650,27 +658,38 @@ check('and it offers Close and Close &amp; Shuffle',
    Boolean(lookHtml) && lookHtml.includes('Close') && lookHtml.includes('Close &amp; Shuffle'))
 
 /*
-   And the batch is a *live* view of the deck rather than a copy of it, which is the
-   difference between a window that keeps offering a card that has been sent
-   somewhere and one that does not. A copy is the obvious implementation and it has
-   no visible symptom until a card is acted on: it stays in the window, and the
-   second click does nothing at all, silently (see docs/gotchas.md).
+   And the view is the deck's, not a copy of it, which is the difference between a
+   window that keeps offering a card that has been sent somewhere and one that does
+   not. A copy is the obvious implementation and it has no visible symptom until a
+   card is acted on: it stays in the window, and the second click does nothing at
+   all, silently (see docs/gotchas.md).
 
-   The two questions a move changes are asked here: what the window shows, and
-   whether the card still answers a click.
+   What `setBatch` does with the deck is what is done here by hand - the view is
+   rebuilt from the ids whenever the deck changes - because the store's own version of
+   it needs a registered deck and this check has no room to register one in.
+
+   The look batch is put away first, so that "does this card still answer" is asked of
+   the reveal and not of a newer batch that happens to hold the same card.
 */
-const shown = shownCards[1]
-check('a card is on show while it is still in the deck', batch.get().includes(shown) && mod.isActionable(shown))
+mod.look.set(null)
+mod.lookView.set([])
+mod.reveal.set({ owner: 'mine', senderIsMe: true, ownerHere: 'mine', pileName: 'deck', cards: shownIds })
+mod.revealView.set(viewOf())
+
+const shown = viewOf()[1]
+check('a card is on show while it is still in the deck',
+   mod.revealView.get().includes(shown) && mod.isActionable(shown))
 
 farDeck.splice(farDeck.indexOf(shown), 1)
+mod.revealView.set(viewOf())
 check('and leaves the window the moment it is moved out of the deck',
-   !batch.get().includes(shown),
-   `${batch.get().length} of ${shownCards.length} still on show`)
+   !mod.revealView.get().includes(shown),
+   `${mod.revealView.get().length} of ${shownIds.length} still on show`)
 check('and stops answering clicks with it', !mod.isActionable(shown))
 
 mod.resetRevealState()
 check('and nothing is actionable once the board is cleared',
-   !mod.isActionable(shownCards[0]) && !mod.isActionable(farDeck[0]))
+   !mod.isActionable(shown) && !mod.isActionable(farDeck[0]))
 
 /*
    And the wiring, which a render cannot click: each deck's own menu offers the

@@ -106,7 +106,7 @@
    const dndConfig = { drop: onDrop, allowDrop }
 </script>
 
-<div class="p-1 rounded flex flex-col focus:outline-none relative" tabindex="0"
+<div class="pile p-1 rounded flex flex-col focus:outline-none relative" tabindex="0"
    on:contextmenu={onCtx}
    use:ctrlA on:ctrlA={() => { if (showMenu && selectAll) selectPile(pile) }}
    use:dnd={dndConfig}>
@@ -127,11 +127,21 @@
    </div>
 </div>
 
-{#if showMenu}
-   <ContextMenu bind:this={menu} heading={name}>
-      <slot name="menu"></slot>
-   </ContextMenu>
-{/if}
+<!--
+   The menu is rendered whether or not this pile is reachable, and it is the *call*
+   that `showMenu` gates - which is how the near half's Pile is written.
+
+   It used to be `{#if showMenu}` around this, and that is a trap worth naming: the
+   pile's own markup was inside the same block, so a pile whose menu was not
+   reachable was not rendered *at all* - not the count, not the cards, nothing. On
+   the way into a room `showMenu` flips from false to true, and the far half's deck
+   appeared only if the frame landed the right way; a player who joined and then
+   looked at the opponent's deck saw an empty cell. A menu is an overlay on a zone,
+   not the zone (see board/Pile.svelte, which has always rendered its own).
+-->
+<ContextMenu bind:this={menu} heading={name}>
+   <slot name="menu"></slot>
+</ContextMenu>
 
 <style>
    .pile-body {

@@ -5,6 +5,7 @@ import { slot } from './custom/cards.js'
 import { socket } from './connection.js'
 import { fromRelay } from './timer.js'
 import { discardStadium } from './player.js'
+import { registerTheirDeck } from './reveal.js'
 import { normalizeStatus } from '$lib/util/status.js'
 import { normalizeMarkerUsed } from '$lib/util/markers.js'
 
@@ -345,6 +346,19 @@ export function createOpponent () {
    own instances and assigns each one a player.
 */
 export const defaultOpponent = createOpponent()
+
+/*
+   The mirror's deck, handed to `reveal.js` so a Reveal or a Look can read the far
+   half's deck without importing this module - that import would be a cycle
+   (player.js imports reveal.js, this imports player.js, so reveal.js importing this
+   closes the loop, and a cycle here is a 500 on every page load rather than a subtle
+   bug: see the note in connection.js).
+
+   It is one direction only: reveal.js exposes `registerTheirDeck` and this calls it.
+   The registration is what reveal.js waits for, and a Reveal or a Look taken before
+   it lands has no far deck to read, which is the correct answer rather than an error.
+*/
+registerTheirDeck(defaultOpponent.deck)
 
 /* the default mirror must receive relay events like every other instance */
 register(defaultOpponent)

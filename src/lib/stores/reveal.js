@@ -1,7 +1,6 @@
 import { writable } from './custom/writable.js'
 import { share, react, publishLog, spectating, onBoardCleanup } from './connection.js'
 import { solo } from './soloState.js'
-import { defaultOpponent } from './opponent.js'
 
 /*
    Reveal and Look: the two ways a player is shown cards out of a deck.
@@ -67,17 +66,31 @@ import { defaultOpponent } from './opponent.js'
 /*
    The Reveal batch on this board, or null.
 
-   `{ owner, pileName, cards, pile }`, where `owner` is the half the deck belongs to
-   in *this* board's words ('mine' is this player's deck), `cards` is the record of
-   what the gesture showed, and `pile` is the live view of it that the window and
-   the permission both read (see `asPile`).
+   `{ owner, senderIsMe, ownerHere, pileName, cards, ordered, pile }`:
+
+      `owner`       the half the deck belongs to in the **sender's** words
+      `senderIsMe`  whether this board is the revealer (local, never sent)
+      `ownerHere`   the same half in *this* board's words, for the heading
+      `cards`       the record of the gesture: the ids that were shown
+      `ordered`     those ids resolved against the deck, and what the window draws
+      `pile`        the deck's name and shape, so a card can be handed a pile
+
+   `ordered` is a store of its own and not a computed list, and that is the point of
+   the whole shape: the window has to *update* when a card leaves the deck - which
+   happens on the owner's own board, with no event, because a player's own events are
+   never handed back to them - and Svelte can only see that through a store it
+   subscribes to. `setView` below is what pushes it, from a subscription to the deck
+   itself.
 */
+export const revealView = writable([])
+export const lookView = writable([])
+
 export const reveal = writable(null)
 
 /*
-   The Look batch on this board, or null: what the player was shown privately.
-   The same shape as a Reveal batch, and a Look is only ever about the far half's
-   deck - so `owner` is always 'theirs' and is not stored.
+   The Look batch on this board, or null: what the player was shown privately. The
+   same shape as a Reveal batch, and a Look is only ever about the far half's deck -
+   so `owner` is always 'theirs' and `ownerHere` is always 'mine'.
 */
 export const look = writable(null)
 
@@ -92,6 +105,25 @@ export const lookOpen = writable(false)
 /* the player's own deck, registered rather than imported (see below) */
 let myDeckStore = null
 
+/* the same, for the far half: the mirror's deck, registered by opponent.js */
+let theirDeckStore = null
+
+/* which batch the live subscription below belongs to, so a stale one can be dropped */
+let watching = null
+
+/*
+   Every `applyReveal` this client has run, kept for `tools/reveal-check.mjs`.
+
+   A reveal is applied by two different routes - the revealer applies its own batch
+   before sharing it and the opponent's arrives as an event - and the two are
+   supposed to be indistinguishable from outside. When they are not, the trail is
+   what says which route ran and with whose word for the half.
+*/
+export const trace = []
+
+/* the two decks, as a table keyed by this board's words for a half */
+const decks = () => ({ mine: myDeckStore, theirs: theirDeckStore })
+
 /*
    `player.js` registers its deck here. Importing it would be a cycle - player.js
    imports connection.js, this module imports connection.js and opponent.js, and
@@ -102,30 +134,87 @@ export function registerOwnDeck (deck) {
    myDeckStore = deck
 }
 
-/*
-   The pile a batch names, on the board that owns it.
-
-   `owner` is the word the *reader* of the batch uses: 'mine' is this board's own
-   deck (`myDeckStore`, registered by player.js) and 'theirs' is the mirror's. That
-   is the convention everywhere below, and it is the one the two windows are
-   written in - "Your deck" / "Your opponent's deck" - so the batch's own field
-   means the same thing as the heading it draws.
-
-   The *wire* word is the other way round, and the two are flipped in exactly one
-   place: the `owner` an event carries is written by the player who acted, so their
-   'mine' is this board's mirror. `localOwner` below is that flip, and it is applied
-   where the batch is built (`applyReveal`) and where an event is sent
-   (`backToDeck`). Getting it wrong is quiet in the worst way - the batch would be
-   gathered off the wrong deck, none of the ids would be found in it, and the window
-   would never open on the other player's screen, which reads as the event not being
-   relayed at all.
-*/
-function pileFor (owner, pileName) {
-   if (pileName !== 'deck') return null
-   return (owner === 'mine' ? myDeckStore : defaultOpponent.deck) || null
+/* and the far half's, registered by opponent.js for the same reason */
+export function registerTheirDeck (deck) {
+   theirDeckStore = deck
 }
 
-/* the sender's word for a half, said in this board's words */
+/*
+   What a window is showing right now: the batch's ids read back off the deck, top
+   first, in the deck's own objects.
+
+   Ids rather than objects, and that is not a detail: a **mirror holds copies of the
+   cards, not the cards themselves** (`applyBoardState` reloads the list and `reset`
+   builds fresh objects from it - see `copy` in custom/board.js), so a batch of card
+   objects could not be matched against the board receiving it at all. A card that has
+   left the deck is simply not in the answer, which is what makes the window shrink.
+*/
+function viewOf (batch) {
+   const deck = decks()[batch.ownerHere]
+   if (!deck) return []
+
+   const cards = deck.get()
+   return batch.cards
+      .map((id) => cards.find((card) => card._id === id))
+      .filter(Boolean)
+}
+
+/*
+   Put a batch on screen, and keep it there.
+
+   `which` is the store the batch belongs to (`reveal` or `look`) and `view` is the
+   list store the window draws. Setting the batch is what subscribes to its deck: the
+   subscription refreshes `view` on every change to that deck, so a card that is moved
+   out of it leaves the window at once - including on the *owner's* own board, where
+   the move writes no event at all (a player's own events are not handed back to
+   them, see relay/client.js), which is the case that made a computed list wrong.
+
+   `watching` guards against a subscription from a replaced batch: two reveals in a
+   row would otherwise both be feeding one window.
+*/
+function setBatch (which, view, batch) {
+   if (watching?.stop) watching.stop()
+
+   which.set(batch)
+   view.set(viewOf(batch))
+
+   const deck = decks()[batch.ownerHere]
+   const stop = deck ? deck.subscribe(() => view.set(viewOf(batch))) : null
+   watching = { stop, token: batch }
+
+   return true
+}
+
+/* drop the batch and its subscription: nothing is on show any more */
+function clearBatch (which, view) {
+   if (watching?.stop) watching.stop()
+   watching = null
+
+   which.set(null)
+   view.set([])
+}
+
+/*
+   The pile a batch names, on the board that owns it - **from the receiving board's
+   perspective**.
+
+   `owner` is the word an event carries, which is the *sender's*: their 'mine' is the
+   deck they revealed, and on this board that is the mirror's if they are the other
+   player. So this maps a sender's word onto this board's piles, and it is the only
+   place that mapping exists.
+
+   This is the flip that matters, and getting it wrong is quiet: the batch would be
+   gathered off the opposite deck, none of the ids would be found in it, and the
+   window would never open on the other player's screen - which reads as the event
+   not being relayed at all. `localOwner` is the same flip said the other way, for the
+   places that have to *print* or *shuffle* the half a batch is about.
+*/
+function pileFor (senderOwner, pileName) {
+   if (pileName !== 'deck') return null
+   return decks()[senderOwner === 'mine' ? 'mine' : 'theirs'] || null
+}
+
+/* the sender's word for a half, said in this board's words (and back again) */
 function localOwner (senderOwner) {
    return senderOwner === 'mine' ? 'theirs' : 'mine'
 }
@@ -133,11 +222,18 @@ function localOwner (senderOwner) {
 /*
    The cards of a batch, read off the pile it names.
 
-   `ids` is the event's own list and it is what fixes the *order*: a deck is read
-   from its end (the card drawn next is the array's last - see the note over
-   `placeOrdered` in custom/cards.js), so the ids arrive top-of-deck first and the
-   cards are gathered in that order rather than in whatever order the pile happens
-   to hold them.
+   Ids rather than objects, and that is not a detail: a **mirror holds copies of the
+   cards, not the cards themselves** (`applyBoardState` reloads the list and `reset`
+   builds fresh objects from it - see `copy` in custom/board.js), so the object the
+   batch was built from on the revealer's board is not the object the mirror holds.
+   Anything that matched a batch card by identity would find nothing on the board
+   receiving the reveal, and the failure looks exactly like an event that never
+   arrived.
+
+   `ids` is the event's own list and it is what fixes the *order*: a deck is read from
+   its end (the card drawn next is the array's last - see the note over `placeOrdered`
+   in custom/cards.js), so the ids arrive top-of-deck first and the cards are read back
+   in that order rather than in whatever order the pile happens to hold them.
 */
 function gather (pile, ids) {
    if (!pile || !Array.isArray(ids)) return []
@@ -151,33 +247,23 @@ function gather (pile, ids) {
 /*
    The batch in the shape a pile has, which is what the two windows hand a card.
 
-   It is a *view of the deck it was taken from* rather than a frozen list, and that
-   is the whole of why it is built this way: a reveal says "these are the top cards
-   of that deck", so the moment one of them moves - to a discard, into play, back
-   into the deck - it is no longer one of the cards on show, and it should go from
-   the window and stop answering clicks. A copy of the list taken at reveal time
-   would keep offering a card that has already been sent somewhere, and the click
-   would do nothing at all, silently.
+   `get()` is the batch's ids resolved against the deck (`viewOf`), and `name` is the
+   deck's own name, so the menu and any log line that asks about the card's pile read
+   the same string a pile would give them.
 
-   So `get()` is the batch's cards that are *still in the deck*: the window reads
-   what is really there, and everything that asks "may this card be acted on" asks
-   the same thing (`isActionable`). The `cards` array itself is kept because it is
-   the record of the gesture - what was revealed - and it is what a card is
-   recognized by.
-
-   `name` is the deck's own name, so the menu and any log line that asks about the
-   card's pile read the same string a pile would give them. What makes this
-   recognizable as *not* one of the board's piles is the object: it is not in
-   `piles()` (custom/board.js), and `board/Card.svelte` reads exactly that to pick
-   the menu for somebody else's card. A flag beside the name would be a second
+   What makes this recognizable as *not* one of the board's piles is the object: it is
+   not in `piles()` (custom/board.js), and `board/Card.svelte` reads exactly that to
+   pick the menu for somebody else's card. A flag beside the name would be a second
    answer to a question the board can already answer.
 */
 function asPile (batch) {
+   const get = () => viewOf(batch)
+
    return {
       name: batch.pileName,
-      source: batch.source,
-      get: () => batch.cards.filter((card) => batch.source.get().includes(card)),
-      subscribe: (fn) => { fn(asPile(batch).get()); return () => {} }
+      get,
+      /* the shape a store has, so a component may write `$pile` if it wants to */
+      subscribe: (fn) => { fn(get()); return () => {} }
    }
 }
 
@@ -185,25 +271,42 @@ function asPile (batch) {
    Apply a Reveal batch, from either side.
 
    One function for the revealer and for everyone told about it, so the two boards
-   cannot disagree about what was shown. What is kept is the whole batch - every id
-   the event named that the deck still holds - rather than only the cards present
-   at this instant: the batch is the record of the gesture, and a card that leaves
-   the deck afterwards is filtered out of the *view* of it rather than out of the
-   record (see `asPile`). A batch with nothing in it at all - every card named has
-   already gone - closes the window rather than opening an empty one.
+   cannot disagree about what was shown. `owner` is the word that arrived - the
+   sender's - and it stays that way in the batch: it is what the wire means, and the
+   places that have to print or shuffle the half ask `revealOwnerHere` for this
+   board's word (see `pileFor`, which is the same mapping for a pile).
+
+   `senderIsMe` is what makes that flip possible, and it is local: it is set by
+   `shareReveal`, which is this board revealing, and left false by the handler that
+   receives one. It never travels - the event's `from` already says who sent it, and
+   the receiving client knows it is not the sender.
+
+   The record is the **ids**, not the objects, because a board and its mirror do not
+   hold the same objects (`viewOf`). What is kept is every id the event named that the
+   deck still holds: a card that leaves the deck afterwards drops out of the *view* of
+   the batch rather than out of the record. A batch with nothing in it at all - every
+   card named has already gone - leaves no batch, and the caller keeps its window shut.
 */
-function applyReveal ({ owner, pileName, cards }) {
-   const mine = localOwner(owner)
-   const source = pileFor(mine, pileName)
+function applyReveal ({ owner, pileName, cards }, senderIsMe = false) {
+   trace.push({ owner, senderIsMe, count: cards?.length })
+   if (trace.length > 8) trace.shift()
+
+   const source = pileFor(owner, pileName)
    const found = gather(source, cards)
 
    if (!source || !found.length) {
-      reveal.set(null)
-      revealOpen.set(false)
-      return
+      clearBatch(reveal, revealView)
+      return false
    }
 
-   reveal.set({ owner: mine, pileName, cards: found, pile: asPile({ pileName, cards: found, source }) })
+   const ownerHere = senderIsMe ? owner : localOwner(owner)
+   const ids = found.map((card) => card._id)
+   const batch = { owner, senderIsMe, ownerHere, pileName, cards: ids }
+
+   batch.pile = asPile(batch)
+   setBatch(reveal, revealView, batch)
+
+   return true
 }
 
 /*
@@ -220,8 +323,15 @@ function applyReveal ({ owner, pileName, cards }) {
 export function shareReveal (owner, pile, ids) {
    if (!ids?.length) return
 
-   applyReveal({ owner, pileName: pile.name, cards: ids })
-   revealOpen.set(true)
+   /*
+      The batch is applied here *first*, so the player who revealed sees their own
+      window at once: a player's own events are never handed back to them (see
+      `emit` in relay/client.js), so nothing else would show it. A batch that could
+      not be applied - a deck that has gone, cards that have already left it - opens
+      nothing, and the log line below still says what was asked for, because that is
+      what the player did.
+   */
+   if (applyReveal({ owner, pileName: pile.name, cards: ids }, true)) revealOpen.set(true)
 
    share('cardsRevealed', { owner, pileName: pile.name, cards: ids })
    publishLog(revealLine(owner, ids.length))
@@ -258,19 +368,18 @@ export function closeReveal () {
 */
 export function revealCloseAndShuffle () {
    const batch = reveal.get()
-   const owner = batch ? batch.owner : null
-   const pile = owner ? pileFor(owner, batch.pileName) : null
+   const owner = batch ? localOwner(batch.owner) : null
+   const pile = owner ? pileFor(batch.owner, batch.pileName) : null
 
    revealOpen.set(false)
    if (!pile) return
 
    pile.shuffle()
    /*
-      The event carries the *sender's* word for the half - this board's 'mine' is
-      the other board's 'theirs' - which is the same flip the batch's own field goes
-      through when it arrives (see `localOwner`).
+      The event carries the *sender's* word for the half, which is the batch's own
+      (see `localOwner`): this board's 'mine' is the other board's 'theirs'.
    */
-   share('backToDeck', { owner: localOwner(owner) })
+   share('backToDeck', { owner: batch.owner })
    publishLog('Shuffled Deck')
 }
 
@@ -328,9 +437,26 @@ export function lookCloseAndShuffle () {
 export function isActionable (card) {
    if (!card) return false
 
-   return [ reveal.get(), look.get() ]
-      .filter(Boolean)
-      .some((batch) => batch.pile.get().includes(card))
+   const inReveal = reveal.get() ? revealView.get().includes(card) : false
+   const inLook = look.get() ? lookView.get().includes(card) : false
+
+   return inReveal || inLook
+}
+
+/*
+   Whose deck a Reveal batch is showing, in the words of **this** board - so a window
+   can say it. `mine` is this player's own deck.
+
+   `owner` on the batch is the *revealer's* word for the half, which is also the word
+   the event carries, so it is already this board's word when this board is the
+   revealer and has to be turned around when it is not (`senderIsMe`, which is set
+   locally by `shareReveal` and never travels). `ownerHere` is that answer, computed
+   once when the batch is applied, so a window reads a field rather than repeating the
+   mapping - a heading that calmly names the wrong deck is the failure mode here.
+*/
+export function revealOwnerHere () {
+   const batch = reveal.get()
+   return batch ? batch.ownerHere : null
 }
 
 /*
@@ -404,12 +530,15 @@ export function lookTop (asked) {
    const count = topCount(pile, asked)
    if (!count) return false
 
-   const cards = pile.get().slice(-count).reverse()
+   /* ids, top of the deck first, and the batch resolves them against the deck itself */
+   const ids = topIds(pile, count)
+   const batch = { pileName: 'deck', ownerHere: 'theirs', cards: ids }
 
-   look.set({ pileName: 'deck', cards, pile: asPile({ pileName: 'deck', cards, source: pile }) })
+   batch.pile = asPile(batch)
+   setBatch(look, lookView, batch)
    lookOpen.set(true)
 
-   publishLog(lookLine(cards.length))
+   publishLog(lookLine(ids.length))
    return true
 }
 
@@ -431,8 +560,16 @@ export function lookTop (asked) {
    list it will not act on. The window is the part that is withheld.
 */
 react('cardsRevealed', (data) => {
-   applyReveal(data)
-   if (!spectating.get() && reveal.get()) revealOpen.set(true)
+   /* one function, one word: the sender's `owner` is what the batch keeps (see `pileFor`) */
+   const applied = applyReveal(data)
+
+   if (!applied) {
+      /* nothing to show - so nothing is left on screen either */
+      revealOpen.set(false)
+      return
+   }
+
+   if (!spectating.get()) revealOpen.set(true)
 })
 
 /*
@@ -458,9 +595,9 @@ react('backToDeck', ({ owner }) => {
    hook player.js and the mirrors use).
 */
 function clearBatches () {
-   reveal.set(null)
+   clearBatch(reveal, revealView)
    revealOpen.set(false)
-   look.set(null)
+   clearBatch(look, lookView)
    lookOpen.set(false)
 }
 
@@ -470,3 +607,4 @@ onBoardCleanup(clearBatches)
 export function resetRevealState () {
    clearBatches()
 }
+

@@ -8,6 +8,7 @@
    import GameClosed from '$lib/play/dialogs/GameClosed.svelte'
    import Connection from './Connection.svelte'
    import DeckInput from './DeckInput.svelte'
+   import { devDebug } from '$lib/util/dev-debug.js'
 
    /* the board itself is static; only /api/relay/* needs a server */
    export const prerender = true
@@ -22,6 +23,7 @@
    /* the board is dark: there is no light mode to switch to */
    onMount(() => {
       document.documentElement.classList.add('dark')
+      devDebug()
    })
 </script>
 

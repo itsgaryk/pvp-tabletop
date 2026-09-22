@@ -772,6 +772,99 @@ component puts on an element, and nothing in the build checks either half of it.
 rule, then read what renders the element, then click it. The rules themselves — what each
 kind of selection is drawn with, and why — are in [selection.md](selection.md).
 
+**A `$:` statement cannot see a store that a function call reads, and the value it keeps is the
+one from before the store had anything in it.** The Reveal window's heading says which deck it is
+showing, and the answer is a field worked out when the batch is applied:
+
+```js
+$: owner = revealOwnerHere() === 'mine' ? 'Your deck' : "Your opponent's deck"
+```
+
+It read `Your opponent's deck` for a reveal of the player's own deck, and it read that for ever.
+`revealOwnerHere()` reads `reveal` with `get()` inside itself, and **Svelte decides what a
+reactive statement depends on by reading the statement** - a plain function call is a black box,
+so the statement was taken to depend on nothing. It ran once, during the component's
+initialisation, while the batch was still `null`, and then never again: the window opened with
+the right cards and the wrong heading, and closing and reopening it did not help, because a `$:`
+that has no dependencies does not re-run for anything.
+
+The fix is one character of thought and two characters of code: name the store in the statement
+(`$reveal?.ownerHere === ...`), or - better - have the store *push* the answer, so the component
+reads a field rather than recomputing a mapping. It is the same family as the two notes above it
+(`$topUpright` on a plain value throws; `pile?.length ?? 0` prints a wrong number), and it is the
+third way this one-character class of mistake shows up:
+
+| written | what happens |
+| --- | --- |
+| `$plainValue` | throws on mount, and the whole component is dead |
+| `store.length ?? 0` | renders, and calmly prints 0 |
+| `$plainFunction()` inside `$:` | runs once and keeps that answer for ever |
+
+None of them is visible to the build. What finds the third one is looking at the screen, which is
+why the whole feature was driven through two real browsers before it was called done.
+
+**A view that is not *pushed* is a snapshot, and the case that proves it is a board whose own
+move writes no event.** A Reveal's window shows the top of a deck, and a card that leaves that
+deck has to leave the window. The obvious implementation - a `get()` that filters the batch's ids
+against the deck - is right about *what* to show and wrong about *when to show it*: on the
+**owner's** board the card is moved by the board's own code, and a player's own events are never
+handed back to them (`emit` in relay/client.js skips the sender), so nothing the component
+subscribes to ever changes. The window went on drawing a card that was already in the discard,
+while the acting player's board - which *did* get an event - drew two.
+
+So the batch owns a **view store** (`revealView` / `lookView`) and subscribes to the deck it is a
+view of, refreshing that store on every change. The component reads `$revealView`, and the deck's
+own store is what moves it. The general rule: **if something is a live view of a store, something
+has to subscribe to that store** - a `get()` in a template is a read, not a subscription, and the
+two boards of this app do not receive the same events, so "it updates for me" is not evidence.
+
+**The two halves of a board are two tables of stores, and a name on the wire means a different
+store depending on which end reads it.** `oppAction.js` needs a pile by the name an event carries
+(`hand`, `deck`, `discard`, …), and it needs it on one of two boards: the acting player looks the
+card up in its **mirror** of the other half, and the card's **owner** looks it up in its **own**
+zones. Those are different stores with the same names, and one function for both ends was a bug
+that took an afternoon to find:
+
+```js
+function oppPile (name) { ... defaultOpponent.deck ... }   // used on BOTH ends
+```
+
+The owner's client found a card with the same id in its mirror of the *other* player's deck,
+removed **that** one, and then tried to move a card that was in none of its own piles -
+`moveSelection` silently does nothing with a card it cannot place. So the log said the card had
+moved (that line is written before the move), the acting player's window correctly shrank, and on
+both boards the card was still in the deck. Nothing threw, and the trace of it is two functions
+written out side by side (`oppPile` and `ownPile`) with the note saying why they are not one.
+
+The same trap one layer up is the `mine`/`theirs` flip in reveal.js, and it is worth treating
+every name in an event payload as **relative to its sender** until proven otherwise.
+
+**A mirror holds copies of the cards, not the cards.** This one is written down because it decides
+the shape of an entire feature and it is invisible from the outside: `opponent.js`'s
+`applyBoardState` reloads the card list and `reset()` builds **fresh objects** from it
+(`copy` in custom/board.js), so the object a Reveal window is showing on the acting board is not
+the object the mirror's deck holds. It has the same `_id` and it is not `===` it.
+
+Anything that matched a batch card by identity therefore found nothing, and the failure reads as
+an event that never arrived. What the wire carries is therefore **ids** and never card objects:
+the batch keeps ids, the view resolves them against the deck, and every lookup that has to cross
+between a board and its mirror is by `_id`. The tell is a feature that works perfectly on the
+board that started it and silently does nothing on the board that was told about it.
+
+**A `{#if}` around a component's whole subtree is a component that is not rendered, and `showMenu`
+gated the opponent's piles that way.** The far half's `Pile.svelte` wrapped *everything* -
+including the count badge and the cards - in `{#if showMenu}`, because the menu was the only
+reason it had ever needed to render anything else. The moment `showMenu` became a real condition
+(a room has a menu, a spectator does not) that turned into: a pile whose menu is not reachable is
+not drawn at all, so the far half's deck, discard and lost zone were **empty cells** with a
+working count badge floating where their contents should be.
+
+It survived a while because the DOM it left behind looks plausible and because the check that
+noticed it was about something else - "the opponent's deck menu is empty" - and the cause was two
+levels away. The fix is the near half's shape, which had always rendered its menu
+unconditionally and gated the *call* instead (`board/Pile.svelte`): a menu is an overlay on a
+zone, not the zone.
+
 **A shortcut that re-implements a menu entry is a second copy of that entry's rule, and the
 copy is the one that goes stale.** `V` is View All of the deck, and so is the deck menu's own
 *View All* entry — but they were not the same code. The menu entry called the deck's

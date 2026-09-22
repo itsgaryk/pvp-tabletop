@@ -3,7 +3,7 @@
    import Card from '../opponent/Card.svelte'
    import Popup from './Popup.svelte'
    import { selectPile } from '$lib/stores/player.js'
-   import { look, lookOpen, closeLook, lookCloseAndShuffle } from '$lib/stores/reveal.js'
+   import { look, lookView, lookOpen, closeLook, lookCloseAndShuffle } from '$lib/stores/reveal.js'
 
    /*
       The Look window: the cards *this* player was shown privately.
@@ -38,15 +38,13 @@
 
    /*
       The cards on show, top of the deck first - the order the deck is read in, so
-      the first card of the grid is the card that would be drawn next. The batch
-      holds the card objects taken off the far half's mirror when the look was
-      taken.
+      the first card of the grid is the card that would be drawn next.
 
-      `get()` is the shape a pile has, so `Ctrl+A`'s `selectPile` and the card
-      menu's `cardPile` can be handed this the way they are handed a pile.
+      `lookView` is a store of its own, pushed by a subscription to the deck, so a
+      card that leaves the deck leaves the window (see `revealView` in reveal.js).
+      `pile` is the batch in a pile's shape, which is what a card is handed.
    */
-   $: cards = $look?.cards || []
-   /* the batch in a pile's shape, which is what a card is handed (see `asPile`) */
+   $: cards = $lookView
    $: pile = $look?.pile || null
 
    $: if (popup && $lookOpen && cards.length && !popup.opened()) popup.open()

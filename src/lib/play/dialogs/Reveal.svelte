@@ -3,7 +3,7 @@
    import Popup from './Popup.svelte'
    import { ctrlA } from '$lib/actions/customEvents.js'
    import { selectPile } from '$lib/stores/player.js'
-   import { reveal, revealOpen, closeReveal, revealCloseAndShuffle } from '$lib/stores/reveal.js'
+   import { reveal, revealView, revealOpen, closeReveal, revealCloseAndShuffle } from '$lib/stores/reveal.js'
 
    /*
       The Reveal window: the cards one player showed to both of them.
@@ -45,19 +45,33 @@
    let popup
 
    /*
+      The cards on show, top of the deck first - the batch's live view, so a card
+      that has been moved out of the deck goes from the window.
+
+      The batch holds card *ids* and resolves them against the deck it is a view of,
+      which is the only way this can work between two boards: a mirror holds copies
+      of the cards, not the cards themselves (see `asPile` in reveal.js). `get()` is
+      the shape a pile has, so `Ctrl+A`'s `selectPile` and the card menu's `cardPile`
+      can be handed this the way they are handed a pile.
+   */
+   /*
       The cards on show, top of the deck first.
 
-      The batch holds card *objects* - taken from the pile the reveal named when
-      the event was applied - so a card that has left the deck since is simply not
-      one of them any more, which is the right answer: it is no longer one of the
-      cards that were shown. `get()` is the one method every caller of a pile needs
-      (`Ctrl+A`'s `selectPile`, and the card menu's `cardPile`), so the batch is
-      handed about in the same shape a pile is.
+      `revealView` is a store of its own rather than `$reveal.pile.get()`, and the
+      difference is the whole reason it exists: the view is pushed by a subscription
+      to the *deck*, so a card that leaves the deck leaves the window - including on
+      the owner's own board, where the move writes no event for anything else to see.
+      `pile` is the batch in a pile's shape, which is what a card is handed so that
+      clicking one selects it (see `board/Card.svelte`).
    */
-   $: cards = $reveal?.cards || []
-   $: owner = $reveal?.owner === 'mine' ? 'Your deck' : "Your opponent's deck"
-   /* the batch, in the shape a pile has, which is what a card needs (see `asPile`) */
+   $: cards = $revealView
    $: pile = $reveal?.pile || null
+   /*
+      Whose deck this is, in *this* board's words: `ownerHere` was worked out when the
+      batch was applied (see `localOwner` in reveal.js), so the heading is a field
+      rather than a second copy of the mapping.
+   */
+   $: owner = $reveal?.ownerHere === 'mine' ? 'Your deck' : "Your opponent's deck"
 
    /*
       The window follows the batch, both ways, and it is opened by a *call* rather

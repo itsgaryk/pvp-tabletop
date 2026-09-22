@@ -20,6 +20,7 @@ least once.
 | "Is a card still the size of its zone, from one place?" | `node tools/card-sizing-check.mjs` (see [below](#is-a-card-still-the-size-of-its-zone)) |
 | "Does the board still render at all?" | `node tools/render-check.mjs` (see [below](#does-the-board-still-render)) |
 | "May that opponent card be acted on, and do the Reveal and Look windows render?" | `node tools/render-check.mjs` (see [reveal.md](reveal.md#checking-it)) |
+| "Does a reveal reach both boards, and a look only one?" | `node tools/reveal-check.mjs` (see [below](#does-a-reveal-reach-both-boards)) |
 | "Can a relay that says nothing trap a player?" | `node tools/relay-timeout-check.mjs` (see [relay.md](relay.md#a-request-that-never-answers)) |
 | "Do all the places that name a zone agree?" | `node tools/zone-vocabulary-check.mjs` (see [terminology.md](terminology.md)) |
 | "Does the deck stand-in still let a board be set up?" | `node tools/fixture-check.mjs` |
@@ -166,6 +167,31 @@ joining or spectating the room code.
 ```sh
 node tools/browser-check.mjs --only lobby     # just that section
 ```
+
+## Does a reveal reach both boards?
+
+```sh
+powershell -File tools\dev-servers.ps1 -Browsers 2
+node tools/reveal-check.mjs
+```
+
+Reveal and Look are the two halves of one gesture with two audiences, and everything
+that can go wrong with them needs *two* boards to see:
+
+- a Reveal is opened on the board that made it **and** on the board that was told
+  about it, with the same cards in the same order and each headed from its own side
+  ("Your deck" over there, "Your opponent's deck" here)
+- a Look is opened on one board only, and the other board is not merely idle — it was
+  never sent anything, which is what makes a look private rather than merely hidden
+- a card acted on from a reveal lands on its **owner's** board: the acting player's own
+  discard must not move, and their mirror of the owner's discard must
+- and the batch is a *view*: the card leaves both windows the moment it leaves the deck
+
+It is the check that found the two faults this feature shipped with, and neither was
+reachable from a single board: the window was gathered off the wrong deck (so the
+opponent's window never opened), and an action taken on another player's card was
+performed against the wrong board's stores (so the card landed nowhere while both logs
+said it had moved). Both are written up in [gotchas.md](gotchas.md).
 
 ## Does a selected prize glow?
 

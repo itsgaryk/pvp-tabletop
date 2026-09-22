@@ -184,6 +184,14 @@ been moved goes from the window and stops answering clicks. A copy of the list t
 at reveal time would keep offering a card that has already been sent somewhere, and
 the click would do nothing at all, silently.
 
+That view is a **store of its own** (`revealView` / `lookView`), refreshed by a
+subscription to the deck, and it has to be: the card is moved on the *owner's* board,
+by the board's own code, and a player's own events are never handed back to them — so
+nothing the window subscribes to would ever change, and on that one board the window
+would go on drawing a card that is already in the discard. Svelte cannot see a `get()`
+inside a template, and a `$:` statement cannot see a store that a plain function call
+reads; both of those cost this feature an afternoon ([gotchas.md](gotchas.md)).
+
 Neither window is a pile's view. There are no Natural/Sorted tabs (there is one
 order — the order the deck is read in, top card first, the order the cards were
 revealed in), and no four move buttons: those are where a *search* takes a card out

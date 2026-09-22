@@ -1,7 +1,11 @@
 import { logMove } from './logger.js'
 import { share, react, spectating } from './connection.js'
 import {
-   selectCard, resetSelection, moveSelection, toBench, toActive, toStadium
+   selectCard, resetSelection, moveSelection, toBench, toActive, toStadium,
+   findSlot,
+   hand as myHand, discard as myDiscard, deck as myDeck, lz as myLz,
+   prizes as myPrizes, table as myTable, stadium as myStadium,
+   active as myActive
 } from './player.js'
 import { defaultOpponent } from './opponent.js'
 import { isActionable } from './reveal.js'
@@ -110,10 +114,9 @@ function targetZone (action) {
 }
 
 /*
-   A pile of the far half by the name the wire uses. This is `getPile` in
-   opponent.js read the other way - the same table of names - and it is
-   deliberately written out rather than derived, because a name that is not in it
-   is a name this module must refuse rather than guess at.
+   A pile of the **other half** by the name the wire uses, which is the table the
+   acting player reads: their mirror of the other board. The values are the mirror's
+   own stores, so a card is taken out of the copy this board can see.
 */
 function oppPile (name) {
    const piles = {
@@ -124,6 +127,34 @@ function oppPile (name) {
       prizes: defaultOpponent.prizes,
       table: defaultOpponent.table,
       stadium: defaultOpponent.stadium
+   }
+
+   return piles[name] || null
+}
+
+/*
+   A pile of the **owner's own board**, by the same name.
+
+   This is the other half of `oppPile` and it is not the same table: a request arrives
+   at the card's *owner*, whose own zones are this board's, not the mirror's. One
+   function for both ends was the bug this pair exists to fix - the owner looked the
+   card up in its mirror of the *other* player's deck, found a card with the same id,
+   removed it from the wrong board (or from none), and the log still said the move had
+   happened. Nothing threw, and the card landed nowhere.
+
+   The two boards are two tables of stores, and a name on the wire means a different
+   store depending on which end is reading it - the same trap as `mine`/`theirs` in
+   reveal.js, one layer down.
+*/
+function ownPile (name) {
+   const piles = {
+      hand: myHand,
+      deck: myDeck,
+      discard: myDiscard,
+      lz: myLz,
+      prizes: myPrizes,
+      table: myTable,
+      stadium: myStadium
    }
 
    return piles[name] || null
@@ -164,67 +195,75 @@ function takeFrom (pile, card) {
    return true
 }
 
+/*
+   A trace of the last request one board sent and the last one it answered, for
+   `tools/reveal-check.mjs` through `$lib/util/dev-debug.js`.
+
+   This flow leaves a mark everywhere it *succeeds* - a log line, a card that moved,
+   a window that shrank - and nothing at all where it is refused, which is what makes
+   a refusal the expensive half to find: the acting board has already written its line
+   and moved on, so everything on that screen says the move happened.
+*/
+export const trace = { sent: 0, answered: 0, sentTo: null, last: null }
+
 /* --------------------------------------------------------------- the player -- */
 
 /*
-   The player's move, as a request.
+   The player's move, as a request - and only a request.
 
    `card` is one of the cards a Reveal or a Look is showing, `action` is one of
-   OPP_ACTIONS, and `pile` is what the card was handed with - the batch the window
-   gave it, or one of the far half's own lists where the card is on the board.
+   OPP_ACTIONS, and `pile` is what the card was handed with - the batch a window gave
+   it, or one of the far half's own lists where the card is on the board.
 
-   The card is taken out of the pile it is in, in *this* mirror, so the action
-   reads as done here at once - and `pile` is how that pile is found rather than
-   guessed at: a batch differs from a real pile only in that it is not in the
-   board's own `piles()`, which is the one thing that decides whether this board
-   has a copy to take it out of. A card that this board holds is removed; one it
-   does not (a batch, whose card the mirror *does* hold - the batch and the deck
-   share the card objects) is removed from the mirror's own list by looking the
-   card up in it.
+   **Nothing is moved on this board.** The owner's board is the only authority for
+   its own cards, so the card stays where it is until the owner's own events arrive
+   and the mirror follows them - the same path every other move takes, and the reason
+   a window shrinks at all (a batch is a live view of the deck, see reveal.js).
+
+   Removing the card here as well - for a round trip's worth of feedback - is the
+   mistake this note exists for. It is a second source of truth for where a card is,
+   and it fails in a way that took an afternoon to find: the removal is invisible to
+   the owner (no event carries it), so the two boards quietly disagree about the deck,
+   and because the owner's reply then cannot find the card, **the card lands nowhere
+   at all** while both logs say it moved. The acting player's copy of the card is a
+   mirror of the owner's, and a mirror may not act on its own.
+
+   What travels is the **id** and the pile's name, never the card: the owner looks the
+   card up in its own pile, which is the only board that can answer with the object it
+   actually holds.
 */
 export function opponentCardAction (card, action, options = {}) {
    if (spectating.get()) return false
    if (!card || !canActOn(card)) return false
    if (!Object.values(OPP_ACTIONS).includes(action)) return false
 
-   const source = sourcePile(card, options.pile)
-   if (!source) return false
-   if (!takeFrom(source, card)) return false
+   /*
+      Where the card is *said* to be. The batch's own pile name is preferred when a
+      window handed one over, because that is the deck the player was shown - so the
+      request names the pile the owner's board will recognise even if this board's
+      mirror has drifted.
+   */
+   const named = options.pile?.name || null
+   const pile = (named && oppPile(named)) || pileOf(card, defaultOpponent.piles())
+   if (!pile) return false
+
+   /* the card as *this* board holds it, for the event and the log line */
+   const held = pile.get().find((c) => c._id === card._id) || card
+
+   trace.sent += 1
+   trace.sentTo = { id: held._id, from: pile.name, action }
 
    share('oppCardAction', {
-      card: card._id,
-      from: source.name,
+      card: held._id,
+      from: pile.name,
       action,
       slotId: options.slotId || null
    })
 
-   logMove([ card ], source.name, targetZone(action), { bottom: action === OPP_ACTIONS.DECK_BOTTOM })
+   logMove([ held ], pile.name, targetZone(action), { bottom: action === OPP_ACTIONS.DECK_BOTTOM })
 
    resetSelection()
    return true
-}
-
-/*
-   The pile to take the card out of on this board.
-
-   A batch is a view of the far half's deck, so the pile behind it is that deck -
-   the card objects are the mirror's own, and taking the card out of the deck is
-   the same removal the batch is a view of. So the batch is mapped to the deck it
-   names, and anything else is used as it is when the board holds it.
-
-   `pile` is looked up in the board's own lists rather than trusted, because a
-   caller can hand over anything: a window's batch, a pile of the near half's, a
-   stale object. A pile this board does not hold is not a pile this board can take
-   a card out of.
-*/
-function sourcePile (card, pile) {
-   const lists = defaultOpponent.piles()
-
-   if (pile && lists.includes(pile)) return pile
-   if (pile?.name === 'deck' && pile !== defaultOpponent.deck) return defaultOpponent.deck
-
-   /* nothing was handed over, or it was not a pile: fall back to where the card is */
-   return pileOf(card, lists)
 }
 
 /* ---------------------------------------------------------------- the owner -- */
@@ -244,13 +283,31 @@ function sourcePile (card, pile) {
    nothing rather than move whatever holds that id now.
 */
 export function respondToOpponentCardAction ({ card: id, from, action, slotId = null }) {
-   if (spectating.get()) return false
+   trace.answered += 1
+   trace.last = { id, from, action, stage: 'received' }
 
-   const source = oppPile(from) || slotPile(from)
-   if (!source) return false
+   if (spectating.get()) {
+      trace.last.stage = 'refused: spectating'
+      return false
+   }
+
+   /*
+      The owner's *own* zones: this is the board the card belongs to, so the name on
+      the wire is read against this table and not the mirror's (see `ownPile`).
+   */
+   const source = ownPile(from) || slotPile(from)
+   if (!source) {
+      trace.last.stage = `refused: no pile "${from}"`
+      return false
+   }
 
    const card = source.get().find((c) => c._id === id)
-   if (!card) return false
+   if (!card) {
+      trace.last.stage = `refused: card ${id} is not in ${source.name}`
+      return false
+   }
+
+   trace.last.stage = 'found'
 
    /* the board's one selection is what its own moves work from */
    resetSelection()
@@ -282,6 +339,11 @@ export function respondToOpponentCardAction ({ card: id, from, action, slotId = 
    }
 }
 
+/* the stage an answer reached, so a refusal says which line refused it */
+function mark (stage) {
+   if (trace.last) trace.last.stage = stage
+}
+
 /*
    A card sent to one of the owner's own zones, with the event that zone's own
    move writes.
@@ -294,7 +356,13 @@ export function respondToOpponentCardAction ({ card: id, from, action, slotId = 
 */
 function plainMove (card, source, action) {
    const bottom = action === OPP_ACTIONS.DECK_BOTTOM
-   const target = oppPile(action === OPP_ACTIONS.DECK_BOTTOM ? 'deck' : action)
+   /*
+      The owner's *own* destination, for the same reason its source is (see
+      `ownPile`): this runs on the board that holds the card, so "discard" here is
+      that board's own discard.
+   */
+   const target = ownPile(action === OPP_ACTIONS.DECK_BOTTOM ? 'deck' : action)
+   mark('plainMove:' + (target ? target.name : 'no target'))
    if (!target) return false
 
    /*
@@ -305,7 +373,7 @@ function plainMove (card, source, action) {
       directly, in the one order the store defines (`ordered[0]` is drawn first -
       see `placeOrdered` in custom/cards.js).
    */
-   if (target === defaultOpponent.deck) {
+   if (target === myDeck) {
       if (!takeFrom(source, card)) return false
 
       target.placeOrdered([ card ], { bottom })
@@ -334,9 +402,8 @@ function plainMove (card, source, action) {
 function shuffleIntoDeck (card, source) {
    if (!takeFrom(source, card)) return false
 
-   const pile = defaultOpponent.deck
-   pile.push(card)
-   pile.shuffle()
+   myDeck.push(card)
+   myDeck.shuffle()
 
    share('cardsMoved', { cards: [ card._id ], from: source.name, to: 'deck' })
    logMove([ card ], source.name, 'deck', { shuffle: true })
@@ -352,12 +419,15 @@ function shuffleIntoDeck (card, source) {
    reached by the two entries that offer one today; it is here because the request
    names a pile the way every event does, and reading the name is what keeps one
    vocabulary for piles across the wire.
+
+   The owner's own Pokemon: `findSlot` on this board, for the reason `ownPile` is
+   this board's zones.
 */
 function slotPile (name) {
    const match = /^([0-9a-z-]{36})\.(pokemon|trainer|energy)$/i.exec(name || '')
    if (!match) return null
 
-   const s = defaultOpponent.findSlot(match[1])
+   const s = findSlot(match[1])
    return s ? s[match[2]] : null
 }
 
@@ -366,7 +436,7 @@ function slotPile (name) {
    named: the shape `attachSelection` writes for the owner's own board.
 */
 function intoSlot (card, source, slotId) {
-   const target = defaultOpponent.findSlot(slotId)
+   const target = findSlot(slotId)
    if (!target) return false
 
    if (!takeFrom(source, card)) return false
@@ -382,7 +452,7 @@ function intoSlot (card, source, slotId) {
 
 /* the entry the owner's own menu calls Attach: a card under the Active Pokemon */
 function attachToActive (card, source) {
-   const active = defaultOpponent.active.get()
+   const active = myActive.get()
    if (!active) return false
 
    if (!takeFrom(source, card)) return false
