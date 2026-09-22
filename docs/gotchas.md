@@ -923,6 +923,29 @@ check again on a quiet tree, while the *idle close* means the check needs to ans
 were true in the same afternoon, so a run could be made green by fixing either one and then go red
 again for the other — which is what made this look like flakiness for longer than it should have.
 
+**A check that waits for a word on the page is satisfied by the server's own markup, and so it passes
+in development and fails in production.** `tools/reveal-check.mjs` gates every section on "has the
+page hydrated", and it asked for the lobby's own text:
+
+```js
+document.body.innerText.includes('Create Room')   // true before any client code has run
+```
+
+A server-rendered page and a hydrated one are the **same string**, so that probe proves nothing — and
+it looked right for weeks of local runs because a development page also sets `globalThis.__pvp`, which
+the probe happened to require as well. Against the deployment there is no debug handle, no Vite warning
+and nothing on screen to say otherwise: the check simply carried on into a lobby that did nothing, and
+reported *the app's own client code never ran* about a page that was fine.
+
+`+page.svelte` now sets `data-hydrated` in the `onMount` it already had, and that is the mark the check
+waits for. The general rule is worth more than the attribute: **a browser check may not infer the
+client's state from what is rendered**, because the server renders it first and renders it the same.
+What proves hydration has to be something only the client can do — a mark it sets, or a click that has
+an effect.
+
+It is also why the deployment run is worth doing even when the local one is green: this fault is
+invisible on a dev server, and the check exists to catch faults of exactly that shape.
+
 **A batch that keeps only what it could find is a batch that is permanently short, and the poll that
 heals it will agree that it is finished.** The last fault of this feature, and the one worth the most,
 because *two* wrong conclusions were drawn about it before anybody looked at the record.
