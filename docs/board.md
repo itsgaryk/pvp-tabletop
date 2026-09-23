@@ -147,7 +147,7 @@ the same is true of the multi-card selection dialog, which is the same grid.
 about *who is shown them* rather than about moving them: a **Reveal** shows the top
 X cards to both players in a window on both boards, and a **Look** shows them to the
 one player who asked, in a window on their board alone. Both are entries on a deck's
-own menu — *Reveal Top X* on either deck, *Look at Top X* on the opponent's — and
+own menu — *Reveal Top X* on either deck, *View Top X* on the opponent's — and
 neither ever moves a card: they are views of the top of a deck, and the deck is
 exactly where it was until *Close & Shuffle* says otherwise.
 

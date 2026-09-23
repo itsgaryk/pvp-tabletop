@@ -17,13 +17,43 @@
       if (x) draw(x)
    }
 
-   function moveTop (targetPile) {
-      const card = deck.pop()
-      if (card) {
+   /*
+      The top card, or the top `count` of them, off this deck and into `targetPile`.
+
+      One card and X cards are the same move written once, because the things that have to
+      agree are the end of the deck (the *end* of its array - see `placeOrdered` in
+      custom/cards.js), the event and the log line. X travels as one `cardsMoved` rather
+      than X of them: it is one gesture, the same way a multi-card selection crosses the
+      wire per pile rather than per card (see docs/selection.md).
+
+      The count is clamped to the deck: "discard 5" on a deck of 3 is a request the deck
+      cannot answer, and a prompt is not the place to argue about it.
+   */
+   function moveTop (targetPile, count = 1) {
+      const cards = []
+      for (let i = 0; i < Math.min(count, deck.get().length); i++) {
+         const card = deck.pop()
+         if (!card) break
+         cards.push(card)
          targetPile.push(card)
-         share('cardsMoved', { cards: [ card._id ], from: 'deck', to: targetPile.name })
-         logMove([ card ], 'deck', targetPile.name, { top: true })
       }
+
+      if (!cards.length) return
+
+      share('cardsMoved', { cards: cards.map((card) => card._id), from: 'deck', to: targetPile.name })
+      logMove(cards, 'deck', targetPile.name, { top: true })
+   }
+
+   /*
+      *Discard Top X*: the top of the player's own deck straight to the discard, however
+      many the player asks for. *Discard Top Card* is the same entry with X already
+      answered.
+   */
+   function discardTopX () {
+      const asked = parseInt(prompt('Discard how many cards from the top of your deck?'))
+      if (!asked || asked < 1) return
+
+      moveTop(discard, asked)
    }
 
    function pickX (bottom = false) {
@@ -111,6 +141,7 @@
       <ContextMenuOption click={revealTopX} text="Reveal Top X" disabled={!canReveal()} />
       <ContextMenuOption click={arrangeDeck} text="Search & Order Deck" disabled={$spectating} />
       <ContextMenuOption click={() => moveTop(discard)} text="Discard Top Card" disabled={$spectating} />
+      <ContextMenuOption click={discardTopX} text="Discard Top X" disabled={$spectating} />
       <ContextMenuOption click={() => moveTop(lz)} text="Lost Zone Top Card" disabled={$spectating} />
       <ContextMenuOption click={() => moveTop(prizes)} text="Prize Top Card" disabled={$spectating} />
    </svelte:fragment>
