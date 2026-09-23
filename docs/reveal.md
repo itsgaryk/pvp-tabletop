@@ -1,21 +1,28 @@
 # Reveal and Look
 
-Two ways a player is shown cards out of a deck. They are the same gesture with two
-different audiences, and that is the whole of the difference between them:
+Two ways a player is shown cards out of a deck, and the two ways one player may touch a deck
+that is not theirs. They are the same gesture with two different audiences, and that is the
+whole of the difference between the first two:
 
 | | Shown to | Window opens on | Ends with |
 | --- | --- | --- | --- |
 | **Reveal** | both players | both boards | Close & Shuffle, then Close |
 | **Look** | the player who looked | that player's board only | Close & Shuffle |
+| **Discard Top Card / X** | nobody — no window | — | the cards are in the discard |
 
-Both are entries on a deck's own right-click menu — *Reveal Top X* on either deck,
-*Look at Top X* on the opponent's — and both are asked for with the browser's
+Both of the first two are entries on a deck's own right-click menu — *Reveal Top X* on either
+deck, *View Top X* on the opponent's — and both are asked for with the browser's
 `prompt`, the way every other "X" on this board is (*Draw X*, *View Top X*, *Order
 Top X*). Each opens a pile window: the same panel a pile's view is, the same scroll
 container, the same foot of actions.
 
-The cards never leave the deck. A reveal is a *view of the top of a deck*, so
-nothing is moved, nothing is drawn, and closing the window needs no cleanup at all
+The discards are the third entry on the opponent's deck and the third and fourth on the
+player's own, and they are the ones with no window at all: the cards move from the top of the
+deck to the discard when the entry is taken, and that is the whole of the gesture (see
+*Where the entries are offered*, below).
+
+The cards never leave the deck during a Reveal or a Look. A reveal is a *view of the top of a
+deck*, so nothing is moved, nothing is drawn, and closing the window needs no cleanup at all
 — the deck is exactly where it was, in the same order, until *Close & Shuffle* says
 otherwise.
 
@@ -34,7 +41,7 @@ hand is *always on their board*, and the flag only decides whether those cards a
 drawn as faces or card backs, in place, until it is switched off again. There is no
 window, no set of cards, and no ending: nothing to close and nothing to shuffle.
 
-| | Reveal Hand | Reveal Top X / Look at Top X |
+| | Reveal Hand | Reveal Top X / View Top X |
 | --- | --- | --- |
 | what it is | a standing per-zone flag | one act about a deck |
 | what it shows | every card in a zone, always there | the top X, named once, as ids |
@@ -247,15 +254,44 @@ player's screen — which reads as the event not being relayed at all. It is the
 newest member of the family [terminology.md](terminology.md) is about, and it is
 worth knowing that it exists before adding a fourth thing that names a half.
 
-## Where the two entries are offered
+## Where the entries are offered
 
 | Menu | Entry | Does |
 | --- | --- | --- |
 | the player's own deck | *Reveal Top X* | `revealTop(deck, x)` → `owner: 'mine'` |
 | the opponent's deck | *Reveal Top X* | `revealTop(deck, x)` → `owner: 'theirs'` |
-| the opponent's deck | *Look at Top X* | `lookTop(x)` — local only |
+| the opponent's deck | *View Top X* | `lookTop(x)` — local only |
+| the opponent's deck | *Discard Top Card* | `discardTopOfTheirDeck(1)` |
+| the opponent's deck | *Discard Top X* | `discardTopOfTheirDeck(x)` |
+| the player's own deck | *Discard Top Card* | the top card, to the discard |
+| the player's own deck | *Discard Top X* | that many, to the discard |
 
-**Both refuse solo and a spectator**, and the rule is one function (`canReveal`): a
+**The Look entry is called *View Top X*, not *Look at Top X*.** It was renamed so that the
+two decks' menus read the same way: *View Top X* is what the top of a deck is called on this
+board, and the player's own deck already has one. The two do different things — the player's
+own asks which of the top X to *take*, and the opponent's just shows them — and that is
+intended rather than a fault to reconcile: one is a search in a deck you can read, the other
+is a look at a deck you cannot. The name is the same because the *words* are the same.
+
+**Discarding needs no window and no drag.** *Discard Top Card* and *Discard Top X* are one
+menu entry each: the player picks it, answers how many for the X one, and the cards go from
+the top of the deck straight to the discard. Nothing is revealed by either — a discard is a
+face-up pile, so the *owner* sees what they lost, which is what a discard is, and the player
+who asked sees the deck get shorter.
+
+Both discards are **requests**, and they are the one pair here that names no cards. The top
+of a deck this player cannot read is not a card this board can name, so what travels is a
+**count** and the owner reads its own deck (`discardTopOfTheirDeck` → `discardOwnTop`). It is
+also the one action in that module that moves nothing on the acting board: the owner's events
+and an optimistic move would be removals from the same pile, and the mirror is not
+authoritative for what is on top of it, so a stale mirror would leave the two boards
+permanently short of each other. The deck gets shorter when the owner's own event says so.
+
+The player's own two entries are local moves, because the deck is theirs: `moveTop(discard)`
+and `moveTop(discard, x)` in `board/Deck.svelte`, which is the same function the *Lost Zone
+Top Card* and *Prize Top Card* entries use.
+
+**All of these refuse solo and a spectator**, and the rule is one function (`canReveal`): a
 Reveal is a shared act, so it belongs to a room with two players in it. Solo has
 nobody to reveal to — both halves are one person, and that half's deck is already
 readable there — and a spectator does not own a board to reveal from, so
@@ -263,10 +299,10 @@ readable there — and a spectator does not own a board to reveal from, so
 *disabled* rather than removed wherever they do not apply, so the menu does not
 change shape between the two modes.
 
-There is no *Look at* on the player's own deck, and no *Reveal* on a hand or a
-prize pile: a Look is what you do to a deck you cannot read, and a Reveal is what
-you do to the top of one. The two share `topCount`, so "the top X" means the same
-thing in both — X, or the whole deck when X is larger.
+There is no *View Top X* on the player's own deck beyond the search it already has, and no
+*Reveal* on a hand or a prize pile: a Look is what you do to a deck you cannot read, and a
+Reveal is what you do to the top of one. The two share `topCount`, so "the top X" means the
+same thing in both — X, or the whole deck when X is larger.
 
 ## The windows
 

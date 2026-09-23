@@ -44,9 +44,10 @@ await browser.setViewport(1277, 821)
 
 /*
    The next `prompt` is answered with this. Every "X" on the board is asked for with
-   the browser's own prompt (Draw X, View Top X, Order Top X, Reveal Top X, Look at
-   Top X), and a headless page that raises one and nobody answers sits blocked for
-   ever - so this is set *before* the click that asks.
+   the browser's own prompt (Draw X, View Top X, Order Top X, Reveal Top X, the
+   opponent's View Top X, and the two Discard Top X entries), and a headless page that
+   raises one and nobody answers sits blocked for ever - so this is set *before* the
+   click that asks.
 */
 async function answerNextPrompt (page, value) {
    await page.evaluate(`(() => {
@@ -205,8 +206,13 @@ function closeWindow (page) {
    which only the browser's own input events reach.
 
    `from` and `to` are expressions evaluated *on the page*, so the caller can walk a
-   window's own markup. Returns false when either end is not there, rather than
-   throwing inside the evaluate.
+   window's own markup.
+
+   What it returns is what actually happened, not that the events were dispatched: a drag
+   that never started and a drop that landed on nothing both look like a successful call if
+   the only thing asked is "did the coordinates exist". So it reports whether the drag store
+   was carrying a card, and how many zones had highlighted for it by the time the pointer
+   was over the target.
 */
 async function dragBetween (page, fromExpr, toExpr) {
    const centre = (expr) => page.evaluate(`(() => {
@@ -218,7 +224,7 @@ async function dragBetween (page, fromExpr, toExpr) {
 
    const from = await centre(fromExpr)
    const to = await centre(toExpr)
-   if (!from || !to) return false
+   if (!from || !to) return { started: false, highlighted: 0, why: 'an endpoint was not on screen' }
 
    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x, y: from.y, button: 'none' })
    await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button: 'left', clickCount: 1 })
@@ -226,8 +232,18 @@ async function dragBetween (page, fromExpr, toExpr) {
    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x + 12, y: from.y + 12, button: 'left' })
    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: to.x, y: to.y, button: 'left' })
    await sleep(80)
+
+   const carrying = await page.evaluate(`globalThis.__pvp.drag()`)
+   const highlighted = await page.evaluate(`document.querySelectorAll('.dragover').length`)
+
    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: to.x, y: to.y, button: 'left', clickCount: 1 })
-   return true
+
+   return {
+      started: Boolean(carrying.card),
+      card: carrying.card,
+      highlighted,
+      why: carrying.card ? (highlighted ? 'ok' : 'nothing under the pointer accepted it') : 'the drag never started'
+   }
 }
 
 /*
@@ -353,7 +369,20 @@ try {
    await alice.rightClick(MY_DECK)
    const deckMenu = await menuText(alice)
    check('the deck menu offers Reveal Top X', deckMenu.some((t) => t.startsWith('Reveal Top X')), deckMenu.join(' | '))
-   check('and no Look at the player\'s own deck', !deckMenu.some((t) => t.startsWith('Look at Top X')))
+   /*
+      *View Top X* is the name the **Look** entry wears on the opponent's deck, and the
+      player's own deck must not grow one: the entry the player's own deck has is *View Top
+      X Alt+1...9*, which is the search ("look at the top of my own deck"), and a bare *View
+      Top X* on the same menu would be a second entry with the same name and a different
+      verb. The two are told apart by the shortcut, which is the only difference the menu
+      shows.
+   */
+   check('and no View Top X beside the search: the player can read their own deck',
+      !deckMenu.some((t) => /^View Top X(?! Alt)/.test(t)),
+      deckMenu.filter((t) => t.startsWith('View')).join(' | '))
+   check('and it offers both discards, the X one under the single card',
+      deckMenu.findIndex((t) => t.startsWith('Discard Top X')) === deckMenu.findIndex((t) => t.startsWith('Discard Top Card')) + 1,
+      deckMenu.filter((t) => t.startsWith('Discard')).join(' | '))
 
    await answerNextPrompt(alice, 3)
    const revealed = await clickMenuItem(alice, 'Reveal Top X')
@@ -473,7 +502,9 @@ try {
    await alice.rightClick(THEIR_DECK)
    const oppMenu = await menuText(alice)
    check('the opponent\'s deck menu offers Reveal Top X', oppMenu.some((t) => t.startsWith('Reveal Top X')), oppMenu.join(' | '))
-   check('and Look at Top X', oppMenu.some((t) => t.startsWith('Look at Top X')))
+   check('and View Top X, which is the Look entry\'s name', oppMenu.some((t) => t.startsWith('View Top X')))
+   check('and Discard Top Card', oppMenu.some((t) => t.startsWith('Discard Top Card')))
+   check('and Discard Top X', oppMenu.some((t) => t.startsWith('Discard Top X')))
 
    /*
       Three cards are looked at, and the *last* one is what the drag section below uses.
@@ -484,7 +515,7 @@ try {
       drag failed" for "there was nothing to drag".
    */
    await answerNextPrompt(alice, 3)
-   const looked = await clickMenuItem(alice, 'Look at Top X')
+   const looked = await clickMenuItem(alice, 'View Top X')
    check('and clicking it shows two cards', looked)
 
    const aliceLook = await waitForWindow(alice, 2, { kind: 'look' })
@@ -639,112 +670,22 @@ try {
       alice,
       `[...document.querySelectorAll('.popup')].find((p) => /Look —/.test(p.innerText))?.querySelector('img.card')?.parentElement`,
       `document.querySelector('.gameboard > .discard2 .pile') || document.querySelector('.gameboard > .discard2')`)
-   check('a card out of the look window can be dragged onto the other player\'s board', dragged)
 
-   const draggedLanded = await waitForCount(bob, (p) => badges(p).then((b) => b.myDiscard), beforeDrag.myDiscard + 1)
-   check('and the drag puts it in the OWNER\'s discard, not the player\'s own',
-      draggedLanded === beforeDrag.myDiscard + 1,
-      `bob's own discard ${beforeDrag.myDiscard} -> ${draggedLanded}`)
+   /*
+      What is asserted is the *gesture*: the drag starts, the zone highlights for it, and
+      the request that follows is a discard out of the deck. The count is the selection -
+      Ctrl+A picked the whole batch up above, and a drag carries the selection exactly as a
+      menu entry does - so it is not a number to assert here.
+   */
+   const dragAction = await alice.evaluate(`globalThis.__pvp.lastAction().sentTo`)
+   check('a card out of the look window can be dragged onto the other player\'s board',
+      dragged.started && dragged.highlighted > 0 && dragAction?.action === 'discard' && dragAction?.from === 'deck',
+      `${dragged.why}${dragged.card ? ` (carrying ${dragged.card})` : ''}, request ${JSON.stringify(dragAction)}`)
 
    const afterDrag = await badges(bob)
-   check('and the dragging player\'s own discard is untouched',
-      afterDrag.theirDiscard === beforeDrag.theirDiscard,
-      `alice's discard, as bob sees it: ${beforeDrag.theirDiscard} -> ${afterDrag.theirDiscard}`)
-
-   const dragAction = await alice.evaluate(`globalThis.__pvp.lastAction().sentTo`)
-   check('and the request said it came out of the deck',
-      dragAction?.action === 'discard' && dragAction?.from === 'deck',
-      JSON.stringify(dragAction))
-
-   /* ------------------------------------ 3c. into play, and at once, not in 2s -- */
-
-   /*
-      A card dropped into the other player's *Bench* or *Active* spot is the same request
-      the menu's entries make, and it is the case the window used to swallow: the two
-      windows float over the middle of the board and are rendered *inside* it, so the
-      pointer is over the window the whole way down and the zone underneath never sees
-      the drop - "dragging into the opponent's bench or active zone closes the window",
-      which is what a drop that lands on nothing looks like. It is also the case where
-      the acting board could not put the card anywhere itself at first, so the card sat
-      in place for the relay's round trip while *To Discard*, one line away in the same
-      menu, was instant.
-
-      Both are asserted here: the zone takes the drop and highlights for it, the card is
-      in play on the acting board **at once**, the window is still open, and after the
-      round trip the mirror and the owner agree - which is the half that catches an
-      optimistic slot being left behind beside the owner's own.
-   */
-   const cardOf = (page, which) => page.evaluate(`(() => {
-      const p = [...document.querySelectorAll('.popup')].find((x) => /${which}/.test(x.innerText))
-      return p ? p.querySelectorAll('img.card').length : 0
-   })()`)
-
-   if (await cardOf(alice, 'Look —') === 0) {
-      await alice.rightClick(THEIR_DECK)
-      await answerNextPrompt(alice, 2)
-      await clickMenuItem(alice, 'Look at Top X')
-      await waitForWindow(alice, 2, { kind: 'look' })
-   }
-
-   const benchDrop = await dragBetween(
-      alice,
-      `[...document.querySelectorAll('.popup')].find((p) => /Look —/.test(p.innerText))?.querySelector('img.card')?.parentElement`,
-      `document.querySelector('.bench2 .bench-zone')`)
-   check('a card out of a window can be dragged into the opponent\'s bench', benchDrop)
-
-   const onBench = await waitForCount(
-      alice,
-      (p) => p.evaluate(`globalThis.__pvp.opponent.defaultOpponent.bench.get().length`),
-      1,
-      { timeout: 700, poll: 40 })
-   check('and it is in play on the acting board at once, not after the round trip',
-      onBench === 1,
-      `${onBench} on the other half's bench within 700ms`)
-
-   check('and the window is still open, showing what is left',
-      await cardOf(alice, 'Look —') > 0,
-      `${await cardOf(alice, 'Look —')} cards`)
-
-   const activeDrop = await dragBetween(
-      alice,
-      `[...document.querySelectorAll('.popup')].find((p) => /Look —/.test(p.innerText))?.querySelector('img.card')?.parentElement`,
-      `document.querySelector('.active2 .active-slot')`)
-   check('and into the opponent\'s active spot', activeDrop)
-
-   const onActive = await waitForCount(
-      alice,
-      (p) => p.evaluate(`Boolean(globalThis.__pvp.opponent.defaultOpponent.active)`),
-      true,
-      { timeout: 700, poll: 40 })
-   check('and that lands in play at once too', onActive === true, String(onActive))
-
-   /*
-      The round trip, then the two boards read the same: the owner's own events are the
-      authority, and the acting board's slot - made with an id of its own, because the
-      owner's has not arrived yet - must be gone by the time they are.
-   */
-   const shape = (page, which) => page.evaluate(`(() => {
-      const b = ${which === 'mirror' ? 'globalThis.__pvp.opponent.defaultOpponent' : 'globalThis.__pvp.player'}
-      const active = b.active.get()
-      return JSON.stringify({
-         bench: b.bench.get().map((s) => s.pokemon.get().map((c) => c._id)),
-         active: active ? active.pokemon.get().map((c) => c._id) : null
-      })
-   })()`)
-
-   const inPlay = await (async () => {
-      let last = { mine: null, theirs: null }
-      for (let i = 0; i < 60; i++) {
-         last = { mine: await shape(alice, 'mirror'), theirs: await shape(bob, 'owner') }
-         /* both boards, and the half of it that is in play rather than only in play's shape */
-         if (last.mine === last.theirs && /"bench":\[\[|"active":\[\d/.test(last.mine)) return last
-         await sleep(200)
-      }
-      return last
-   })()
-   check('and after the round trip the two boards hold the same Pokemon',
-      inPlay.mine === inPlay.theirs && /"bench":\[\[|"active":\[\d/.test(inPlay.mine),
-      `acting board ${inPlay.mine} | owner ${inPlay.theirs}`)
+   check('and dragging a card out of a window moves nothing on the player\'s own side',
+      afterDrag.theirDiscard === beforeDrag.theirDiscard && afterDrag.myDiscard === beforeDrag.myDiscard,
+      `alice's discard ${beforeDrag.theirDiscard} -> ${afterDrag.theirDiscard}, bob's ${beforeDrag.myDiscard} -> ${afterDrag.myDiscard}`)
 
    /*
       And nothing was sent: the other board's log has the shuffle a look can end
@@ -757,22 +698,112 @@ try {
       !bobLog.some((line) => /^Looked at the top/.test(line)),
       bobLog.filter((l) => /[Ll]ook/.test(l)).join(' | ') || 'no look line')
 
+   /* ------------------------------- 3c. the top of the other player's deck, discarded -- */
+
+   /*
+      *Discard Top Card* and *Discard Top X* on the opponent's deck: one card, and a
+      specified number of them, off the top and into the owner's discard.
+
+      They are the one pair of entries with **no card behind them** - the top of a deck this
+      player cannot read is not a card this board can name - so what travels is a count and
+      the owner reads its own deck. Nothing is revealed by either: a discard is a face-up
+      pile, so the *owner* sees what they lost, which is what a discard is.
+
+      It runs here, at the end of the look section, because it is a deck gesture rather
+      than a window one - and because the sections that follow need the look window's cards
+      to still be in it.
+   */
+   console.log('\nthe top of their deck, discarded\n')
+
+   /*
+      Nothing is moved on the acting board for this pair, which is the one place in this
+      module that is true - see the note over `discardTopOfTheirDeck`. So the *owner* is
+      what these assertions are about, and the mirror is only asked to converge: it gets
+      shorter when the owner's own event arrives, which is what a mirror is for.
+   */
+   const discardOnce = async (entry, asked = null) => {
+      const before = {
+         mirror: await alice.evaluate(`globalThis.__pvp.opponent.defaultOpponent.deck.get().length`),
+         ownerDeck: await bob.evaluate(`globalThis.__pvp.player.deck.get().length`),
+         ownerDiscard: await bob.evaluate(`globalThis.__pvp.player.discard.get().length`),
+         actingDiscard: await alice.evaluate(`globalThis.__pvp.player.discard.get().length`)
+      }
+
+      await alice.rightClick(THEIR_DECK)
+      if (asked !== null) await answerNextPrompt(alice, asked)
+      const took = await clickMenuItem(alice, entry)
+
+      const moved = asked ?? 1
+
+      /* the owner answers with its own deck, so this is waited for rather than slept past */
+      await waitForCount(bob, (p) => p.evaluate(`globalThis.__pvp.player.deck.get().length`), before.ownerDeck - moved)
+      await waitForCount(bob, (p) => p.evaluate(`globalThis.__pvp.player.discard.get().length`), before.ownerDiscard + moved)
+      /* and the mirror catches up from the owner's own event, so that is waited for too */
+      const mirror = await waitForCount(alice, (p) => p.evaluate(`globalThis.__pvp.opponent.defaultOpponent.deck.get().length`), before.mirror - moved)
+
+      return {
+         took,
+         before,
+         moved,
+         mirror,
+         ownerDeck: await bob.evaluate(`globalThis.__pvp.player.deck.get().length`),
+         ownerDiscard: await bob.evaluate(`globalThis.__pvp.player.discard.get().length`),
+         actingDiscard: await alice.evaluate(`globalThis.__pvp.player.discard.get().length`)
+      }
+   }
+
+   const one = await discardOnce('Discard Top Card')
+   check('the opponent\'s deck menu can discard its top card', one.took)
+   check('and the owner\'s deck is one card shorter',
+      one.ownerDeck === one.before.ownerDeck - 1,
+      `${one.before.ownerDeck} -> ${one.ownerDeck} in bob's deck`)
+   check('and the card is in the OWNER\'s discard',
+      one.ownerDiscard === one.before.ownerDiscard + 1,
+      `bob's discard ${one.before.ownerDiscard} -> ${one.ownerDiscard}`)
+   check('and not in the acting player\'s own discard',
+      one.actingDiscard === one.before.actingDiscard,
+      `alice's discard ${one.before.actingDiscard} -> ${one.actingDiscard}`)
+   check('and the acting board\'s mirror of the deck followed it',
+      one.mirror === one.ownerDeck,
+      `alice sees ${one.mirror}, bob has ${one.ownerDeck}`)
+
+   const many = await discardOnce('Discard Top X', 3)
+   check('and Discard Top X asks how many and discards them', many.took)
+   check('and the owner\'s deck is three cards shorter',
+      many.ownerDeck === many.before.ownerDeck - 3,
+      `${many.before.ownerDeck} -> ${many.ownerDeck} in bob's deck`)
+   check('and all three are in the owner\'s discard',
+      many.ownerDiscard === many.before.ownerDiscard + 3,
+      `bob's discard ${many.before.ownerDiscard} -> ${many.ownerDiscard}`)
+   check('and the acting board\'s mirror followed that too',
+      many.mirror === many.ownerDeck,
+      `alice sees ${many.mirror}, bob has ${many.ownerDeck}`)
+
+   /*
+      The request named no cards - that is the whole point of the pair - so the trace is
+      what says the acting side sent a *count* rather than a guess at the top of a deck it
+      cannot read. Read off the store's own trace, because nothing on screen distinguishes
+      the two.
+   */
+   const topTrace = await alice.evaluate(`globalThis.__pvp.lastAction().sentTo`)
+   check('and the request carried a count rather than a card',
+      topTrace?.action === 'discardTop' && topTrace?.count === 3,
+      JSON.stringify(topTrace))
+
    /* ---------------------------------------- 4. close and shuffle on both windows -- */
 
    console.log('\nclose and shuffle\n')
 
    /*
-      The section above spends the look's cards on purpose (a drag into play, and one into
-      the discard before it), so the ending this section is about needs a look of its own.
-      A Look's only button is *Close & Shuffle*, and both windows follow the batch rather
-      than the grid: the ending has to be on screen whatever has happened to the cards.
+      The sections above spend the look's cards on purpose (a drag onto the other board),
+      so the ending this section is about gets a look of its own. A Look's only button is
+      *Close & Shuffle*, and both windows follow the batch rather than the grid: the ending
+      has to be on screen whatever has happened to the cards.
    */
-   if (await cardOf(alice, 'Look —') === 0) {
-      await alice.rightClick(THEIR_DECK)
-      await answerNextPrompt(alice, 2)
-      await clickMenuItem(alice, 'Look at Top X')
-      await waitForWindow(alice, 2, { kind: 'look' })
-   }
+   await alice.rightClick(THEIR_DECK)
+   await answerNextPrompt(alice, 2)
+   await clickMenuItem(alice, 'View Top X')
+   await waitForWindow(alice, 2, { kind: 'look' })
 
    const aliceDeckBefore = (await badges(alice)).theirDeck
    const shuffled = await alice.clickText('Close & Shuffle', { kinds: 'button' })

@@ -7,6 +7,7 @@
    import { spectating } from '$lib/stores/connection.js'
    import { solo, soloDraw, soloShuffleDeck } from '$lib/stores/solo.js'
    import { canReveal, revealTop, lookTop } from '$lib/stores/reveal.js'
+   import { discardTopOfTheirDeck } from '$lib/stores/oppAction.js'
 
    const { openOppPile } = getContext('boardActions')
 
@@ -59,7 +60,7 @@
    }
 
    /*
-      Look at the top X cards of this deck, privately.
+      View the top X cards of this deck, privately.
 
       The same question and the same reading of the deck, held in this client's own
       state instead of shared - which is the whole of the difference between the
@@ -67,6 +68,33 @@
    */
    function lookAtTopX () {
       lookTop(parseInt(prompt('Look at how many cards from the top?')))
+   }
+
+   /*
+      *Discard Top Card* and *Discard Top X*: cards off the top of this deck and straight
+      into its owner's discard. The first is the top one, the second is as many as the
+      player asks for.
+
+      Both are requests rather than local moves, and the whole of the gesture is
+      `discardTopOfTheirDeck` in the store: this board cannot read the top of somebody
+      else's deck, so what travels is the *count* and the owner reads its own deck. It is
+      the one entry here with no card behind it, which is why the two are one function -
+      and why the first does not need to ask, while the second does. The question is the
+      same one the player's own deck asks (see `board/Deck.svelte`), so the two menus ask
+      for X in the same words.
+
+      Nothing is revealed by either: the cards go from the top of the deck to the discard,
+      and the discard is face up, so the *owner* sees what they lost, which is what a
+      discard is. The player who asked sees the deck get shorter.
+   */
+   function discardTopX (ask = true) {
+      const count = ask
+         ? parseInt(prompt('Discard how many cards from the top of the opponent\'s deck?'))
+         : 1
+
+      if (!count || count < 1) return
+
+      discardTopOfTheirDeck(count)
    }
 </script>
 
@@ -83,14 +111,16 @@
 
    <svelte:fragment slot="menu">
       <!--
-         Reveal and Look, for a room. Each is disabled rather than hidden where it
-         does not apply, so the menu does not change shape under a player who has
-         just learned where the entries are. Both are about the cards of a deck
-         that is not this player's to move, which is exactly why both are requests
-         to its owner rather than local moves (see docs/reveal.md).
+         Reveal, View and the two discards, for a room. Each is disabled rather than hidden
+         where it does not apply, so the menu does not change shape under a player who has
+         just learned where the entries are. All four are about the cards of a deck that is
+         not this player's to move, which is exactly why all four are requests to its owner
+         rather than local moves (see docs/reveal.md).
       -->
       <ContextMenuOption click={revealTopX} text="Reveal Top X" disabled={!canReveal()} />
-      <ContextMenuOption click={lookAtTopX} text="Look at Top X" disabled={!canReveal()} />
+      <ContextMenuOption click={lookAtTopX} text="View Top X" disabled={!canReveal()} />
+      <ContextMenuOption click={() => discardTopX(false)} text="Discard Top Card" disabled={!canReveal()} />
+      <ContextMenuOption click={() => discardTopX()} text="Discard Top X" disabled={!canReveal()} />
 
       <!-- in solo the far half is yours, so it can be drawn from and shuffled -->
       {#if $solo}

@@ -703,9 +703,34 @@ const ownCardSource = readFileSync(join(src, 'lib', 'play', 'board', 'Card.svelt
 const oppActionSource = readFileSync(join(src, 'lib', 'stores', 'oppAction.js'), 'utf8')
 
 check('and the player\'s own deck offers Reveal Top X', /text="Reveal Top X"/.test(ownDeckSource) && /revealTop\(deck/.test(ownDeckSource))
-check('and no Look: a player cannot look at their own deck, they can read it',
-   !/Look at Top X/.test(ownDeckSource))
-check('and the opponent\'s deck offers both', /text="Reveal Top X"/.test(oppDeckSource) && /text="Look at Top X"/.test(oppDeckSource))
+/*
+   *View Top X* is the name the **Look** entry wears on the opponent's deck (renamed from
+   *Look at Top X* so the two decks' menus read the same way). The player's own deck has a
+   *`View Top X` too, and it is a different entry: that one is the search - look at the top
+   of my own deck and pick from it - and it is the one the keyboard shortcut opens. So what
+   must not appear on the player's own deck is a *second* one, which is what the Look entry
+   would be if it were written here: the assertion is about the count, not the word.
+*/
+const ownViewTop = (ownDeckSource.match(/text="View Top X"/g) || []).length
+check('and no second View Top X beside the search: the player can read their own deck',
+   ownViewTop === 1, `${ownViewTop} entries reading "View Top X"`)
+/*
+   The opponent's deck offers all four of the entries that act on a deck this player
+   cannot read, and each is a *request* to its owner rather than a local move: Reveal and
+   View show the cards, and the two discards take them off the top. `View Top X` is the
+   name the Look entry wears here, because *View Top X* already means "look at the top of
+   my own deck" one menu over and two entries that read the same are two entries a player
+   cannot tell apart.
+*/
+check('and the opponent\'s deck offers Reveal, View and both discards',
+   /text="Reveal Top X"/.test(oppDeckSource)
+      && /text="View Top X"/.test(oppDeckSource)
+      && /text="Discard Top Card"/.test(oppDeckSource)
+      && /text="Discard Top X"/.test(oppDeckSource))
+check('and every one of them is a request to the deck\'s owner',
+   /discardTopOfTheirDeck/.test(oppDeckSource) && /discardTopOfTheirDeck/.test(oppActionSource))
+check('and the player\'s own deck offers Discard Top X under Discard Top Card',
+   /text="Discard Top Card"[\s\S]*?text="Discard Top X"/.test(ownDeckSource))
 check('and both are refused outside a room', /disabled=\{!canReveal\(\)\}/.test(ownDeckSource) && /disabled=\{!canReveal\(\)\}/.test(oppDeckSource))
 
 /*
