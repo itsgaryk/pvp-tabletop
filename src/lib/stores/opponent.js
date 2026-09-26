@@ -368,20 +368,32 @@ export function createOpponent () {
    }
 
    /*
-      Which half each of this board's piles belongs to, marked on the piles themselves.
+      Which half each of this board's zones belongs to, marked on the zones themselves.
 
       A pile store is a plain object and the two boards' piles share every *name* - the near
       half's `discard` and the far half's `discard` are different stores that both call
-      themselves `discard`. So "is this pile one of theirs" cannot be answered by the name,
-      and a caller holding only a pile - `dropRevealedCard`, deciding whether a drop is a
+      themselves `discard`. So "is this zone one of theirs" cannot be answered by the name,
+      and a caller holding only a zone - `dropRevealedCard`, deciding whether a drop is a
       card of somebody else's going onto their own side - had nothing to ask it of.
+
+      **A zone is not always a pile, and the Active spot is neither.** The Bench is a
+      `slots()` list and the Active spot is written `active: writable(null)`, so neither is
+      a member of `piles()` - that list holds the three piles *inside* each slot, which is a
+      different question. Leaving them out was a real bug rather than an omission in a
+      comment: `dropRevealedCard` refused every drag onto the opponent's Bench and Active
+      spot, which the player sees as the window closing and the card vanishing.
+
+      The Active spot is also the one zone whose *store* and whose `{ get, set, subscribe }`
+      wrapper are two different objects, so `actionForPile` asks it for `active.get()` as
+      well as for the store itself (see the note there). This marking is on the store, which
+      is what a component hands over.
 
       Non-enumerable, so it cannot turn up in a spread or a `JSON.stringify` of a pile, and
       marked here rather than looked up from a register: the answer travels with the thing
       being asked about, so a spectator's mirror (`createOpponent` again) answers for itself.
    */
-   for (const pile of b.piles()) {
-      Object.defineProperty(pile, 'theirPile', { value: true, enumerable: false })
+   for (const zone of [ ...b.piles(), b.bench, b.active ]) {
+      Object.defineProperty(zone, 'theirPile', { value: true, enumerable: false })
    }
 
    return {

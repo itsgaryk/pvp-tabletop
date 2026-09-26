@@ -163,7 +163,17 @@ function badges (page) {
          myDiscard: b('.gameboard > .discard'),
          theirDiscard: b('.gameboard > .discard2'),
          myHand: b('.gameboard > .hand'),
-         theirHand: b('.gameboard > .hand2')
+         theirHand: b('.gameboard > .hand2'),
+         myLostZone: b('.gameboard > .lz'),
+         /*
+            The zones that carry no count of their own, so a card in them is counted by the
+            card: a bench is a row of slots, the Active spot holds one Pokemon that may
+            carry cards under it, and both players play into their own Stadium.
+         */
+         myBench: document.querySelectorAll('.gameboard > .bench .slot').length,
+         myActive: document.querySelectorAll('.gameboard > .active > .active1 .slot').length,
+         myStadium: document.querySelectorAll('.gameboard > .stadium-area > .stadium .stadium-cards > div').length,
+         myTable: document.querySelectorAll('.gameboard > .play .table-card').length
       }
    })()`)
 }
@@ -269,6 +279,8 @@ async function dragBetween (page, fromExpr, toExpr) {
       return { card: document.querySelector('.z-30 img.card') ? true : null }
    })()`)
    const highlighted = await page.evaluate(`document.querySelectorAll('.dragover').length`)
+   /* and which zones, so a refusal that highlighted something says what it landed on */
+   const highlightedZones = await page.evaluate(`[...document.querySelectorAll('.dragover')].map((e) => String(e.className).split(' ')[0]).join(',')`)
 
    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: to.x, y: to.y, button: 'left', clickCount: 1 })
 
@@ -276,7 +288,8 @@ async function dragBetween (page, fromExpr, toExpr) {
       started: Boolean(carrying.card),
       card: typeof carrying.card === 'string' ? carrying.card : null,
       highlighted,
-      why: carrying.card ? (highlighted ? 'ok' : 'nothing under the pointer accepted it') : 'the drag never started'
+      highlightedZones,
+      why: carrying.card ? (highlighted ? `ok (${highlightedZones})` : 'nothing under the pointer accepted it') : 'the drag never started'
    }
 }
 
@@ -923,6 +936,63 @@ try {
             JSON.stringify(afterBadges) === JSON.stringify(beforeBadges) &&
             (!before || !after || JSON.stringify(before.sentTo) === JSON.stringify(after.sentTo)),
          `${out.why}, ${out.highlighted} zone(s) highlighted, own board ${JSON.stringify(beforeBadges) === JSON.stringify(afterBadges) ? 'unchanged' : `CHANGED ${JSON.stringify(beforeBadges)} -> ${JSON.stringify(afterBadges)}`}`)
+   }
+
+   /*
+      **And the owner's own zones take it, which is the half that was broken.**
+
+      The Bench and the Active spot were refused here by a guard that asked whether the
+      zone was one of the owner's - and answered by asking a list of the owner's *piles*,
+      which neither of them is: the Bench is a `slots()` list and the Active spot is a
+      store. The drag highlighted the zone, nothing was sent, and the card left the window
+      while landing nowhere - reported as *"dragging to the hand, bench and active zones
+      makes the card disappear and closes the window"*. What each zone has to prove is
+      therefore both halves: the request goes out, and the card arrives on the owner's own
+      board with the window still open.
+
+      A fresh Look for each zone, and the drag starts from the card's own wrapper - see the
+      notes above for both.
+   */
+   const theirZones = [
+      [ 'hand', '.gameboard > .hand2 .pile', 'myHand' ],
+      [ 'bench', '.gameboard > .bench2 .bench-zone', 'myBench' ],
+      [ 'active', '.gameboard > .active > .active2', 'myActive' ],
+      [ 'lost zone', '.gameboard > .lz2 .pile', 'myLostZone' ]
+   ]
+
+   /*
+      The two **shared cells** - the Stadium and the table - are deliberately not in this
+      list, and that is a limit of the check rather than of the feature. Each half keeps its
+      own zone for them in one grid cell, the near one drawn over the far one, and the near
+      one is `pointer-events: none` in a room so that a drop reaches the far one (see
+      `Board.svelte`). A drag built out of `Input.dispatchMouseEvent` reaches the near cell
+      and stops there: measured, the far Stadium's own cards get `pointerenter`, the pointer
+      is unambiguously over them, and no `pointerup` arrives at either half's handler - in
+      Chrome and in Edge. What can be asserted from here is the half that *is* reachable,
+      and that is the useful half: a window's card is refused by the player's own Stadium
+      and table (below), which is the ruling the report is about. The owner's half of a
+      shared cell is a hand-check.
+   */
+
+   for (const [ name, sel, key ] of theirZones) {
+      await lookAtThree()
+      const before = await badges(bob)
+      const sentBefore = (await actionTrace(alice))?.sent ?? null
+      const openBefore = (await windows(alice)).length
+
+      const out = await dragBetween(alice, lookCardExpr, `document.querySelector(${JSON.stringify(sel)})`)
+      const arrived = await waitForCount(bob, (p) => badges(p).then((b) => b[key]), before[key] + 1, { timeout: 12000, poll: 150 })
+      await sleep(400)
+      const sentAfter = (await actionTrace(alice))?.sent ?? null
+      const openAfter = (await windows(alice)).length
+
+      check(`and a window's card CAN be dropped on the owner's ${name}`,
+         out.started && out.highlighted > 0 && arrived === before[key] + 1 &&
+            (!sentBefore || !sentAfter || sentAfter > sentBefore),
+         `${out.why}, owner's ${key} ${before[key]} -> ${arrived}, requests ${sentBefore} -> ${sentAfter}`)
+      check(`and the window stays open for the ${name} drop`,
+         openBefore === 1 && openAfter === 1,
+         `${openBefore} -> ${openAfter} windows`)
    }
 
    /*

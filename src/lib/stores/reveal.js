@@ -150,6 +150,13 @@ let myDeckStore = null
 let pilesStore = null
 
 /*
+   The player's own selection, registered for the same reason again, and it answers the
+   one question the view cannot: whether a batch's cards have *gone* or merely not
+   arrived (see `actedOn`).
+*/
+let selectionOf = null
+
+/*
    The far half's deck, registered by `opponent.js` for the same reason.
 
    It is a **function of the looker** rather than one store, and that is what a
@@ -236,6 +243,11 @@ export function registerPiles (piles) {
    pilesStore = piles
 }
 
+/* the player's own selection, registered by player.js so a batch can ask what was acted on */
+export function registerSelection (selection) {
+   selectionOf = selection
+}
+
 /*
    The far half's deck, registered by opponent.js for the same reason.
 
@@ -289,6 +301,29 @@ function viewOf (batch) {
 }
 
 /*
+   Whether a batch's cards have **left the game** rather than merely not arrived yet.
+
+   The distinction the view cannot make on its own, and the whole of whether a window that
+   goes empty has ended: an empty view means "these ids are not in the deck", and the deck
+   is not in place yet at the moment a batch lands on a board that is still being told what
+   the board holds (see `setBatch`). Reading the two as one thing made a window blink out
+   and back in.
+
+   So the answer is asked of the **selection**: a card of the batch that the player has
+   picked out is a card being acted on, and the batch is spent. The selection is also what
+   the gesture was about, so a batch with cards missing from the deck and **nothing** of it
+   selected is a batch whose deck has not arrived, and it is left alone to fill in.
+*/
+function actedOn (batch) {
+   if (!selectionOf) return false
+
+   const chosen = selectionOf()
+   if (!chosen.length) return false
+
+   return batch.cards.some((id) => chosen.some((card) => card._id === id))
+}
+
+/*
    Put a batch on screen, and keep it there.
 
    `which` is the store the batch belongs to (`reveal` or `look`) and `view` is the
@@ -310,6 +345,12 @@ function viewOf (batch) {
    writable does not notify when a value equals itself, so a deck can be filled
    without a single notification. The poll asks until the deck has caught up, and
    stops by itself when it has.
+
+   **A batch that has gone empty is left alone unless its cards have actually gone**
+   (see `actedOn`): a window whose cards left the deck is a window that is over, and one
+   whose deck has not arrived yet is a window that is still filling in. Clearing on the
+   first is what the shuffle and a spent batch rely on; clearing on the second was what
+   made the window blink out.
 
    `watching` guards against a timer or subscription from a replaced batch: two
    reveals in a row would otherwise both be feeding one window.
@@ -442,11 +483,11 @@ function asPile (batch) {
    out of the record.
 
    **A batch is dropped when there is no deck to read it against, and not when the
-   deck is momentarily empty** - `found` being empty is the ordinary state of a board
-   whose full state has not arrived yet, and giving up on it is the failure the note
-   below is about. Measured with a spectator in the room: the mirror read 0 for a
-   moment, the reveal landed in that moment, and with `!found.length` in this guard the
-   window never opened on that board at all.
+   deck is momentarily empty** - an empty view is the ordinary state of a board whose
+   full state has not arrived yet, and giving up on it is the failure the note below is
+   about. Measured with a spectator in the room: the mirror read 0 for a moment, the
+   reveal landed in that moment, and a guard that gave up on an empty view never opened
+   the window on that board at all. `actedOn` is what tells the two apart.
 */
 function applyReveal ({ owner, pileName, cards }, senderIsMe = false) {
    trace.push({ owner, senderIsMe, count: cards?.length })
@@ -454,7 +495,12 @@ function applyReveal ({ owner, pileName, cards }, senderIsMe = false) {
 
    const source = pileFor(owner, pileName)
 
-   if (!source || !Array.isArray(cards) || !cards.length) {
+   /*
+      A batch is kept while its deck has not arrived, and dropped once its cards have been
+      acted on - see `actedOn`, which is the whole of the difference. `!cards.length` is the
+      one case that is meaningless either way: an event that named nothing is not a reveal.
+   */
+   if (!source || !Array.isArray(cards) || !cards.length || actedOn({ cards })) {
       clearBatch(reveal, revealView)
       return false
    }

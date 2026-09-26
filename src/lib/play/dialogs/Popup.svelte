@@ -57,6 +57,58 @@
       dispatch('closed') // might have to do cleanup work when this is closed from inside (like shuffling back the cards from Selection)
    }
 
+   /*
+      **A click that arrived from a drop is not a click outside the panel.**
+
+      The outside-click listener asks whether the click's *target* is inside the panel,
+      and a left-click drag that ends on a zone underneath the window produces a click
+      the panel is not on: the pointer went down on the card (in the panel) and up on the
+      zone (outside it), and Chrome fires the click on their **nearest common ancestor** -
+      measured here, `.game` - so a drag to the opponent's Bench, Active or hand closed
+      the window it was dragged from. It read as a reported bug twice over, because the
+      drop itself did *not* happen: the pointerdown was on a card the window was about,
+      so the browser's drag-and-drop is never started, the zone gets the `pointerup` and
+      nothing else, and the only visible effect is the window closing. The discard worked
+      by luck of geometry - its cell is far enough from the window's centre that the click
+      landed on a zone the panel is not an ancestor of either, but on a *different* path.
+
+      So an outside click is ignored while a card is being carried, and dropped if one has
+      just ended: that click is the tail of a gesture the panel started, and the panel is
+      still the thing the player is working in. A real click outside is unaffected - the
+      pointer has to be released somewhere without a drag in flight.
+   */
+   let carriedOrJust = false
+   let dragEnded = null
+
+   dragging.subscribe((value) => {
+      if (value) {
+         carriedOrJust = true
+         if (dragEnded) clearTimeout(dragEnded)
+         return
+      }
+
+      /*
+         The drag has ended, and the click that ends it - if the browser fires one - is
+         next in the queue. The flag is given up if nothing arrives: a drag that ended over
+         the panel itself or outside the window produces no click at all, and a flag left
+         standing would swallow the next real click outside.
+      */
+      if (carriedOrJust) {
+         if (dragEnded) clearTimeout(dragEnded)
+         dragEnded = setTimeout(() => { carriedOrJust = false }, 80)
+      }
+   })
+
+   function outsideClick () {
+      if (carriedOrJust) {
+         carriedOrJust = false
+         if (dragEnded) clearTimeout(dragEnded)
+         return
+      }
+
+      closed()
+   }
+
    // auto closing mechanism, see ContextMenu.svelte
 
    const j = i++
@@ -93,7 +145,7 @@
       class:anchored
       class:centered
       class:dragging={$dragging}
-      use:clickOutside on:outclick={closed}
+      use:clickOutside on:outclick={outsideClick}
       use:escape on:esc={closed}>
 
       <!--

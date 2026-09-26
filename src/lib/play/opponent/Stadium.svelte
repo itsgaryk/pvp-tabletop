@@ -3,6 +3,7 @@
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import { solo, soloCardToStadium, onOpponentHalf } from '$lib/stores/solo.js'
    import { cardSelection, resetSelection } from '$lib/stores/player.js'
+   import { dropRevealedCard, isDraggingRevealed } from '$lib/stores/oppAction.js'
 
    /* DnD */
 
@@ -22,11 +23,32 @@
       The near Stadium lies over this one, so a drop reaches it while that half's
       Stadium is empty and nothing is being dragged into it (see .stadium in
       Board.svelte); when it is not empty, this half plays from its own menu.
+
+      **A card out of a Reveal or a Look is the second gesture it takes**, the same one
+      `opponent/Pile.svelte` takes: the Stadium is a shared *cell* but each half keeps its
+      own list in it, so a window's card dropped here goes into the owner's own, and the
+      request is the same one the menu's *To Stadium* would make. This zone was the one
+      drop target in the far half that had no such branch - so the drag highlighted
+      nothing, no request went out, and the card left the window and landed nowhere.
    */
-   const allowDrop = () => $solo && $source && $source !== stadium && $source !== 'slot'
-      && $cardSelection.length === 1 && onOpponentHalf($source)
+   /*
+      **Asked with no arguments, and that is the point**: this component builds its drop
+      config as a plain object, so `$draggedCard` and `$source` inside `allowDrop` are read
+      once at initialisation and stay empty. `isDraggingRevealed` reads the drag stores when
+      it is not handed them, so this form is the live one.
+   */
+   const allowDrop = () =>
+      isDraggingRevealed() ||
+      Boolean($solo && $source && $source !== stadium && $source !== 'slot'
+         && $cardSelection.length === 1 && onOpponentHalf($source))
 
    function onDrop () {
+      /* a card out of a window is a request to its owner, not a move on this board */
+      if (dropRevealedCard(stadium, $draggedCard, $cardSelection)) {
+         resetSelection()
+         return
+      }
+
       const card = $cardSelection[0]
       if (!card) return
       soloCardToStadium($source, card)
