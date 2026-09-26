@@ -1,5 +1,5 @@
 import { writable } from './custom/writable.js'
-import { share, react, publishLog, spectating, myId, seatedPlayers as seated, onBoardCleanup } from './connection.js'
+import { share, react, publishLog, publishLogTo, spectating, myId, seatedPlayers as seated, onBoardCleanup } from './connection.js'
 import { solo } from './soloState.js'
 
 /*
@@ -150,6 +150,13 @@ let myDeckStore = null
 let pilesStore = null
 
 /*
+   The player's own selection, registered for the same reason again, and it answers the
+   one question the view cannot: whether a batch's cards have *gone* or merely not
+   arrived (see `actedOn`).
+*/
+let selectionOf = null
+
+/*
    The far half's deck, registered by `opponent.js` for the same reason.
 
    It is a **function of the looker** rather than one store, and that is what a
@@ -236,6 +243,11 @@ export function registerPiles (piles) {
    pilesStore = piles
 }
 
+/* the player's own selection, registered by player.js so a batch can ask what was acted on */
+export function registerSelection (selection) {
+   selectionOf = selection
+}
+
 /*
    The far half's deck, registered by opponent.js for the same reason.
 
@@ -289,6 +301,29 @@ function viewOf (batch) {
 }
 
 /*
+   Whether a batch's cards have **left the game** rather than merely not arrived yet.
+
+   The distinction the view cannot make on its own, and the whole of whether a window that
+   goes empty has ended: an empty view means "these ids are not in the deck", and the deck
+   is not in place yet at the moment a batch lands on a board that is still being told what
+   the board holds (see `setBatch`). Reading the two as one thing made a window blink out
+   and back in.
+
+   So the answer is asked of the **selection**: a card of the batch that the player has
+   picked out is a card being acted on, and the batch is spent. The selection is also what
+   the gesture was about, so a batch with cards missing from the deck and **nothing** of it
+   selected is a batch whose deck has not arrived, and it is left alone to fill in.
+*/
+function actedOn (batch) {
+   if (!selectionOf) return false
+
+   const chosen = selectionOf()
+   if (!chosen.length) return false
+
+   return batch.cards.some((id) => chosen.some((card) => card._id === id))
+}
+
+/*
    Put a batch on screen, and keep it there.
 
    `which` is the store the batch belongs to (`reveal` or `look`) and `view` is the
@@ -310,6 +345,12 @@ function viewOf (batch) {
    writable does not notify when a value equals itself, so a deck can be filled
    without a single notification. The poll asks until the deck has caught up, and
    stops by itself when it has.
+
+   **A batch that has gone empty is left alone unless its cards have actually gone**
+   (see `actedOn`): a window whose cards left the deck is a window that is over, and one
+   whose deck has not arrived yet is a window that is still filling in. Clearing on the
+   first is what the shuffle and a spent batch rely on; clearing on the second was what
+   made the window blink out.
 
    `watching` guards against a timer or subscription from a replaced batch: two
    reveals in a row would otherwise both be feeding one window.
@@ -442,11 +483,11 @@ function asPile (batch) {
    out of the record.
 
    **A batch is dropped when there is no deck to read it against, and not when the
-   deck is momentarily empty** - `found` being empty is the ordinary state of a board
-   whose full state has not arrived yet, and giving up on it is the failure the note
-   below is about. Measured with a spectator in the room: the mirror read 0 for a
-   moment, the reveal landed in that moment, and with `!found.length` in this guard the
-   window never opened on that board at all.
+   deck is momentarily empty** - an empty view is the ordinary state of a board whose
+   full state has not arrived yet, and giving up on it is the failure the note below is
+   about. Measured with a spectator in the room: the mirror read 0 for a moment, the
+   reveal landed in that moment, and a guard that gave up on an empty view never opened
+   the window on that board at all. `actedOn` is what tells the two apart.
 */
 function applyReveal ({ owner, pileName, cards }, senderIsMe = false) {
    trace.push({ owner, senderIsMe, count: cards?.length })
@@ -454,7 +495,12 @@ function applyReveal ({ owner, pileName, cards }, senderIsMe = false) {
 
    const source = pileFor(owner, pileName)
 
-   if (!source || !Array.isArray(cards) || !cards.length) {
+   /*
+      A batch is kept while its deck has not arrived, and dropped once its cards have been
+      acted on - see `actedOn`, which is the whole of the difference. `!cards.length` is the
+      one case that is meaningless either way: an event that named nothing is not a reveal.
+   */
+   if (!source || !Array.isArray(cards) || !cards.length || actedOn({ cards })) {
       clearBatch(reveal, revealView)
       return false
    }
@@ -648,6 +694,23 @@ function lookLine (count) {
    return `Looked at the top ${cards} of the opponent's deck`
 }
 
+/*
+   What a look found, for the log of the player who took it and the room's watchers.
+
+   The same audience as the window, and the same reason: the cards were read out of a
+   face-down deck, so the record of *which* cards belongs to the people who were shown them.
+   The deck's owner is not among them - their log keeps the unnamed `lookLine`, which is
+   what tells them a look happened without telling them what was in it.
+
+   The names are read on the board that holds the deck, at the moment of the look, which is
+   the same reading the window is built from (`topIds`). Both routes find them the same way
+   if the deck moves - a card acted on afterwards leaves this line alone, because a log is a
+   record of what was done rather than of what is still there.
+*/
+function lookedLine (names) {
+   return `Looked at [${names.join(', ')}]`
+}
+
 export function closeLook () {
    lookOpen.set(false)
 }
@@ -694,6 +757,14 @@ export function lookCloseAndShuffle () {
 
    It is also what keeps a Look the looker's: a watcher is refused by the same line,
    and the opponent never had the batch at all - the relay does not send it there.
+
+   **A Reveal's batch reaches the opponent and its window does not** (see `cardsRevealed`),
+   so an opponent holds a permission with nothing to use it on: the revealed cards sit in a
+   face-down deck, which is one pile image, and the window was the only place they were
+   cards. That is the shape asked for rather than an oversight - the table is told what was
+   shown by the log, and the cards are not the opponent's to move. Nothing here needs a
+   refusal for it: a gesture on the cards can only come from a window, and there is no
+   window on that board to make one.
 
    `opponent/Card.svelte` is what draws the answer: the cards that reply are the
    ones wearing the pulse.
@@ -870,21 +941,32 @@ function shareLook (pile, ids) {
    const batch = applyLook({ looker: null, cards: ids }, false)
    if (batch) lookOpen.set(true)
 
+   /*
+      Who the relay is to address the look to. The looker is the sender and already
+      knows; the watchers are not named here - the relay finds every spectator in the
+      room from membership, so a client cannot name a member it should not reach (see
+      `audienceOf`).
+   */
+   const to = [ myId.get() ]
+
    share('cardsLooked', {
       looker: myId.get(),
       lookerSeat: seatOf(myId.get()),
       pileName: pile.name,
       cards: ids,
-      /*
-         Who the relay is to address it to. The looker is the sender and already
-         knows; the watchers are not named here - the relay finds every spectator in
-         the room from membership, so a client cannot name a member it should not
-         reach (see `audienceOf`).
-      */
-      to: [ myId.get() ]
+      to
    })
 
+   /*
+      Two lines, and they go to different people.
+
+      The **unnamed** one is the room's: it says a look happened and nothing about what was
+      in it, which is what the deck's owner is entitled to know. The **named** one goes to
+      the looker and the watchers, who were shown those cards - it is the log's copy of what
+      the window is drawing.
+   */
    publishLog(lookLine(ids.length))
+   publishLogTo(lookedLine(namesOf(pile, ids)), to)
 }
 
 /*
@@ -948,28 +1030,28 @@ function applyLook ({ looker, lookerSeat = null, pileName, cards }, remote) {
    what makes those cards actionable and what the acting board's permission is checked
    against.
 
-   The **window** opens for both players, which is the whole of what a reveal is: either
-   of them may act on the cards afterwards, and the window is not only how they read them
-   but the only place on their board those cards *are* cards. The revealed cards stay in
-   the deck, and a face-down deck is one pile image (`opponent/Deck.svelte`), so a player
-   with no window has nothing to right-click and no way to take the action the batch gives
-   them permission for.
+   **The window opens for the player who revealed and for nobody else**, which is the
+   audience the gesture actually has. Everyone else is told by the game log, which names the
+   cards (`revealLine`): a reveal is a public act, so the log is the record of what the
+   table was shown, and a window over another board is the same information a second time
+   on a board whose player is not the one doing the revealing. The opponent said so - *the
+   cards are shown in the game log* - and a spectator has always read it that way.
 
-   A spectator is not given it: it is told what was shown by the game log, which names the
-   cards (`revealLine`), and it has no action to take on them. It is given the *look*'s
-   window, which is the other way round - see `cardsLooked`.
+   This handler is the *receiving* side and only ever runs on a board that is not the
+   revealer's: a player's own events are never handed back to them (see `emit` in
+   relay/client.js), so the revealer's window is opened by `shareReveal` itself. So the
+   batch is applied here and the window is not opened at all - and the batch still travels,
+   deliberately: it is the *permission* (`isActionable`), so an opponent who right-clicks a
+   card they can see on the board can still act on it, and a spectator is refused by the
+   same one rule. Withholding the batch to withhold the window would have taken the
+   permission with it.
 */
 react('cardsRevealed', (data) => {
    /* one function, one word: the sender's `owner` is what the batch keeps (see `pileFor`) */
    const applied = applyReveal(data)
 
-   if (!applied) {
-      /* nothing to show - so nothing is left on screen either */
-      revealOpen.set(false)
-      return
-   }
-
-   if (!spectating.get()) revealOpen.set(true)
+   /* nothing to show - so nothing is left on screen either */
+   if (!applied) revealOpen.set(false)
 })
 
 /*

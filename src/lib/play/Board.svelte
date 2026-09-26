@@ -8,6 +8,7 @@
    import { isTyping } from '$lib/util/typing.js'
    import { defaultOpponent, spectatorOpponents, spectatorFlipped, handRevealed as oppHandRevealed } from '$lib/stores/opponent.js'
    import { solo, onOpponentSelection, onOpponentHalf, soloSelectedTo, OPPONENT } from '$lib/stores/solo.js'
+import { isWindowPile } from '$lib/stores/reveal.js'
    import { playerName, zoneBorders } from '$lib/stores/settings.js'
    import { logDeckView, logPrizeLook } from '$lib/stores/logger.js'
    import { message } from '$lib/stores/message.js'
@@ -102,6 +103,23 @@
       carried and lets the drop reach the far one underneath.
    */
    $: farDrag = $solo && $dragging && onOpponentHalf($dragSource)
+
+   /*
+      Whether the card being carried came out of a Reveal or a Look **window**.
+
+      It decides the same thing about the two shared cells, and for a different reason:
+      those cells hold one zone per half in one place, the near one drawn over the far
+      one, and each of them decides for itself whether the drop is its business. A
+      window's card is not this board's at all - it belongs to the other player - so the
+      cell has to let the drop reach **their** zone, and that is what `.stadium.card-drag`
+      does (see the rule with the tables below).
+
+      Without it neither half could take one: `.stadium` is `pointer-events: none` in a
+      room and `pointer-events` **is inherited**, so the far Stadium was not reachable
+      either - the cell simply swallowed the drag. Measured: the pointer was over the far
+      Stadium's own cards, `pointerenter` fired on them, and the drop never happened.
+   */
+   $: cardDrag = $dragging && isWindowPile($dragSource)
 
 
    $: topStore = $spectating
@@ -651,7 +669,7 @@
                <OppStadium store={topStore} />
             </div>
 
-            <div class="stadium">
+            <div class="stadium" class:card-drag={cardDrag}>
                {#if $spectating}
                <OppStadium store={bottomStore} />
             {:else}
@@ -1177,9 +1195,17 @@
       with it and the drop lands on the far half's - which is where a card of that
       half's belongs, and where the rule that a play clears the *other* player's
       Stadium is applied the right way round.
+
+      The Stadium's cell is the other half of this, and it is handled at the cell:
+      `.stadium.card-drag` stands the player's own Stadium aside while a window's card
+      is carried, so the drop reaches the other player's - which is the one that should
+      take it. The table needs no such rule: a card out of a window is refused by the
+      table it lands on, and the far table is not reachable through this cell (see
+      `tools/reveal-check.mjs`, which says so where the shared cells are listed).
    */
    .play.empty,
-   .play.far-drag {
+   .play.far-drag,
+   .stadium.card-drag {
       pointer-events: none;
    }
 

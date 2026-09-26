@@ -242,6 +242,19 @@ not on that list, and both were reported as bugs when they were:
   business in either. The menu entries for them are gone as well as the drop, because the
   two ways of moving a card must agree.
 
+### How many cards at once
+
+**Several, to every zone but the Active spot.** A window's cards are picked out with clicks —
+Ctrl/Cmd adds, Ctrl+A takes the batch — and a drag carries the *selection*, so dropping one of
+three picked cards sends all three. That is the same rule the board's own zones follow, and the
+same rule the card menu follows when an entry acts on the cards picked out.
+
+The **Active spot takes one card**, and a batch aimed at it is refused whole rather than
+half-answered. One Pokemon is Active, so the player's own `toActive` declines a selection of more
+than one; a request to the owner's Active spot is answered the same way, and the acting board does
+not guess at it either — moving the cards out of the window for a request that is about to be
+refused would empty a window the player is still reading.
+
 ### And the drop is refused, rather than quietly doing nothing
 
 `actionForPile` maps only the far half's piles, so a drop on one of the player's own reads
@@ -275,27 +288,30 @@ duplication seam `dedupeSlot` closes for the Bench.
 
 ## Who gets a window
 
-The two gestures have two different audiences, and the difference is *who the cards belong
-to* rather than who is at the table.
+The two gestures have two different audiences, and both are "the player who took it" plus, for a
+Look, the room's watchers.
 
-**A Reveal puts the window on both players' boards.** Each half of that is a different
-reason:
+**A Reveal puts the window on the board that revealed, and on nobody else's.** Everyone else is
+told by the game log, which names the cards — that is the record of what the table was shown, and
+a window over another board is the same information a second time on a board whose player is not
+the one revealing. That is the answer the opponent gave twice: *the reveal window is still
+showing for the owner — it should not be*, and *the cards are shown in the game log; the same
+applies with the spectator*. A window is the revealer's own reading, and the log is how the table
+is told.
 
-- **a player needs it as an affordance, not as a report.** The revealed cards stay in the
-  deck, and a face-down deck is one pile image (`opponent/Deck.svelte`) — so a player with no
-  window has nothing to right-click, and no way to take the action the batch gives them
-  permission for. The window is what puts those cards *on* their board as cards. That is
-  true of the revealer and of the opponent it was revealed *to*, which is the half of this
-  that was reported missing.
-- **a spectator is told by the game log instead**, which names the cards (see *What the log
-  says*). A window over a watcher would be the same information a second time, on a board
-  whose player is not doing anything with it.
+Two things follow from it, and both are deliberate:
 
-A spectator is also refused the cards themselves by `isActionable`, which is the one rule
-that would make a window it did have read-only rather than interactive.
+- **the batch still travels to every board.** The window and the *permission* are different
+  questions, and the batch is the permission (`isActionable`). Withholding it to withhold the
+  window would have taken the permission with it. It also keeps the two boards' *records* the
+  same, which is what `applyReveal` is one function for.
+- **the opponent therefore cannot act on a revealed card**, because a revealed card sits in a
+  face-down deck — one pile image — and the window was the only place it was a card to
+  right-click. That was put to them as the consequence of the change and accepted: *the opponent
+  does not need to act on revealed cards*.
 
-**A Look puts the window on the player who took it and on the room's watchers**, and on
-nobody else:
+**A Look puts the window on the player who took it and on the room's watchers**, and on nobody
+else:
 
 - **the watchers get it, because a Look is a public act with a private meaning.** The cards
   are the looker's — a watcher cannot move them, and the window says so — but a table where
@@ -311,7 +327,7 @@ nobody else:
   the routing field before storing it, and is what a poll filters on. A rule kept on the
   client would be a rule a crafted client could ignore.
 
-A watcher's Look window is **read-only by the same one rule** the reveal's is —
+A watcher's Look window is **read-only by the same one rule** a player's is —
 `isActionable` refuses a spectator — and it carries **Close** rather than Close & Shuffle,
 because both of a Look's endings are the looker's: the shuffle is the other player's deck
 changing, and the batch on a watcher's board is not its own look to end.
@@ -320,6 +336,37 @@ A Look is *not* shared in the sense a Reveal is. The looker may still act on the
 was shown (that is the permission the batch carries), the opponent is told nothing, and the
 cards leave the deck the moment they are moved, which the watcher's window follows because
 it is a live view of the same deck.
+
+### What the log says, and to whom
+
+A Reveal writes one line and it is the room's, with the cards named — a reveal is a public act, so
+the record of what the table was shown belongs to the table.
+
+A Look writes **two**, and they go to different people:
+
+- the **unnamed** line — `Looked at the top 3 cards of the opponent's deck` — is the room's, so the
+  deck's owner knows a look happened without being told what was in it
+- the **named** line — `Looked at [Pikachu, Switch, Boss's Orders]` — goes to the looker and the
+  room's watchers, the same people the window reaches
+
+That split is a second audience, and it rides the same machinery as the window: the sender names its
+audience, the relay adds the room's spectators from membership and delivers to those members only
+(`audienceOf` in the events route), and the routing field is stripped before the event is stored.
+`publishLogTo` is the client's half of it — it writes the line locally, because a client is never
+handed its own events back, and sends it to the members it named. An ordinary `publishLog` still
+goes to the room, which is what almost every line in the game is.
+
+### One seam this leaves
+
+An action on a window's card is a **request to the deck's owner** (see *An action is a request,
+not a move*), and a Look always reads the far half of the looker's board — so for a Look the
+direction is always right. A Reveal can be of the revealer's **own** deck, though, and then "the
+owner of the card" and "the player acting" are the same person while the request still travels to
+the *other* board. Measured: the revealer sends the card to discard, the acting board's optimistic
+move puts it in its mirror of the other player's discard, and the other board — which holds no
+such card — takes one out of its own deck instead. It is pre-existing rather than new, it is
+outside the reported faults, and `tools/reveal-check.mjs` asserts that the entry works while
+saying in place that where the card lands is not asserted, rather than pretending otherwise.
 
 ## What the acting board decides, and what it cannot
 

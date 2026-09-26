@@ -70,11 +70,18 @@ const EVENTS = new Set([
    Which members an event is for, or null for the whole room.
 
    Every event here is the room's - both players and every watcher are told what
-   happened - with one exception, and it is the reason this exists at all. A
-   **Look** is private to the player who took it: `cardsLooked` carries the ids of
-   cards out of a face-down deck, and handing those ids to that deck's *owner*
-   would tell them what was looked at, which is the whole of what a face-down deck
-   withholds (see `lookLine` in the client's reveal.js).
+   happened - with one exception, and it is the reason this exists at all. A **Look**
+   is private to the player who took it: `cardsLooked` carries the ids of cards out of
+   a face-down deck, and handing those ids to that deck's *owner* would tell them what
+   was looked at, which is the whole of what a face-down deck withholds (see
+   `lookLine` in the client's reveal.js).
+
+   **`chatMessage` is in the list for the same reason and one line further on**: a Look
+   writes two lines, and the one that *names* the cards goes to the same audience as the
+   window - the looker and the watchers (see `publishLogTo` and `lookedLine` in the
+   client). The unnamed line is the room's and rides the ordinary path. It is the same
+   list because it is the same rule: the cards a look names are for the people who were
+   shown them.
 
    So the sender names its audience as `{ to: [ memberId, ... ] }` and the relay
    splices that field back out before the payload is stored or delivered: a member
@@ -85,11 +92,24 @@ const EVENTS = new Set([
    looker's member id is the sender's own, and every spectator in the room is
    found from membership here rather than trusted to the client.
 */
+const ADDRESSED = new Set([ 'cardsLooked', 'chatMessage' ])
+
 function audienceOf (name, data, room, memberId) {
-   if (name !== 'cardsLooked') return null
+   if (!ADDRESSED.has(name)) return null
+
+   /*
+      A line that named nobody is the room's, and null is what says so.
+
+      It matters for `chatMessage` above all: almost every chat line is the room's, and the
+      one field this function reads is only there when somebody asked for an audience. Without
+      this the set of addressed types was enough to send every ordinary log line to "the
+      sender and the room's spectators" - the opponent's game log went silent for reveals,
+      shuffles, draws and everything else (see the note at the call site).
+   */
+   const asked = Array.isArray(data?.to) ? data.to.map(String) : []
+   if (!asked.length) return null
 
    /* who the sender asked for, and only ever members of this room */
-   const asked = Array.isArray(data?.to) ? data.to.map(String) : []
    const named = new Set([ memberId, ...asked ])
 
    return room.members
@@ -228,8 +248,18 @@ export async function POST ({ request }) {
       /*
          Who this event is for, decided here and stored with it, so the poll can
          answer a member without re-deriving the rule (see `audienceOf`).
+
+         **`to` is read from the request's own `data`, not from `payload`**, and that is the
+         whole of why this looks redundant: the reshape above *builds a new object* for a
+         chat line - message, type and name and nothing else - so an audience asked for in
+         `data.to` was not in `payload` at all. Every chat line then fell back to "the sender
+         and the room's spectators", which is what an absent audience means for a Look, and
+         the other player stopped being told anything: the game log on their board went
+         silent for reveals, shuffles and every other line. Measured against the dev relay -
+         one room, a player, an opponent and a watcher - a room-wide `chatMessage` reached
+         the sender and the watcher and never the opponent.
       */
-      const to = audienceOf(name, payload, room, memberId)
+      const to = audienceOf(name, name === 'chatMessage' ? data : payload, room, memberId)
 
       /*
          `from` lets the poll tell the sender's own echo apart from the

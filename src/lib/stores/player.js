@@ -8,7 +8,7 @@ import { fixOld } from './oldCards.js'
 import { s } from '$lib/util/strings.js'
 import { statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
 import { normalizeMarkerUsed } from '$lib/util/markers.js'
-import { registerOwnDeck, registerPiles } from './reveal.js'
+import { registerOwnDeck, registerPiles, registerSelection } from './reveal.js'
 import { logStatus, logStatusCleared } from './logger.js'
 import {
    logMove, logSlotMove, logPickup, logPlacement,
@@ -967,6 +967,11 @@ react('abilityUpdated', ({ slotId, used }) => {
    `piles` goes with it for the same reason and answers a different question: a
    window's card may not be dropped on this player's own side, and "is this pile one
    of mine" is this board's own answer (see `isWindowPile`).
+
+   `cardSelection` is the third, and it answers whether a batch that has gone empty has
+   *ended*: a card of it still picked out means the player is acting on it, where a batch
+   whose deck has not arrived yet has nothing of it selected (see `actedOn`).
 */
 registerOwnDeck(deck)
 registerPiles(piles)
+registerSelection(() => cardSelection.get())

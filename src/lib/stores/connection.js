@@ -401,6 +401,33 @@ export function publishLog (message) {
    publishToChat(message, 'log')
 }
 
+/*
+   A log line for **some** members rather than the room.
+
+   `to` is a list of member ids, or null for the ordinary room-wide line, and the relay is
+   what resolves it: it adds every spectator in the room from membership and delivers to
+   those members only (see `audienceOf` in the events route). The sender is always one of
+   them, and the line is written locally here because a client is never handed its own
+   events back (see `emit` in relay/client.js) - without that the looker's own log would be
+   the one board the line was missing from.
+
+   It is the same shape a Look uses for its window, and for the same reason: the ids a Look
+   names come out of a face-down deck, so "who is told" is a rule the relay has to keep
+   rather than one each client applies to itself.
+*/
+export function publishLogTo (message, to) {
+   if (!to?.length) return publishLog(message)
+
+   if (solo.get()) {
+      updateChat(message, 'log', 1)
+      return
+   }
+
+   if (!room.get()) return
+   updateChat(message, 'log', 1)
+   share('chatMessage', { message, type: 'log', to })
+}
+
 /* the relay stamps chat so both players see the same order, and names the sender */
 socket.on('chatMessage', ({ message, type, time, name }, meta, { local } = {}) => {
    /*

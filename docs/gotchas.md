@@ -1288,6 +1288,29 @@ one about `$name` on a plain value — both are reactivity the compiler cannot f
 clean, and the tell is a value that is *right when asked* and *wrong on screen* — **ask what the
 compiler can see as the input, not what the value is.**
 
+**A drop handed `($draggedCard, $cardSelection)` that uses the first one moves one card.** Every zone
+of the far half calls `dropRevealedCard(target, $draggedCard, $cardSelection)` — the card the pointer
+is carrying, and the selection it came from — and the drop passed the *card* on to
+`opponentCardAction`, so a drag of one card out of three selected moved one and left the rest in the
+window: reported as *"when trying to drag and place multiple cards it only places 1 card"*. The
+board's own zones have always carried the selection (`onDrag` in `board/Card.svelte`), and so does
+the card menu, so the far half was the one place a drag did not mean what it means everywhere else.
+The tell is a signature with two things in it that can disagree — **ask which of them the callee
+actually reads.**
+
+**Reshaping a payload drops the fields you were not thinking about, and an audience is one of them.**
+The relay learns who an event is for by reading `data.to` (`audienceOf`), and the route *rebuilds* a
+`chatMessage` — `{ message, type, name }` — before deciding the audience. The rebuild did not carry
+`to`, and the absence of an audience was read as the fallback for `cardsLooked`: "the sender and the
+room's spectators". So one type being in the addressed set was enough to send **every** ordinary log
+line to the sender and the watchers and never to the opponent — their game log went silent for
+reveals, shuffles, draws and everything else, and it looked fine from the sender's side because a
+sender writes its own lines locally. Two rules came out of it, and both are in the route now: an
+addressed event with no `to` is the room's (`return null` before the fallback), and the audience is
+read from the **request's** `data` rather than from the reshaped `payload`. The tell is a
+transformation between what arrives and what a rule reads — **ask what the rule is looking at, not
+what was sent.**
+
 **A drag the board accepts and then does nothing with is not a refusal, and it reads as a bug.**
 A card out of a Reveal or a Look window belongs to the other player, so a drop on one of the
 player's own zones maps to no action (`actionForPile` knows only the far half's piles) — and the
@@ -1300,6 +1323,59 @@ The fix is `isWindowPile` asked by every zone of the player's own half before it
 drop, so a refused drag leaves nothing highlighted. The tell for this family is a **drop handler
 that is reachable and has nothing to do** — ask what the user sees between the drop and the
 result.
+
+**A guard written over `piles()` is a guard that misses the zones that are not piles.** The rule
+"a window's card may only be dropped on the owner's zones" was enforced twice, and the second
+enforcement was the one that could not be routed around — it asked each zone whether it was the
+owner's by checking for a `theirPile` marker, and the marker was written over `b.piles()`. The
+**Bench is a `slots()` list and the Active spot is a `writable`**, so neither is a member of that
+list — `piles()` holds the three piles *inside* each slot, which is a different question — and
+both were refused by a guard that looked exactly right. The symptom is the one from the entry
+above and worse: the drag highlighted the zone, nothing was sent, and the card left the window
+while landing nowhere, which is *"dragging to the hand, bench and active zones makes the card
+disappear and closes the window"*. Two lessons, and the second is the general one: **mark the
+zones a drop can land on, not the piles** — and when a predicate is written over "the things of
+kind X", check that every caller passes something of kind X, because the ones that do not are
+the ones it silently answers no for.
+
+The Active spot had a second, independent version of the same mistake: `actionForPile` matched it
+by identity against `o.active`, but `board()` returns **both** the store and a
+`{ get, set, subscribe }` wrapper over it, and `opponent/Active.svelte` hands over the *store*
+while the table holds the wrapper. `pile === o.active` compared a store to a table of one and
+answered `null` for a zone the pointer was plainly on. It asks for `o.active.get()` too now.
+
+**A component that builds its `dnd` config as a plain object captures the drag stores once, at
+initialisation.** `const dndConfig = { drop, allowDrop }` with `$draggedCard` written inside
+`allowDrop` compiles to a function that closes over the store's value *at that moment* — so by
+the time a drag is in flight it is reading the empty store, or the previous batch's card, which
+is truthy and stale. The opponent's Stadium was written that way and could never accept anything;
+it was invisible because its other branch was for solo, where a different check answered. Two
+responses, and both are in the tree: `isDraggingRevealed` reads the drag stores itself rather
+than trusting the arguments it is handed, and the components that *do* use the reactive form keep
+working. The tell is a zone that highlights and then drops nothing — **ask whether the predicate
+is reading the store or a value the store had when the component mounted.**
+
+**`pointer-events` is inherited, so `auto` on a descendant of a `none` ancestor does nothing.**
+The shared cells — the Stadium and the table — hold one zone per half in one grid cell, the near
+one drawn over the far one, and the near one is `pointer-events: none` so a click can reach the
+far one underneath. `board/Stadium.svelte` re-enables its own `.stadium-cards` with
+`pointer-events-auto` while a drag is in flight, and that class was written believing it made the
+zone clickable: it does not, because its parent is `none` and nothing below a `none` element can
+be hit. What made the zone reachable was the *cell* taking pointer events, which is why
+`Board.svelte` carries the standing-aside rule. The tell is a hit test that answers with the
+element *above* the one you meant — **ask what `elementFromPoint` says, and then ask whether
+any ancestor is `none`.**
+
+**A synthetic drag can stop short, and "the drop does nothing" may be the harness.** Dragging a
+window's card onto the **far** half of a shared cell reproduces in neither Chrome nor Edge with
+`Input.dispatchMouseEvent`: the far Stadium's own cards receive `pointerenter`, `elementFromPoint`
+answers with them, and no `pointerup` ever arrives at either half's handler. Every zone that is
+*not* in a shared cell drops correctly by the same code path, so this is the harness rather than
+the feature — and `tools/reveal-check.mjs` says so where it lists the zones it tries, rather than
+asserting a hand-check as if it were automated. The half that *is* assertable is the refusal (a
+window's card may not land on the player's own Stadium or table), and that is asserted. The
+general point: when a check cannot drive a path, **say which path and why**, because a silently
+skipped assertion and a passing one look identical in a report.
 
 **An event that is only for some members needs the relay to know that, and the audience is a
 *seat*, not a role.** A Look is shown to the player who took it and to the room's watchers, and

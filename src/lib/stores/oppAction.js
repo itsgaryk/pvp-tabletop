@@ -1,5 +1,7 @@
 import { logMove } from './logger.js'
 import { share, react, spectating } from './connection.js'
+import { get } from 'svelte/store'
+import { draggedCard, source as dragSource } from '$lib/dnd/store.js'
 import {
    selectCard, resetSelection, moveSelection, toBench, toActive, toStadium,
    findSlot, cardSelection,
@@ -236,6 +238,22 @@ export function actionForPile (pile) {
    if (pile === o.hand) return OPP_ACTIONS.HAND
    if (pile === o.deck) return OPP_ACTIONS.DECK_TOP
 
+   /*
+      The Active spot is asked **by its store**, and it is the one entry here that cannot
+      be found by handing this table the zone a component has. Every other zone is a pile
+      whose object is the same object on both sides; the Active spot is written
+      `active: writable(null)` in the board, and `board()` returns *both* the store and a
+      `{ get, set, subscribe }` wrapper over it - so `store.active` (what
+      `opponent/Active.svelte` hands over, and what `ownPile` finds on the owner's side) is
+      a different object from the one this table holds. Comparing them is comparing a store
+      to a table of one, and it answered `null` for a zone the drop was plainly on: reported
+      as a card dragged to the Active zone that vanished and closed the window.
+
+      `b.active.get()` is read here rather than the wrapper, because the wrapper has no
+      `get` of its own to give the answer back.
+   */
+   if (pile === o.active || pile === o.active.get()) return OPP_ACTIONS.ACTIVE
+
    return null
 }
 
@@ -247,10 +265,28 @@ export function actionForPile (pile) {
    the board's own lists, which is the same test `board/Card.svelte` uses to tell a card
    in a window from a card on the board.
 */
-export function isDraggingRevealed (dragged, source) {
-   if (!dragged || !source || typeof source !== 'object') return false
-   if (defaultOpponent.piles().includes(source)) return false
-   return canActOn(dragged)
+/*
+   Whether a drag of a card out of a Reveal or a Look window is what is being dropped.
+
+   **The drag stores are what this reads, and the arguments are only a hint.** Every zone
+   that asks is handed the drag as `$draggedCard`/`$source` in its own `allowDrop`, and a
+   component whose drop config is a **plain object** (`const dndConfig = { drop, allowDrop }`
+   rather than a `$:` reactive one) captures those stores **once, at initialisation** - so
+   by the time a drag is in flight it is holding the empty store, or worse, the *previous*
+   batch's card, which is truthy and stale. The opponent's Stadium was written that way and
+   could never accept anything; the staleness was invisible because its other branch was for
+   solo. Reading the stores here is the same data by another route, and there is exactly one
+   drag in flight, so a caller cannot get this wrong by choosing the wrong shape of config.
+
+   The old signature is kept so every existing call site still reads the same way.
+*/
+export function isDraggingRevealed () {
+   const card = get(draggedCard)
+   const from = get(dragSource)
+
+   if (!card || !from || typeof from !== 'object') return false
+   if (defaultOpponent.piles().includes(from)) return false
+   return canActOn(card)
 }
 
 /*
@@ -270,16 +306,23 @@ export function isDraggingRevealed (dragged, source) {
    Only a zone of the **owner's** half takes one. That is enforced in two places, and the
    second is not redundant:
 
-      - `actionForPile` knows only the far half's own piles, so this board's own zones -
-        which are different stores carrying the same names - map to nothing
-      - the `theirPile` flag below is the *same* question asked of the pile the drop landed
-        on, so a caller that reached here with one of this board's own piles is refused
-        whatever the table says
+      - `actionForPile` knows only the far half's own zones, so this board's own - which are
+        different stores carrying the same names - map to nothing
+      - `theirPile` below is the *same* question asked of the zone the drop landed on, so a
+        caller that reached here with one of this board's own zones is refused whatever the
+        table says
 
    The second exists because the first is a lookup by identity, and identity is exactly what
    goes wrong in this feature: "the player can still drag the opponent's cards onto their
    own side" was reported against a version where the refusal *looked* handled. A rule this
    easy to observe has to be one line that cannot be routed around.
+
+   **And it has to be asked of every zone that takes a drop, which is not the same list as
+   the piles.** It was written over `piles()` alone, and the Bench and the Active spot are
+   not piles - one is a `slots()` list and the other a single store - so both were refused
+   here while `actionForPile` mapped them happily. The drag highlighted the zone, the drop
+   did nothing, and the card disappeared from the window: reported as exactly that. The
+   marking in `opponent.js` covers all three shapes now.
 
    Returns whether the drop was this gesture's, so a caller can fall through to its own
    handling - the far half's normal drop, or solo's - rather than swallowing it.
@@ -293,7 +336,23 @@ export function dropRevealedCard (target, dragged, source) {
    const action = actionForPile(target)
    if (!action) return false
 
-   opponentCardAction(dragged, action, { pile: source })
+   /*
+      **The whole selection, not the card that was picked up.**
+
+      Every caller hands over `($draggedCard, $cardSelection)` - the card the pointer is
+      carrying and the selection it came from - and this used to pass the *card*, so a drag
+      of one card out of three selected moved one card and left the other two in the window:
+      reported as *"when trying to drag and place multiple cards it only places 1 card"*. It
+      is the same rule the board's own zones follow, where a drag carries the selection (see
+      `onDrag` in `board/Card.svelte`), and the same rule the menu follows when it acts on
+      the cards picked out.
+
+      `dragged` is still what decides *whether* this is the gesture at all, because that is
+      what the drag stores are carrying.
+   */
+   const moving = Array.isArray(source) && source.includes(dragged) ? source.slice() : [ dragged ]
+
+   opponentCardAction(moving, action, { pile: source })
    return true
 }
 
@@ -532,6 +591,14 @@ export function opponentCardAction (cards, action, options = {}) {
 function optimisticMove (cards, source, action) {
    let moved = false
 
+   /*
+      A batch for the Active spot is refused by the owner *whole* (one card, one spot), so
+      this does not guess at it either: moving the cards out of the window here would empty
+      it for a request the owner is about to refuse, and the window would never get them
+      back. One card is the ordinary gesture and is drawn as usual.
+   */
+   if (action === OPP_ACTIONS.ACTIVE && cards.length > 1) return false
+
    for (const card of cards) {
       if (!takeFrom(source, card)) continue
 
@@ -694,6 +761,19 @@ export function respondToOpponentCardAction ({ card, cards, from, action, slotId
       return false
    }
 
+   /*
+      **One destination, one card, for the Active spot.** The board's own `toActive` refuses
+      a selection of more than one, because "put these three Pokemon in the Active spot" is
+      not a move the game has. A request that named several for it is refused whole rather
+      than partially: promoting one and leaving the rest in the deck is a move nobody asked
+      for, and the acting board has already drawn exactly that (it optimistically promotes
+      the first card), so half-answering it is how the two boards come to disagree.
+   */
+   if (action === OPP_ACTIONS.ACTIVE && found.length > 1) {
+      trace.last.stage = `refused: ${found.length} cards for one Active spot`
+      return false
+   }
+
    trace.last.stage = `found ${found.length} of ${ids.length}`
 
    /* the board's one selection is what its own moves work from */
@@ -718,6 +798,7 @@ export function respondToOpponentCardAction ({ card, cards, from, action, slotId
 
       case OPP_ACTIONS.ACTIVE:
          if (slotId) return intoSlot(card0, source, slotId)
+         /* one card here, guaranteed by the check above - `toActive` refuses more */
          toActive()
          return true
 
