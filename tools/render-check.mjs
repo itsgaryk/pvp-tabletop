@@ -646,29 +646,20 @@ check('and it offers Close and Close &amp; Shuffle',
    Boolean(revealHtml) && revealHtml.includes('Close') && revealHtml.includes('Close &amp; Shuffle'))
 
 /*
-   **A spectator sees the window and cannot touch it.**
+   **The reveal window is the two players'; a spectator is told by the log.**
 
-   The window is not only a verb - it is the one place the cards a reveal put on the table
-   are *reported*, and a spectator given nothing was watching a game whose whole point is
-   that the cards were shown. So the window is rendered for one, and it is read-only by one
-   rule rather than by a `$spectating` test in every gesture: `isActionable` refuses a
-   spectator, and the click, the menu and the drag all ask it first.
-
-   Its ending is Close rather than the two the players have, because both of those belong
-   to the players: a shuffle is somebody else's deck changing, and a spectator has no batch
-   of its own to end.
+   The cards travel to every board as a batch - that is what makes them actionable and what
+   the acting board's permission is checked against - but the *window* is withheld from a
+   spectator, because a reveal now names its cards in the game log and the table has been
+   told. A spectator keeps the refusal on the cards themselves, which is what would make a
+   window it did have read-only.
 */
+check('and a reveal is written into the log with the cards named',
+   /Revealed \[\$\{names\.join/.test(readFileSync(join(src, 'lib', 'stores', 'reveal.js'), 'utf8')),
+   'the log is where the table is told what was shown')
+
 mod.spectating.set(true)
-const spectatorHtml = renders('a spectator gets the reveal window too', mod.RevealDialog, {
-   props: { renderOpen: true },
-   context: new Map([ [ 'boardActions', { openDetails () {}, openCardMenu () {}, openOppCardActionMenu () {} } ] ])
-})
-check('and a spectator is shown the same cards',
-   Boolean(spectatorHtml) && (spectatorHtml.match(/class="card"/g) || []).length === mod.revealView.get().length,
-   `${(spectatorHtml?.match(/class="card"/g) || []).length} cards rendered for the spectator`)
-check('and its only way out is Close',
-   Boolean(spectatorHtml) && spectatorHtml.includes('Close') && !spectatorHtml.includes('Close &amp; Shuffle'))
-check('and not one card of it answers a spectator',
+check('and nothing of the batch is actionable for a spectator',
    !mod.isActionable(viewOf()[0]),
    'isActionable is the single refusal every gesture asks')
 mod.spectating.set(false)
