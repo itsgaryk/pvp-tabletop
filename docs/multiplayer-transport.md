@@ -15,8 +15,10 @@ that answer it are not obvious from the code.
 Redis is not the problem, and WebSockets would not have fixed it.
 
 - **One 20-minute game costs about 3,300 Redis commands** — roughly **$0.0066** at
-  Upstash's $0.20 per 100K. The free tier's 500K commands a month is about
-  **150 games a month** (≈5 games a day).
+  Upstash's $0.20 per 100K, or about **150 games a month inside the free tier**.
+  That is the whole cost question: the project is on the free path, and the rest
+  of this document is about how much headroom to keep on it
+  ([Staying on the free tier](#staying-on-the-free-tier)).
 - Roughly **half of that is boards sitting still, and half is the event log**.
   A WebSocket replaces the first half and cannot touch the second.
 - **No marketplace realtime product removes the need for a database.** Their
@@ -289,36 +291,58 @@ transport move, and they are recorded so nobody has to rediscover them:
   deploy from the 6h TTL, and each one says something different on screen. Any
   replacement has to keep that vocabulary, not just the delivery.
 
-## What to do about the cost, in order
+## Staying on the free tier
 
-**First: the command count can simply stop being a quantity.** Upstash's Fixed
-plans have no per-command billing at all — *"You pay for data size, bandwidth,
-and throughput limits, not per command"* — and the smallest, Fixed 250MB, is
-**$10/month** with 250MB of data and 50GB of bandwidth. A relay that costs
-figures measured in commands is the exact workload Upstash's own billing page
-describes when it recommends a Fixed plan ("a high baseline of background
-commands … even when there is no real workload"), and this project's room store
-fits in a tiny fraction of 250MB. That converts an open-ended meter into a flat
-line, and it is a dashboard change rather than a code change.
+The whole point of this investigation is a cost that has not been reached, and it
+is worth saying plainly that **the free path is the intended one**. Every
+component in play here has a free tier that this project fits inside, and the
+question is only how much headroom is wanted:
 
-Whether it is worth $10/month rather than a few dollars of pay-as-you-go depends
-on how much the uncertainty is worth to you: at a few games a day the metered
-cost is under a dollar, and at a hundred games a day it is around $19 — so the
-Fixed plan is a saving at volume and a premium at low volume. What it buys at any
-volume is not having to think about it, which is the argument the free tier's
-500K commands/month makes for you: at six connected clients that allowance is a
-day or two, not a month.
+| Component | Free allowance | Where this project stands |
+| --- | --- | --- |
+| Vercel Functions (Hobby) | 1M invocations/month, 4 CPU-hours; Active CPU is not billed while a function waits on I/O | a long poll is mostly waiting, so it is cheap here |
+| Upstash Redis (Marketplace, **already in use**) | 500K commands/month, 256MB, 10GB bandwidth, 10,000 commands/second | ~150 games/month at today's cost per game |
+| Upstash Realtime | no separate meter — it spends the same Redis commands | would cut a game from ~3,300 to ~690 commands |
 
-**Second: if the meter is to be reduced in code rather than bought out**, the
-largest line is two clients asking "anything new?" every two seconds while a
-player thinks. The relay already has a lazier beat for this — `IDLE_INTERVAL_MS`,
-a 30-second check — but it does not engage until **ten minutes** without an
-action, and in a card game a minute of silence is ordinary thinking rather than
-idleness. Bringing that threshold down to about a minute would take roughly 5×
-off the 1,800-command idle line, with the instant catch-up on any activity that
-already exists (a click, a key, an event, or a glance back at a hidden tab).
+**Where the free allowance actually runs out** is worth knowing precisely,
+because it is not an architecture problem: at ~3,300 commands a game, 500K
+commands is about **150 games a month — roughly 5 games a day**. Six clients
+polling continuously would exhaust it in a day or two, which is the shape of the
+problem as it appears in Upstash's own billing page ("a high baseline of
+background commands … even when there is no real workload").
 
-Neither is done in this change. The first is a billing setting, and the second is
-behaviour in the transport that belongs in a change with the browser check
-showing a move still lands at once.
+**The cheapest way to raise that ceiling is to spend fewer commands, not
+dollars.** The largest line is two clients asking "anything new?" every two
+seconds while a player thinks. The relay already has a lazier beat for this —
+`IDLE_INTERVAL_MS`, a 30-second check — but it does not engage until **ten
+minutes** without an action, and in a card game a minute of silence is ordinary
+thinking rather than idleness. Bringing that threshold down to about a minute
+would take roughly 5× off the 1,800-command idle line, with the instant catch-up
+on any activity that already exists (a click, a key, an event, or a glance back
+at a hidden tab). That is the single change that turns "5 games a day" into
+comfortable headroom, and it costs nothing.
+
+If that is not enough, **Upstash Realtime is the free step after it** — the same
+account, the same database, the same free allowance, at roughly a fifth of the
+commands per game. The rest of this section is about that choice.
+
+**A $10/month plan does exist, and it is not the recommendation here.** Upstash's
+Fixed plans have no per-command billing at all (*"You pay for data size,
+bandwidth, and throughput limits, not per command"*) and the smallest is Fixed
+250MB at $10/month. It is worth knowing about because it converts an open-ended
+meter into a flat line, and Upstash's own billing page recommends it for exactly
+this workload shape. But at a few games a day the metered cost is under a dollar
+and even a hundred games a day is about $19, so paying for certainty is a choice
+rather than a need — and the free tier plus the backoff above covers a hobby's
+volume.
+
+**One trap to avoid while optimising any of this.** On Upstash, a pipeline or
+transaction of N commands is billed as N, and `EVAL`/Lua is billed as *one plus
+one per inner `redis.call`* — so batching into Lua to "save" commands increases
+them. The relay's pipelines are for atomicity and round-trip count, not for
+billing, and they should stay that way.
+
+Nothing in this section is implemented in this change. The backoff is behaviour
+in the transport, and it belongs in a change with the browser check showing that
+a move still lands at once.
 
