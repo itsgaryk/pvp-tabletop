@@ -367,6 +367,23 @@ export function createOpponent () {
       handToggle: ({ revealed }) => handRevealed.set(revealed)
    }
 
+   /*
+      Which half each of this board's piles belongs to, marked on the piles themselves.
+
+      A pile store is a plain object and the two boards' piles share every *name* - the near
+      half's `discard` and the far half's `discard` are different stores that both call
+      themselves `discard`. So "is this pile one of theirs" cannot be answered by the name,
+      and a caller holding only a pile - `dropRevealedCard`, deciding whether a drop is a
+      card of somebody else's going onto their own side - had nothing to ask it of.
+
+      Non-enumerable, so it cannot turn up in a spread or a `JSON.stringify` of a pile, and
+      marked here rather than looked up from a register: the answer travels with the thing
+      being asked about, so a spectator's mirror (`createOpponent` again) answers for itself.
+   */
+   for (const pile of b.piles()) {
+      Object.defineProperty(pile, 'theirPile', { value: true, enumerable: false })
+   }
+
    return {
       ...b,
       get clientId () { return clientId },

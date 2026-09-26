@@ -226,6 +226,23 @@ owner's own handler takes the mirror's stand-in out of play before it adds the r
 exists for the **Stadium**, which is a list rather than a slot, and is closed the same
 way in `opponent.js`.
 
+## Where a card out of a window may go
+
+A card of the other player's may be sent to **their own zones and nowhere else** — their
+hand, discard, lost zone, prizes, deck, bench or active spot. Two things are deliberately
+not on that list, and both were reported as bugs when they were:
+
+- **the player's own zones.** The near half's `discard` and the far half's `discard` are
+  different stores that both call themselves `discard`, so "is this pile one of theirs"
+  cannot be answered by the name — a lookup by identity is exactly what goes wrong here.
+  `actionForPile` maps only the far half's own piles, and `dropRevealedCard` asks the pile
+  itself (`theirPile`, marked on every pile of a mirror in `opponent.js`). A drop anywhere
+  else is refused by both, so neither the table nor the flag can be routed around.
+- **the shared zones**, the Stadium and the Table. Both are cells the halves meet in, and
+  each half plays *its own* cards into them, so a card out of somebody else's deck has no
+  business in either. The menu entries for them are gone as well as the drop, because the
+  two ways of moving a card must agree.
+
 ## A card of theirs in a shared zone stays theirs
 
 The Stadium and the Table are the two zones the halves meet in, and **each half keeps its
@@ -237,24 +254,53 @@ player playing somebody else's card as their own, and that is what a check on th
 The two zones differ in one way worth knowing: the Stadium is **replaced** when it is
 played into at its limit, so the owner's own move discards what was in play there first —
 which is why the acting board's guess is confirmed rather than repeated, and why a card
-sent to a Stadium can legitimately end up in the owner's discard a moment later.
+sent to a Stadium can legitimately end up in the owner's discard a moment later. The
+mirror's own `stadiumPlayed` also refuses to add a card it already has, which is the
+duplication seam `dedupeSlot` closes for the Bench.
 
-## A spectator sees the window and cannot touch it
+## Who gets a window
 
-A Reveal is a public act, so a spectator is shown **the same window the two players have**,
-with the same cards. It used to get nothing, on the reasoning that the window was a tool it
-could not use — which read the window as a verb when it is also the only place the cards
-are *reported*: a spectator watching a table where a reveal happens was shown nothing at
-all.
+A Reveal puts the window on **the two players'** boards and on nobody else's, and each half
+of that is a different reason:
 
-It is read-only by **one rule rather than a test in every gesture**: `isActionable` refuses
-a spectator, and the click, the right-click menu and the drag all ask it first
-(`opponent/Card.svelte`). Its window carries **Close** and not the two endings, because
-both belong to the players: a shuffle is somebody else's deck changing, and a spectator
-has no batch of its own to end.
+- **a player needs it as an affordance, not as a report.** The revealed cards stay in the
+  deck, and a face-down deck is one pile image (`opponent/Deck.svelte`) — so a player with no
+  window has nothing to right-click, and no way to take the action the batch gives them
+  permission for. The window is what puts those cards *on* their board as cards.
+- **a spectator is told by the game log instead**, which names the cards (see *What the log
+  says*). A window over a watcher would be the same information a second time, on a board
+  whose player is not doing anything with it.
 
-A Look is *not* shown to a spectator, because a Look is not shared at all — it never
-travels (see below), so there is nothing on a spectator's board to show.
+A spectator is also refused the cards themselves by `isActionable`, which is the one rule
+that would make a window it did have read-only rather than interactive.
+
+A **Look** is not shown to anybody else, and cannot be: a Look is never shared at all — it
+does not travel (see *What travels*), so no other board has a batch, has the cards, or could
+be given them without telling the opponent what was looked at. That is the whole of the
+feature rather than a gap in it: "look at the top X and put them back" is a private reading,
+and the only thing the other players ever see is the shuffle at the end of it. A spectator
+therefore has no Look window to show, and a player who is not the looker has no way to know
+one happened beyond that shuffle.
+
+## What the acting board decides, and what it cannot
+
+The acting board makes every change it can make truthfully, at once — and there is one thing
+it cannot, which is worth stating because it is the difference between "this is slow" and
+"this cannot be faster here".
+
+**The acting board's own screen is immediate.** The card leaves the pile it was in, and it is
+put where the owner's move will put it, including the slot a Pokemon in play becomes. All of
+that is local.
+
+**Every other screen waits for the relay.** A move reaches the other player and any watchers
+on their next poll of the relay, and the poll interval is a *server* setting
+(`RELAY_POLL_INTERVAL_MS`, 2 seconds by default — see
+[src/lib/relay/config.js](../src/lib/relay/config.js), which is the knob and its cost). The
+client cannot ask for a keener one: the poll endpoint clamps a requested interval up to the
+configured minimum, deliberately, so that one client cannot raise the cost of the room. So
+"the discard takes about a second on the opponent's screen" is that interval and not this
+feature, and the number is printed by `tools/reveal-check.mjs` rather than asserted, so a
+change to the interval shows up as a number.
 
 If the owner never answers — they closed the tab between the request and its arrival
 — the card is missing from the acting board's view until the next full board state.

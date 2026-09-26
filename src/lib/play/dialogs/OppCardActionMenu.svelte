@@ -124,13 +124,18 @@
       <!--
          The entries, in the player's own menu's order: a zone of theirs the cards go
          to, and the two that put a card into play as one of their Pokemon.
+
+         **The Stadium and the Table are not here, and that is a rule rather than an
+         omission.** Both are cells the two halves meet in, and each half plays its *own*
+         cards into them - so a card out of somebody else's deck has no business in either,
+         from the menu or from a drag (see `actionForPile`, which is the drag's half of the
+         same answer). They were entries here until this was reported.
       -->
       <ContextMenuOption click={() => act(OPP_ACTIONS.HAND)} text="To Hand" disabled={$spectating} />
       <ContextMenuOption click={() => act(OPP_ACTIONS.DISCARD)} text="To Discard" disabled={$spectating} />
 
       <ContextMenuOption click={() => act(OPP_ACTIONS.BENCH)} text="To Bench" disabled={$spectating} />
       <ContextMenuOption click={() => act(OPP_ACTIONS.ACTIVE)} text="To Active" disabled={$spectating} />
-      <ContextMenuOption click={() => act(OPP_ACTIONS.STADIUM)} text="To Stadium" disabled={$spectating} />
 
       <ContextMenuOption click={() => act(OPP_ACTIONS.DECK_SHUFFLE)} text="Shuffle Into Deck" disabled={$spectating || !$oppDeck.length} />
       <ContextMenuOption click={() => act(OPP_ACTIONS.DECK_TOP)} text="To Top of Deck" disabled={$spectating} />
@@ -138,7 +143,6 @@
 
       <ContextMenuOption click={() => act(OPP_ACTIONS.LZ)} text="To Lost Zone" disabled={$spectating} />
       <ContextMenuOption click={() => act(OPP_ACTIONS.PRIZES)} text="To Prizes" disabled={$spectating} />
-      <ContextMenuOption click={() => act(OPP_ACTIONS.TABLE)} text="To Table" disabled={$spectating} />
 
       <!--
          *Attach* is the one entry that names a Pokemon of theirs, because it is the one

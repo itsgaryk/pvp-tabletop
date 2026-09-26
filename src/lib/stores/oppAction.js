@@ -197,6 +197,24 @@ export function canActOn (card) {
    to the wrong entry. The names compared are the stores' own, so a drop needs no
    translation - the `2` suffix on a class is the only difference between the halves
    (see board.md).
+
+   ---------------------------------------------------------------------------
+   What is *not* in this table, and why
+   ---------------------------------------------------------------------------
+   This is the whole of the answer to "where may a card out of a window be dropped", so a
+   zone missing from it is a zone a window's card cannot reach - and this list is
+   deliberately the far half's **own** piles and nothing else.
+
+   **The player's own zones are not here**, which is what stops a card of the opponent's
+   being dragged onto the reader's side: their own `discard` is a different store with the
+   same name, so it matches nothing here and the drop is refused (`opponent/Pile.svelte`
+   and the near half's own handlers are what call this).
+
+   **The two shared zones are not here either** - the Stadium and the Table. Both are cells
+   the halves meet in, and both are played into by the half that owns the card, so a card
+   dragged out of somebody else's deck does not belong in either. The *menu* entries for
+   them are gone for the same reason (see `OppCardActionMenu.svelte`), so the two ways of
+   moving a card onto a shared zone agree.
 */
 export function actionForPile (pile) {
    const o = defaultOpponent
@@ -206,8 +224,6 @@ export function actionForPile (pile) {
    if (pile === o.lz) return OPP_ACTIONS.LZ
    if (pile === o.prizes) return OPP_ACTIONS.PRIZES
    if (pile === o.hand) return OPP_ACTIONS.HAND
-   if (pile === o.table) return OPP_ACTIONS.TABLE
-   if (pile === o.stadium) return OPP_ACTIONS.STADIUM
    if (pile === o.deck) return OPP_ACTIONS.DECK_TOP
 
    return null
@@ -238,11 +254,31 @@ export function isDraggingRevealed (dragged, source) {
    request to the owner, the same optimistic move, and the same refusal when the card is
    not this player's to act on.
 
+   ---------------------------------------------------------------------------
+   Where it may *not* be dropped, said twice on purpose
+   ---------------------------------------------------------------------------
+   Only a zone of the **owner's** half takes one. That is enforced in two places, and the
+   second is not redundant:
+
+      - `actionForPile` knows only the far half's own piles, so this board's own zones -
+        which are different stores carrying the same names - map to nothing
+      - the `theirPile` flag below is the *same* question asked of the pile the drop landed
+        on, so a caller that reached here with one of this board's own piles is refused
+        whatever the table says
+
+   The second exists because the first is a lookup by identity, and identity is exactly what
+   goes wrong in this feature: "the player can still drag the opponent's cards onto their
+   own side" was reported against a version where the refusal *looked* handled. A rule this
+   easy to observe has to be one line that cannot be routed around.
+
    Returns whether the drop was this gesture's, so a caller can fall through to its own
    handling - the far half's normal drop, or solo's - rather than swallowing it.
 */
 export function dropRevealedCard (target, dragged, source) {
    if (!isDraggingRevealed(dragged, source)) return false
+
+   /* the player's own zones are not the owner's, whatever they are called */
+   if (target && !target.theirPile) return false
 
    const action = actionForPile(target)
    if (!action) return false

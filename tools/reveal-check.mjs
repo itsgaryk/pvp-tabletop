@@ -394,13 +394,22 @@ try {
    check('and it names the deck it is showing', Boolean(aliceReveal?.text.includes('Your deck')), aliceReveal?.text)
    check('and it says both players can see them', Boolean(aliceReveal?.text.includes('both players can see these')))
 
+   /*
+      **Both players get the window and a spectator does not.** The cards travel to every
+      board as a batch - that is the permission - but the window is what puts those cards
+      *on* a board: a revealed card stays in a face-down deck, and a face-down deck is one
+      pile image, so a player with no window has nothing to right-click. A spectator is
+      told what was shown by the game log, which names the cards.
+   */
    const bobReveal = await waitForWindow(bob, 3)
-   check('and it opens on the opponent\'s board too', Boolean(bobReveal), bobReveal?.text || 'no window')
+   check('and it opens on the other player\'s board too, because they may act on it',
+      Boolean(bobReveal), bobReveal?.text || 'no window')
    check('with the same cards in the same order',
       Boolean(bobReveal) && JSON.stringify(bobReveal.cards) === JSON.stringify(aliceReveal?.cards),
       `${bobReveal?.cards.length} vs ${aliceReveal?.cards.length} cards`)
    check('and the other board names the same deck from its own side',
       Boolean(bobReveal?.text.includes("Your opponent's deck")), bobReveal?.text)
+
    /*
       One ending, and it is the shuffle. A reveal whose window offered *Close* beside it
       offered the player a way to put the deck back exactly as it was - which is the one
@@ -411,6 +420,10 @@ try {
    check('and its only action is Close & Shuffle',
       JSON.stringify(aliceReveal?.buttons) === JSON.stringify([ 'Close & Shuffle' ]),
       aliceReveal?.buttons.join(' | '))
+   check('and that is what the table was told, with the cards named',
+      (await alice.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.trim())`))
+         .some((line) => /Revealed \[Card\d+, Card\d+, Card\d+\] from the top of their deck/.test(line)),
+      (await alice.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.trim())`)).filter((l) => /Revealed/.test(l)).join(' | ') || 'no reveal line')
 
    /* ------------------------------------------- 3. an action on the other player -- */
 
@@ -439,6 +452,9 @@ try {
    const cardMenu = await menuText(bob)
    check('and its menu is the menu for somebody else\'s card',
       cardMenu.some((t) => t.startsWith('To Discard')) && cardMenu.some((t) => t.startsWith('Attach to Their Active')),
+      cardMenu.join(' | '))
+   check('and it offers nothing that would put the card on a shared zone',
+      !cardMenu.some((t) => t.trim() === 'To Stadium' || t.trim() === 'To Table'),
       cardMenu.join(' | '))
 
    const moved = await clickMenuItem(bob, 'To Discard')
@@ -774,21 +790,35 @@ try {
 
       await alice.rightClick(THEIR_DECK)
       if (asked !== null) await answerNextPrompt(alice, asked)
+      const clickedAt = Date.now()
       const took = await clickMenuItem(alice, entry)
 
       const moved = asked ?? 1
 
       /* the owner answers with its own deck, so this is waited for rather than slept past */
       await waitForCount(bob, (p) => p.evaluate(`globalThis.__pvp.player.deck.get().length`), before.ownerDeck - moved)
+      const ownerMs = Date.now() - clickedAt
       await waitForCount(bob, (p) => p.evaluate(`globalThis.__pvp.player.discard.get().length`), before.ownerDiscard + moved)
       /* and the mirror catches up from the owner's own event, so that is waited for too */
       const mirror = await waitForCount(alice, (p) => p.evaluate(`globalThis.__pvp.opponent.defaultOpponent.deck.get().length`), before.mirror - moved)
+      const mirrorMs = Date.now() - clickedAt
+
+      /*
+         Reported rather than asserted, and that is deliberate: how long an observer waits
+         is the relay's poll interval (`RELAY_POLL_INTERVAL_MS`, 2s by default and the knob
+         the relay's own config says to turn), not something this feature can decide. The
+         numbers are printed so a change to that interval shows up as a number rather than
+         as an opinion.
+      */
+      console.log(`   ${entry}: owner ${ownerMs}ms, acting board's mirror ${mirrorMs}ms (the relay's poll interval bounds both)`)
 
       return {
          took,
          before,
          moved,
          mirror,
+         ownerMs,
+         mirrorMs,
          ownerDeck: await bob.evaluate(`globalThis.__pvp.player.deck.get().length`),
          ownerDiscard: await bob.evaluate(`globalThis.__pvp.player.discard.get().length`),
          actingDiscard: await alice.evaluate(`globalThis.__pvp.player.discard.get().length`)

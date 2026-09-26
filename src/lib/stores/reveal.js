@@ -701,20 +701,26 @@ export function lookTop (asked) {
 /*
    Their Reveal, arriving.
 
-   Applied through the same function the revealer used, so the two boards cannot
-   disagree about what was shown - and the window opens **wherever it lands**, which
-   includes a spectator's board.
+   The **batch** is applied through the same function the revealer used, so the two boards
+   cannot disagree about what was shown - and it is applied for everyone, because it is
+   what makes those cards actionable and what the acting board's permission is checked
+   against.
 
-   A spectator used to be given no window, on the reasoning that it was a tool it
-   could not use and was not meant to have. That read the window as a verb when it is
-   also the only place the cards are *reported*: a spectator watching a table where a
-   reveal happens is looking at a game whose whole point is that the cards were shown,
-   and it was shown nothing at all. So it gets the window, and it is read-only by the
-   one rule that can make it so - `isActionable` refuses a spectator, and every way of
-   acting on a window's cards asks that first. Its window also carries a **Close**
-   rather than the two endings, because the endings belong to the players: a spectator
-   cannot shuffle somebody else's deck, and it has no batch to shuffle (see
-   `Reveal.svelte`).
+   The **window** opens for the two players and not for a spectator.
+
+      - a spectator no longer needs it: a reveal is written into the game log with the
+        names of the cards (`revealLine`), so the table has been told what was shown, and a
+        window over a watcher is the same information a second time on a board whose player
+        is not doing anything with it
+      - a player still needs it, and that is not about *reading* the cards either - it is
+        the only place on their board those cards are **cards**. The revealed cards stay in
+        the deck, and a face-down deck is one pile image (`opponent/Deck.svelte`), so a
+        player with no window has nothing to right-click and no way to take the action the
+        batch gives them permission for. The window is that affordance for both of them.
+
+   It was once withheld from a spectator only, and then given to all three; the rule now is
+   the one the gesture actually has - the two players act on what was revealed, a watcher
+   is told about it.
 */
 react('cardsRevealed', (data) => {
    /* one function, one word: the sender's `owner` is what the batch keeps (see `pileFor`) */
@@ -726,7 +732,7 @@ react('cardsRevealed', (data) => {
       return
    }
 
-   revealOpen.set(true)
+   if (!spectating.get()) revealOpen.set(true)
 })
 
 /*
