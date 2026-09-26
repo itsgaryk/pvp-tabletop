@@ -9,6 +9,7 @@
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { solo, onOpponentHalf, soloCardToStadium } from '$lib/stores/solo.js'
+   import { isWindowPile } from '$lib/stores/reveal.js'
 
    /*
       A card of the player's own may land here from any pile but the Stadium
@@ -28,10 +29,17 @@
       belongs to: the far half could not play into its own Stadium at all while
       the player had anything in theirs, because this one was in the way and
       refused the drop.
+
+      A card out of a Reveal or a Look is refused outright (`isWindowPile`): it
+      belongs to the other player, and the other player's own Stadium is the one
+      that takes it - this cell holds *this* player's cards, and a card out of
+      somebody else's deck played here would be one player playing another's card
+      as their own.
    */
    $: farDrag = $solo && $dragging && onOpponentHalf($source)
 
-   const allowDrop = () => $source && $source !== 'slot' && $source !== stadium && $selection.length === 1
+   const allowDrop = () => !isWindowPile($source)
+      && $source && $source !== 'slot' && $source !== stadium && $selection.length === 1
       && !farDrag
 
    function onDragDrop () {

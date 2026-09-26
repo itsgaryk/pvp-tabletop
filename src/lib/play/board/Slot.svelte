@@ -47,14 +47,21 @@
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { dragging } from '$lib/dnd/pointer.js'
    import { solo, onOpponentHalf } from '$lib/stores/solo.js'
+   import { isWindowPile } from '$lib/stores/reveal.js'
 
    /*
       Neither a Pokemon in play nor a card in the Stadium is attached to anything -
       and nor is anything of the far half's. A card out of the opponent's hand
       dragged onto this Pokemon used to be attached to it, underneath a Pokemon
       that is not its owner's.
+
+      A card out of a Reveal or a Look is refused by the same line for a different
+      reason: it is the other player's card, so attaching it under *this* player's
+      Pokemon would put it under a Pokemon it does not belong to. `Attach to Their
+      Active` is the entry that does what the gesture means, and the far half's own
+      slot is where the drop belongs.
    */
-   const allowDrop = () => $source && $source !== 'slot' && $source !== stadium
+   const allowDrop = () => !isWindowPile($source) && $source && $source !== 'slot' && $source !== stadium
       && !($solo && onOpponentHalf($source))
 
    /* the action hands the pointerdown over as { e } */

@@ -257,6 +257,56 @@ console.log('\nleaving')
    check('an unknown room reads as expired, not closed', missing.body.gone === true && missing.body.reason === 'expired', JSON.stringify(missing.body))
 }
 
+/* ------------------------------------------------- 2b. who an event is for -- */
+
+/*
+   One event is addressed to some members and not others: a Look reaches the player
+   who took it and the room's watchers, and never the owner of the deck that was
+   looked at, because the ids it carries come out of a face-down deck (see
+   `audienceOf` in the events route).
+
+   The relay is where that is enforced rather than the client, so it is checked here
+   rather than in a browser: the sender names an audience in `to`, the relay decides
+   it from membership, and a poll answers each member only what is theirs. What is
+   asserted below is all three halves of that - the watcher gets it, the other player
+   does not, and neither of them is told who else was named.
+*/
+console.log('\nwho an event is for')
+{
+   const a = (await create()).body
+   const b = (await join(a.roomId)).body
+   const w = (await spectate(a.roomId)).body
+
+   const sent = await emit(a.roomId, a.memberId, 'cardsLooked', {
+      looker: a.memberId, lookerSeat: 0, pileName: 'deck', cards: [ 4, 5, 6 ],
+      to: [ a.memberId ]
+   })
+   check('a look can be relayed at all', sent.status === 200, JSON.stringify(sent.body))
+
+   const wPoll = await poll(a.roomId, w.memberId)
+   const wEvents = (wPoll.body.events || []).filter((e) => e.name === 'cardsLooked')
+   check('a watcher is given it', wEvents.length === 1, JSON.stringify((wPoll.body.events || []).map((e) => e.name)))
+   check('and with the cards', JSON.stringify(wEvents[0]?.data?.cards) === JSON.stringify([ 4, 5, 6 ]), JSON.stringify(wEvents[0]?.data))
+   check('and the routing is stripped on the way out',
+      wEvents[0]?.to === undefined && wEvents[0]?.data?.to === undefined,
+      JSON.stringify(wEvents[0]))
+
+   const bPoll = await poll(a.roomId, b.memberId)
+   check('the deck\'s owner is not given it',
+      !(bPoll.body.events || []).some((e) => e.name === 'cardsLooked'),
+      JSON.stringify((bPoll.body.events || []).map((e) => e.name)))
+   check('and the poll still advances past it',
+      Number(bPoll.body.seq) >= Number(sent.body.seq),
+      `seq ${bPoll.body.seq}, the event was ${sent.body.seq}`)
+
+   /* an ordinary event is still the room's, whoever is asking */
+   await emit(a.roomId, a.memberId, 'turnChanged', { turn: 2 })
+   const bOrdinary = await poll(a.roomId, b.memberId, bPoll.body.seq)
+   check('an ordinary event still reaches everybody',
+      (bOrdinary.body.events || []).some((e) => e.name === 'turnChanged'),
+      JSON.stringify((bOrdinary.body.events || []).map((e) => e.name)))
+}
+
 /* -------------------------------------------------------- 2. waiting ------- */
 
 console.log('\nwaiting')

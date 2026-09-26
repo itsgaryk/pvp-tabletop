@@ -215,6 +215,16 @@ export function canActOn (card) {
    dragged out of somebody else's deck does not belong in either. The *menu* entries for
    them are gone for the same reason (see `OppCardActionMenu.svelte`), so the two ways of
    moving a card onto a shared zone agree.
+
+   ---------------------------------------------------------------------------
+   And the zones that ask this at all
+   ---------------------------------------------------------------------------
+   A zone that is not in this table maps its drop to nothing, so nothing moves - but that
+   is not the same as refusing it. The player's own zones used to accept the *drag* and
+   then quietly do nothing with it, which reads as a card that was placed and then came
+   back. So they refuse the gesture up front instead of at this table: each zone of this
+   player's own side asks `isWindowPile` before it will take what is being carried
+   (see `board/Pile.svelte` and the five beside it).
 */
 export function actionForPile (pile) {
    const o = defaultOpponent

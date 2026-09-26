@@ -10,6 +10,7 @@
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { solo, onOpponentHalf, onOpponentSlot } from '$lib/stores/solo.js'
+   import { isWindowPile } from '$lib/stores/reveal.js'
 
    /*
       A card in the Stadium is not dragged onto the bench: it is in play as a
@@ -20,9 +21,12 @@
 
       Nor is anything of the far half's: in solo a card out of the opponent's hand
       used to be put on this player's bench, and one of their Pokemon in play came
-      with everything under it. Only this player's own cards go into play here.
+      with everything under it. Only this player's own cards go into play here - and
+      a card out of a Reveal or a Look is not one of them either, whatever half of
+      the board it was shown on (`isWindowPile`): the other player's bench is where
+      it goes, and `opponent/Bench.svelte` is what takes it.
    */
-   const allowDrop = () => $source && $source !== stadium
+   const allowDrop = () => !isWindowPile($source) && $source && $source !== stadium
       && ($source !== 'slot' || $draggedCard === $active)
       && !($solo && (onOpponentHalf($source) || onOpponentSlot($draggedCard)))
 

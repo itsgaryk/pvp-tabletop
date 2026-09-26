@@ -26,6 +26,7 @@
    import { dnd } from '$lib/dnd/actions.js'
    import { source, draggedCard } from '$lib/dnd/store.js'
    import { solo, onOpponentSlot, onOpponentHalf } from '$lib/stores/solo.js'
+   import { isWindowPile } from '$lib/stores/reveal.js'
 
    /*
       Only a card of this player's own lands in one of this player's piles.
@@ -44,8 +45,17 @@
       table and the stadium each accept their own half's cards, so a card played
       into a shared cell lands on the half that played it (see opponent/Pile.svelte
       and the two Stadiums).
+
+      **And neither is a card out of a Reveal or a Look** - see `isWindowPile`. Those
+      cards belong to the other player, so this pile is not a place they can go; the
+      far half's own piles are, and they take it as a request to its owner. Refusing
+      here rather than leaving it to the move is the difference between a drop that
+      is refused and one that looks accepted and then does nothing: every move below
+      carries each card out of the pile *it* is in, and a window's card is in none of
+      this board's, so the gesture used to highlight the zone and then quietly do
+      nothing at all.
    */
-   const allowDrop = () => $source && $source !== pile &&
+   const allowDrop = () => !isWindowPile($source) && $source && $source !== pile &&
       !($solo && (onOpponentHalf($source) || ($source === 'slot' && onOpponentSlot($draggedCard))))
 
    function onDragDrop () {

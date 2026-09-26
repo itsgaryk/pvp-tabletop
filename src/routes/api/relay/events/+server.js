@@ -51,19 +51,58 @@ const EVENTS = new Set([
    'oppDamageUpdated',
    /*
       Reveal and Look. `cardsRevealed` states which cards are on show to both
-      players; `backToDeck` is the shuffle that ends such a window (the deck it
-      names is the one whose order is gone); `oppCardAction` is one player asking
-      the *owner* of a card to move it, which is the only way an action on the
-      other half can be performed at all - the owner's board is the authority for
-      its own cards (see docs/reveal.md).
-
-      A Look shares nothing, so it has no event: what is not in this list cannot
-      be relayed, which is the enforcement rather than a convention.
+      players; `cardsLooked` states the same for a *Look*, which is shown to the
+      player who took it and to the room's watchers and to nobody else - see
+      `audienceOf`, which is the enforcement rather than a convention;
+      `backToDeck` is the shuffle that ends such a window (the deck it names is
+      the one whose order is gone); `oppCardAction` is one player asking the
+      *owner* of a card to move it, which is the only way an action on the other
+      half can be performed at all - the owner's board is the authority for its
+      own cards (see docs/reveal.md).
    */
    'cardsRevealed',
+   'cardsLooked',
    'backToDeck',
    'oppCardAction'
 ])
+
+/*
+   Which members an event is for, or null for the whole room.
+
+   Every event here is the room's - both players and every watcher are told what
+   happened - with one exception, and it is the reason this exists at all. A
+   **Look** is private to the player who took it: `cardsLooked` carries the ids of
+   cards out of a face-down deck, and handing those ids to that deck's *owner*
+   would tell them what was looked at, which is the whole of what a face-down deck
+   withholds (see `lookLine` in the client's reveal.js).
+
+   So the sender names its audience as `{ to: [ memberId, ... ] }` and the relay
+   splices that field back out before the payload is stored or delivered: a member
+   is told what it needs and never who else was named, and the event in the log
+   carries only the game's own state.
+
+   It is a *list* rather than a role, because the audience is who it is: the
+   looker's member id is the sender's own, and every spectator in the room is
+   found from membership here rather than trusted to the client.
+*/
+function audienceOf (name, data, room, memberId) {
+   if (name !== 'cardsLooked') return null
+
+   /* who the sender asked for, and only ever members of this room */
+   const asked = Array.isArray(data?.to) ? data.to.map(String) : []
+   const named = new Set([ memberId, ...asked ])
+
+   return room.members
+      .map((m) => m.id)
+      .filter((id) => named.has(id) || room.members.find((m) => m.id === id)?.role === 'spectator')
+}
+
+/* the payload without the audience field: what travels is the game's own state */
+function withoutAudience (data) {
+   if (!data || typeof data !== 'object' || !('to' in data)) return data
+   const { to, ...rest } = data
+   return rest
+}
 
 /*
    A ceiling on how fast one member may write to a room.
@@ -187,11 +226,21 @@ export async function POST ({ request }) {
             : data
 
       /*
+         Who this event is for, decided here and stored with it, so the poll can
+         answer a member without re-deriving the rule (see `audienceOf`).
+      */
+      const to = audienceOf(name, payload, room, memberId)
+
+      /*
          `from` lets the poll tell the sender's own echo apart from the
          opponent's events. Without it a player sees their own message twice -
          once when they publish it locally, once relayed back to them.
       */
-      const event = await appendEvent(roomId, name, payload, { from: memberId, meta: room })
+      const event = await appendEvent(roomId, name, withoutAudience(payload), {
+         from: memberId,
+         meta: room,
+         to
+      })
       if (!event) return json({ error: `room ${roomId} no longer exists` }, { status: 404 })
 
       /*

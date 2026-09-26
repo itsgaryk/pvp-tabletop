@@ -84,6 +84,28 @@ const opponentState = (room, memberId) => {
 /* the last event number in a room that is known to have events */
 const lastSeq = (room) => room.events.length ? room.events[room.events.length - 1].seq : null
 
+/*
+   Whether this member is one the event was addressed to.
+
+   Almost every event is the room's, and `to` is absent for those. The ones that
+   carry an audience are addressed to particular members - a Look reaches the
+   player who took it and the room's watchers, and never the owner of the deck
+   that was looked at (see `audienceOf` in the events route) - so a poll answers
+   "was this for me?" rather than sending the room everything it holds.
+
+   The field is the relay's and is spliced out here: a client is told what
+   happened, never who else was told.
+*/
+function forMember (event, memberId) {
+   return !event.to || event.to.includes(memberId)
+}
+
+/* the event as a client sees it: the payload, without the relay's routing */
+function deliver (event) {
+   const { to, ...rest } = event
+   return rest
+}
+
 /** @type {import('./$types').RequestHandler} */
 export async function GET ({ url }) {
    const roomId = String(url.searchParams.get('roomId') || '').toUpperCase().trim()
@@ -220,7 +242,11 @@ export async function GET ({ url }) {
             const room = await getRoom(roomId)
             if (!room) return goneReply()
 
-            const events = room.events.filter((e) => e.seq > since).slice(0, MAX_EVENTS)
+            const events = room.events
+               .filter((e) => e.seq > since)
+               .filter((e) => forMember(e, memberId))
+               .slice(0, MAX_EVENTS)
+               .map(deliver)
             if (events.length) return finish(room, { events })
          }
 

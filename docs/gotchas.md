@@ -1212,6 +1212,36 @@ acted on leaves the window and stops answering in the same moment, and a card mo
 the deck rejoins it. The tell to look for in a feature like this is a window whose contents are
 a snapshot: **ask what happens to a card in it after it moves.**
 
+**"The deck is empty right now" is not "there is no deck", and a guard that cannot tell them
+apart drops the window.** The live-view batch above has a healing poll, and the guard that
+decides whether to keep the batch at all used to be:
+
+```js
+const found = gather(source, cards)
+if (!source || !found.length) { clearBatch(reveal, revealView); return false }
+```
+
+`found.length === 0` is the *ordinary* state of a board whose full state has not arrived yet —
+the same transient state the poll exists to heal — so the guard threw away exactly the batch the
+poll was there to fill in, and `!source` never got the chance to mean anything. Measured with a
+third client in the room: both players' mirrors read 0 for about a second while the room
+re-announced itself, a reveal landed inside that second, the window never opened on that board,
+and every later assertion in the run cascaded off it. The guard is `!source || !cards.length`:
+**no deck to read it against** is the only thing that makes a batch meaningless, and a deck with
+nothing in it yet is what the poll is for. The tell is a guard that tests something the healing
+path is supposed to change — **ask whether the condition can be true again later and whether
+anything later fixes it.**
+
+**A watcher joining a room clears both players' mirrors for a moment, and it comes back.**
+Nobody's board is wrong afterwards — measured: `mirror 47 → 0` one second after a spectator
+joins, `47` again a few seconds later, on this commit and on the one before it, and a later
+shared event still reaches the mirror — but a check that reads a mirror at that instant reads
+`0` and reports the feature as broken. It is a race in the room's own re-announcement (the
+spectator's arrival changes the seats, and the board state that follows is a new one), and it is
+why `tools/reveal-check.mjs` **waits for the mirror it is about** rather than sleeping a fixed
+time and reading it. The tell is a numeric reading taken once at a moment the test chose — **ask
+whether the value has a settling time, and whether waiting is the honest assertion.**
+
 **The two boards name a half the same way, which means the word has to be flipped exactly once
 and nobody notices when it is not.** A reveal is written by the player who made it, so its
 event says `mine` for *their* deck and `theirs` for the other one. Everything on the receiving
@@ -1237,3 +1267,56 @@ card has to translate the batch back to the real deck before it can take the car
 anything, and the *near* half's card component must never reach that menu at all — a card of
 the player's own is never somebody else's. Both are asserted in `tools/render-check.mjs`,
 because neither has a symptom until the wrong menu opens on the wrong card.
+
+**`$: x = someFunction()` loses the store the function reads, and the value it keeps is the one
+it was built with.** The Look window needed to name the deck a watcher is being shown, and the
+seat that answers it lives in the `look` store, so the obvious line is:
+
+```js
+import { lookSeat } from '$lib/stores/reveal.js'
+$: seat = lookSeat()
+```
+
+`lookSeat()` reads `look.get()` internally, so the *call* is correct and the store does change —
+and the window still said "your opponent's deck" on a watcher's board, for the whole life of the
+panel, while `lookSeat()` answered `0` when asked from the console. Svelte compiles a reactive
+statement from the **references it can see in the expression**, and a function call exposes
+nothing: the statement runs once at init and never again. Reading the store in the component
+fixes it and is the shape to prefer — `$: seat = $look ? $look.seat : null` — with the store
+subscription as the input the compiler can see. This is the same family as the entry above this
+one about `$name` on a plain value — both are reactivity the compiler cannot follow, both compile
+clean, and the tell is a value that is *right when asked* and *wrong on screen* — **ask what the
+compiler can see as the input, not what the value is.**
+
+**A drag the board accepts and then does nothing with is not a refusal, and it reads as a bug.**
+A card out of a Reveal or a Look window belongs to the other player, so a drop on one of the
+player's own zones maps to no action (`actionForPile` knows only the far half's piles) — and the
+move that follows carries each card out of the pile *it* is in, which for a window's card is no
+pile of this board's (`selectionByPile` → `cardPile` → null). Nothing moved, nothing threw, and
+the report was still *"the cards can be dragged and placed in the table zone, stadium zone and
+the player's side of the board"*: the zone highlighted under the pointer, and the card came back.
+Six zones each refused it somewhere further in, and the one place they did not was the gesture.
+The fix is `isWindowPile` asked by every zone of the player's own half before it will accept a
+drop, so a refused drag leaves nothing highlighted. The tell for this family is a **drop handler
+that is reachable and has nothing to do** — ask what the user sees between the drop and the
+result.
+
+**An event that is only for some members needs the relay to know that, and the audience is a
+*seat*, not a role.** A Look is shown to the player who took it and to the room's watchers, and
+never to the owner of the deck that was read — the ids are cards out of a face-down deck, which
+is exactly what that player is not shown. Refusing on the client would be a rule a crafted client
+ignores, so the sender asks for an audience and the relay decides it from membership
+(`audienceOf`), stores it as a field of the event, filters every poll on it, and strips it before
+delivery. Two things are worth keeping: the filtering has to happen on **read**, so the poll
+filters an event it will not deliver *and still advances past it* — a member who is skipped must
+not be left asking for the same sequence number for ever — and the audience list is built from
+the room's own member list, so a client cannot name a member it should not reach.
+
+The *seat* half of that is the other trap. A Reveal names a half (`mine`/`theirs`) and both
+boards have the same two halves, so one deck store per board is enough. A Look is one player's
+reading of the other's deck, and a **watcher's board mirrors both players** — so "the deck being
+looked at" is a different mirror depending on who took the look, and the answer is the seat the
+looker holds, not a half. `registerTheirDeck` therefore takes a function of the looker rather
+than a store, and `opponent.js` — the module that owns both the mirrors and the seats — is what
+answers it. The failure mode of getting this wrong is quiet and total: the batch resolves against
+a mirror that was never filled, the window opens empty, and the healing poll asks for ever.

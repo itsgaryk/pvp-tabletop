@@ -1,31 +1,37 @@
 /*
-   Reveal and Look, in a real browser, between two real players.
+   Reveal and Look, in a real browser, between two real players - and, where a third
+   browser is available, a watcher.
 
    This is the half of the feature that `tools/render-check.mjs` cannot reach: a
    render to a string can hold the permission rule and draw both windows, and it
    cannot click a menu entry, answer a prompt, or see a window appear on the *other*
-   browser. Four things are asserted here, and each needs two pages:
+   browser. Five things are asserted here, and each needs two pages:
 
      1. Reveal on the player's own deck opens a window on BOTH boards, with the
         same cards in the same order
-     2. Look on the opponent's deck opens a window on the acting board only, and
-        the other player is not told about it - it is not a window that failed to
-        render there, it is one that was never sent
+     2. Look on the opponent's deck opens a window on the acting board, and on a
+        watcher's, and NOT on the opponent's - the deck's owner is never sent the
+        ids of cards out of its own face-down deck
      3. either player may act on a revealed card, and the action lands on the
         OWNER's board: a card of the opponent's sent to discard turns up in the
         opponent's discard, on the opponent's screen
      4. both windows carry Close and Close & Shuffle, and the shuffle reaches the
         deck's owner
+     5. a card out of either window cannot be dropped on the player's own side,
+        the table or the Stadium - and can still be dropped on the owner's zones
 
    The cards are not asserted by name: the deck the app is dealt is the stand-in
    deck API's, and what matters here is that the two boards agree about *which*
    cards are on show, which is compared by the images both windows draw.
 
-      powershell -File tools\dev-servers.ps1 -Browsers 2
+      powershell -File tools\dev-servers.ps1 -Browsers 3
       node tools/reveal-check.mjs
 
    The browsers must be started by hand (see the header of tools/browser.mjs): a
    helper that spawns its own has put an error dialog on somebody's screen.
+
+   Section 2b is the only part that needs the third browser. With two it says so and
+   skips, rather than failing for a browser nobody started.
 */
 
 import { attach, sleep } from './browser.mjs'
@@ -39,7 +45,9 @@ const check = (label, ok, detail = '') => {
 }
 
 const browser = await attach()
-const [alice, bob] = await browser.pages(2)
+const pages = await browser.pages(browser.ports.length >= 3 ? 3 : 2)
+const [ alice, bob ] = pages
+const watcher = pages[2] || null
 await browser.setViewport(1277, 821)
 
 /*
@@ -89,12 +97,14 @@ function windowShape (page, kind = null) {
    return page.evaluate(`(() => {
       const want = ${JSON.stringify(kind)}
       const boxes = [...document.querySelectorAll('.popup')]
-         .filter((p) => /Revealed|Look —/.test(p.innerText))
-         .filter((p) => !want || (want === 'look' ? /Look —/.test(p.innerText) : /Revealed/.test(p.innerText)))
+         .filter((p) => /Revealed|Look /.test(p.innerText))
+         .filter((p) => !want || (want === 'look' ? /Look /.test(p.innerText) : /Revealed/.test(p.innerText)))
       const pop = boxes[boxes.length - 1]
       if (!pop) return null
       return {
          text: pop.innerText.replace(/\\s+/g, ' ').trim(),
+         /* the panel's own heading, which is where a window names whose deck it shows */
+         heading: (pop.querySelector('.font-bold') || {}).textContent?.trim() || null,
          cards: [...pop.querySelectorAll('img.card')].map((img) => img.getAttribute('src')),
          buttons: [...pop.querySelectorAll('button')].map((b) => b.textContent.trim()),
          centred: (() => {
@@ -108,12 +118,30 @@ function windowShape (page, kind = null) {
 /* every pile-style window on a board, by kind - so "no window" can be asserted of both */
 function windows (page) {
    return page.evaluate(`(() => [...document.querySelectorAll('.popup')]
-      .filter((p) => /Revealed|Look —/.test(p.innerText))
+      .filter((p) => /Revealed|Look /.test(p.innerText))
       .map((p) => ({
-         kind: /Look —/.test(p.innerText) ? 'look' : 'reveal',
+         kind: /Look /.test(p.innerText) ? 'look' : 'reveal',
          cards: p.querySelectorAll('img.card').length,
+         text: p.innerText.replace(/\\s+/g, ' ').trim(),
+         /* the panel's own heading, which is where a watcher's window names the seat */
+         heading: (p.querySelector('.font-bold') || {}).textContent?.trim() || null,
          buttons: [...p.querySelectorAll('button')].map((b) => b.textContent.trim())
       })))()`)
+}
+
+/*
+   What the last opponent-card request this board made and answered was, or null when
+   there is no development handle to read it from.
+
+   `globalThis.__pvp` is behind `import.meta.env.DEV` on purpose - a debug handle onto
+   the stores is the last thing a production bundle should carry - so it exists on a
+   dev server and not on a deployment. Nothing about the *feature* needs it: the same
+   section runs against a live URL, and the card moving is what says the request
+   happened. It is asked for where it sharpens a refusal, which leaves no other trace
+   at all (see the note over `trace` in oppAction.js).
+*/
+function actionTrace (page) {
+   return page.evaluate(`(() => (globalThis.__pvp ? JSON.parse(JSON.stringify(globalThis.__pvp.lastAction())) : null))()`)
 }
 
 /*
@@ -233,7 +261,7 @@ async function dragBetween (page, fromExpr, toExpr) {
    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: to.x, y: to.y, button: 'left' })
    await sleep(80)
 
-   const carrying = await page.evaluate(`globalThis.__pvp.drag()`)
+   const carrying = await page.evaluate(`(() => (globalThis.__pvp ? globalThis.__pvp.drag() : { card: null }))()`)
    const highlighted = await page.evaluate(`document.querySelectorAll('.dragover').length`)
 
    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: to.x, y: to.y, button: 'left', clickCount: 1 })
@@ -306,11 +334,12 @@ try {
 
    await reset(alice)
    await reset(bob)
+   if (watcher) await reset(watcher)
 
    const room = await alice.createRoom('Alice')
    check('a room was created', Boolean(room), room || 'no room code')
 
-   const answering = keepAlive([ alice, bob ])
+   const answering = keepAlive(watcher ? [ alice, bob, watcher ] : [ alice, bob ])
 
    await bob.joinRoom(room, 'Bob')
    check('and the opponent is in it', (await bob.counts()).mode === 'room')
@@ -320,12 +349,47 @@ try {
    await bob.importDeck()
    await bob.setup()
 
-   await alice.waitForText('Leave Room')
-   await sleep(1200)
+   /*
+      A watcher, when a third browser was started. A Look is shown to the room's
+      watchers and not to the deck's owner, and only a third page can tell those two
+      apart - the opponent's board is the one that must stay empty, and a check with
+      two pages cannot see the difference between "sent to nobody" and "not sent
+      here".
+   */
+   if (watcher) {
+      await watcher.spectate(room, 'Watcher')
+      await sleep(3000)
+      check('and a spectator is watching it', (await watcher.counts()).mode === 'spectating',
+         (await watcher.counts()).mode)
+   } else {
+      console.log('  skip  the spectator half of the look rules - start three browsers to run it')
+   }
 
-   /* both boards have a deck and a hand before anything is revealed */
-   const start = await badges(alice)
-   const startBob = await badges(bob)
+   await alice.waitForText('Leave Room')
+
+   /*
+      Wait for each board's **mirror of the other** rather than sleeping a fixed time, and
+      that is not padding: a client's mirror of the opponent arrives with the full board
+      state, and a third client joining the room can catch it mid-flight - the mirror reads
+      empty for a moment and then fills again. Measured here: with a watcher joining, both
+      players' mirrors read 0 one second after the join and 47 a few seconds later, on this
+      commit and on the one before it, so it is a race in the room rather than anything
+      about a window. A fixed sleep turns it into "no deck on either board" and then into a
+      cascade of failures that all point at the feature; waiting for the thing the check is
+      actually about does not.
+   */
+   const waitForMirrors = async (page, timeout = 20000) => {
+      const deadline = Date.now() + timeout
+      for (;;) {
+         const b = await badges(page)
+         if (b.myDeck > 3 && b.theirDeck > 3) return b
+         if (Date.now() > deadline) return b
+         await sleep(400)
+      }
+   }
+
+   const start = await waitForMirrors(alice)
+   const startBob = await waitForMirrors(bob)
    check('both boards have a deck', start.myDeck > 3 && start.theirDeck > 3,
       `alice deck ${start.myDeck}, bob's deck as she sees it ${start.theirDeck}`)
    check('and the two boards agree about both decks',
@@ -503,7 +567,7 @@ try {
 
    /* ---------------------------------------------------------------- 2. look -- */
 
-   console.log('\nlook: the opponent\'s deck, privately\n')
+   console.log('\nlook: the opponent\'s deck, shown to the looker and the watchers\n')
 
    /*
       Close both reveal windows so nothing else is on screen - with **Escape**, which is
@@ -521,6 +585,34 @@ try {
    check('and View Top X, which is the Look entry\'s name', oppMenu.some((t) => t.startsWith('View Top X')))
    check('and Discard Top Card', oppMenu.some((t) => t.startsWith('Discard Top Card')))
    check('and Discard Top X', oppMenu.some((t) => t.startsWith('Discard Top X')))
+
+   /*
+      **A reveal of the *opponent's* deck is the case the report named**, and it is
+      checked on its own rather than folded into section 1: there the revealer shows
+      their own deck and the other board reads "Your opponent's deck", which is a
+      different flip from this one. Here the deck that is on show belongs to the board
+      being *told*, so the window has to open there and say "Your deck" - and both
+      cases are the same rule, which is why both are asserted.
+
+      The menu is still open from the right-click above, so this is one entry taken
+      from it. It is closed again afterwards - with Escape, which shuffles nothing -
+      because the look below needs a menu of its own to be the thing that is open.
+   */
+   await answerNextPrompt(alice, 2)
+   await clickMenuItem(alice, 'Reveal Top X')
+   const theirRevealAlice = await waitForWindow(alice, 2, { kind: 'reveal' })
+   const theirRevealBob = await waitForWindow(bob, 2, { kind: 'reveal' })
+   check('a reveal of the opponent\'s deck opens on the revealer too',
+      Boolean(theirRevealAlice), theirRevealAlice?.text || 'no window')
+   check('and on the board whose deck it is',
+      Boolean(theirRevealBob), theirRevealBob?.text || 'no window')
+   check('and that board names it as its own deck',
+      theirRevealBob?.heading === 'Revealed — Your deck', String(theirRevealBob?.heading))
+
+   await closeWindow(alice)
+   await closeWindow(bob)
+   await sleep(1200)
+   await alice.rightClick(THEIR_DECK)
 
    /*
       Three cards are looked at, and the *last* one is what the drag section below uses.
@@ -557,7 +649,7 @@ try {
       than the stylesheet, because the class is what the card wears.
    */
    const lookCards = await alice.evaluate(`(() => {
-      const pop = [...document.querySelectorAll('.popup')].find((x) => /Look —/.test(x.innerText))
+      const pop = [...document.querySelectorAll('.popup')].find((x) => /Look /.test(x.innerText))
       if (!pop) return null
       const ws = [...pop.querySelectorAll('div.border-2')]
       return {
@@ -579,7 +671,7 @@ try {
       the click and the line in the header are the whole of the feedback.
    */
    const picked = await alice.evaluate(`(() => {
-      const pop = [...document.querySelectorAll('.popup')].find((x) => /Look —/.test(x.innerText))
+      const pop = [...document.querySelectorAll('.popup')].find((x) => /Look /.test(x.innerText))
       const imgs = [...pop.querySelectorAll('img.card')]
       imgs[0].dispatchEvent(new MouseEvent('click', { bubbles: true }))
       imgs[1].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }))
@@ -587,7 +679,7 @@ try {
    })()`)
    await sleep(500)
    const pickedNow = await alice.evaluate(`(() => {
-      const pop = [...document.querySelectorAll('.popup')].find((x) => /Look —/.test(x.innerText))
+      const pop = [...document.querySelectorAll('.popup')].find((x) => /Look /.test(x.innerText))
       return {
          selected: [...pop.querySelectorAll('div.border-2')].filter((w) => w.className.includes('selected')).length,
          says: /picked out/i.test(pop.innerText) || /2 cards/.test(pop.innerText)
@@ -603,7 +695,7 @@ try {
    */
    const beforeBulk = await badges(alice)
    await alice.evaluate(`(() => {
-      const pop = [...document.querySelectorAll('.popup')].find((x) => /Look —/.test(x.innerText))
+      const pop = [...document.querySelectorAll('.popup')].find((x) => /Look /.test(x.innerText))
       const w = [...pop.querySelectorAll('div.border-2')].find((x) => x.className.includes('selected'))
       w.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 300, clientY: 300 }))
       return true
@@ -627,17 +719,72 @@ try {
       `${beforeBulk.theirDiscard} -> ${bulkLanded} in bob's discard`)
 
    /*
-      The look is private: nothing was sent, so nothing can open over there - and the
-      assertion is about the *kind* of window rather than about whether one is on
-      screen. A reveal's window is the one the other board is looking at when a look is
-      taken, and "no window at all" would be a claim about that one instead of about
-      the look.
+      The look reaches the watcher and never the deck's owner, and this is the pair of
+      assertions the whole of that rule comes down to. The owner is the one player the
+      face-down deck withholds, so the *ids* may not be sent there at all - which is why
+      the check reads the owner's own batch store rather than looking for a window: "no
+      window" would pass on a board that had been handed the cards and declined to draw
+      them.
+
+      The assertion about the other board is about the *kind* of window rather than about
+      whether one is on screen: a reveal's window is the one that board is looking at when
+      a look is taken, and "no window at all" would be a claim about that one instead.
    */
    await sleep(1500)
    const bobWindows = await windows(bob)
    check('and NO look window opens on the other player\'s board',
       !bobWindows.some((w) => w.kind === 'look'),
       bobWindows.map((w) => w.kind).join(', ') || 'no window')
+
+   if (bob.evaluate && await bob.evaluate(`Boolean(globalThis.__pvp)`)) {
+      const ownerBatch = await bob.evaluate(`JSON.stringify(globalThis.__pvp.batches().look)`)
+      check('and the deck\'s owner is not sent the cards at all', ownerBatch === 'null', ownerBatch)
+   }
+
+   /*
+      A watcher's window: the same cards, read-only.
+
+      The audience is the reason this window exists - a table where a look happens should
+      show that something is happening - and the limit on it is the reason the cards are
+      still the looker's. Both are asserted off the watcher's own board, and the *name* in
+      the heading is asserted too: a watcher's board mirrors both players, so "your
+      opponent's deck" names no half of its screen and the window has to be told which
+      seat the look was of.
+   */
+   if (watcher) {
+      const watchWindows = await windows(watcher)
+      const watchLook = watchWindows.find((w) => w.kind === 'look')
+      check('and the look window opens on the WATCHER', Boolean(watchLook), JSON.stringify(watchWindows.map((w) => w.kind)))
+      check('and it shows the same number of cards as the looker\'s window',
+         Boolean(watchLook) && watchLook.cards === aliceLook.cards.length,
+         `${watchLook?.cards} on the watcher's board, ${aliceLook.cards.length} on the looker's`)
+      check('and it is read-only: Close and nothing else',
+         Boolean(watchLook) && JSON.stringify(watchLook.buttons) === JSON.stringify([ 'Close' ]),
+         watchLook?.buttons.join(' | ') || 'no window')
+      check('and it names whose deck is being read, by the seat the look is of',
+         Boolean(watchLook?.heading?.includes("Alice's deck")), String(watchLook?.heading))
+
+      const watchInert = await watcher.evaluate(`(() => {
+         const pop = [...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))
+         if (!pop) return null
+         const ws = [...pop.querySelectorAll('div.border-2')]
+         return {
+            n: ws.length,
+            pulsing: ws.filter((w) => getComputedStyle(w).animationName !== 'none').length,
+            selected: (() => {
+               const img = pop.querySelector('img.card')
+               if (img) img.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+               return [...pop.querySelectorAll('div.border-2')].filter((w) => w.className.includes('selected')).length
+            })()
+         }
+      })()`)
+      check('and its cards are inert: no pulse, and a click selects nothing',
+         Boolean(watchInert) && watchInert.pulsing === 0 && watchInert.selected === 0,
+         JSON.stringify(watchInert))
+   }
+
+   const bobLookLine = await bob.evaluate(`[...document.querySelectorAll('.chat p')].filter((p) => /^Looked at the top/.test(p.innerText)).length`)
+   check('and the deck\'s owner is not told in the log either', bobLookLine === 0, `${bobLookLine} look lines`)
 
    /* -------------------------------------------- 3b. the same act, by dragging -- */
 
@@ -662,7 +809,7 @@ try {
    */
    const beforeDrag = await badges(bob)
    const dragCard = await alice.evaluate(`(() => {
-      const p = [...document.querySelectorAll('.popup')].find((x) => /Look —/.test(x.innerText))
+      const p = [...document.querySelectorAll('.popup')].find((x) => /Look /.test(x.innerText))
       const img = p?.querySelector('img.card')
       return img ? img.getAttribute('alt') : null
    })()`)
@@ -684,51 +831,75 @@ try {
 
    const dragged = await dragBetween(
       alice,
-      `[...document.querySelectorAll('.popup')].find((p) => /Look —/.test(p.innerText))?.querySelector('img.card')?.parentElement`,
+      `[...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))?.querySelector('img.card')?.parentElement`,
       `document.querySelector('.gameboard > .discard2 .pile') || document.querySelector('.gameboard > .discard2')`)
 
    /*
-      What is asserted is the *gesture*: the drag starts, the zone highlights for it, and
-      the request that follows is a discard out of the deck. The count is the selection -
-      Ctrl+A picked the whole batch up above, and a drag carries the selection exactly as a
-      menu entry does - so it is not a number to assert here.
+      What is asserted is the *gesture*, and the tell is the zone highlighting: the drag
+      started, the far half's discard lit up for it, and the card arrived in the owner's
+      discard. The request itself is read off the store when there is a development handle
+      to read it from - this section runs against a deployment too, where `globalThis.__pvp`
+      does not exist, and the moving card is what says the same thing without it.
    */
-   const dragAction = await alice.evaluate(`globalThis.__pvp.lastAction().sentTo`)
+   const dragAction = await actionTrace(alice)
+   const landedTheir = await waitForCount(bob, (p) => badges(p).then((b) => b.myDiscard), beforeDrag.myDiscard + 1)
    check('a card out of the look window can be dragged onto the other player\'s board',
-      dragged.started && dragged.highlighted > 0 && dragAction?.action === 'discard' && dragAction?.from === 'deck',
-      `${dragged.why}${dragged.card ? ` (carrying ${dragged.card})` : ''}, request ${JSON.stringify(dragAction)}`)
+      dragged.started && dragged.highlighted > 0 && landedTheir === beforeDrag.myDiscard + 1 &&
+         (!dragAction || (dragAction.sentTo?.action === 'discard' && dragAction.sentTo?.from === 'deck')),
+      `${dragged.why}${dragged.card ? ` (carrying ${dragged.card})` : ''}, bob's discard ${beforeDrag.myDiscard} -> ${landedTheir}, request ${JSON.stringify(dragAction?.sentTo ?? 'not readable here')}`)
 
    /*
-      **A window's card cannot be put on this player's own side.**
+      **A window's card cannot be put on this player's own side, the table or the
+      Stadium.**
 
-      The zones that would take it are the player's own - their discard, their hand, their
-      deck - and a card shown out of somebody else's deck belongs to that somebody, so the
-      gesture has to be refused rather than quietly acted on. The refusal lives in
-      `actionForPile`, which knows only the *far* half's piles: a drop on one of this
-      board's own asks it and gets nothing, so no request is sent and nothing moves.
+      Every zone of the player's own half is tried, because the gesture had to be refused
+      in all of them and the report was about the *drag* rather than about the move: the
+      zones used to highlight under the pointer and then quietly leave the card where it
+      was, which reads as a card that was placed and came back. What is asserted is
+      therefore both halves - nothing highlighted, and nothing moved or sent.
+
+      A fresh look is taken for each zone, and that is not tidiness: a batch is a live view
+      of the deck, so once a card has been acted on it leaves the window and stops being
+      actionable (`isActionable`) - a card already sent to the opponent's discard is not a
+      card a target can refuse, and re-using it reports "the zone refused it" for "there
+      was nothing left to drop".
    */
-   const beforeOwnSide = {
-      sent: await alice.evaluate(`globalThis.__pvp.lastAction().sent`),
-      discard: await alice.evaluate(`globalThis.__pvp.player.discard.get().length`),
-      hand: await alice.evaluate(`globalThis.__pvp.player.hand.get().length`)
+   async function lookAtThree () {
+      await alice.rightClick(THEIR_DECK)
+      await answerNextPrompt(alice, 3)
+      await clickMenuItem(alice, 'View Top X')
+      await sleep(1800)
    }
 
-   const ontoOwnSide = await dragBetween(
-      alice,
-      `[...document.querySelectorAll('.popup')].find((p) => /Look —/.test(p.innerText))?.querySelector('img.card')?.parentElement`,
-      `document.querySelector('.gameboard .discard')`)
+   const lookCardExpr = `[...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))?.querySelector('img.card')?.parentElement`
 
-   const afterOwnSide = {
-      sent: await alice.evaluate(`globalThis.__pvp.lastAction().sent`),
-      discard: await alice.evaluate(`globalThis.__pvp.player.discard.get().length`),
-      hand: await alice.evaluate(`globalThis.__pvp.player.hand.get().length`)
+   const ownZones = [
+      [ 'own discard', '.gameboard > .discard .pile' ],
+      [ 'own hand', '.gameboard > .hand .pile' ],
+      [ 'own deck', '.gameboard > .deck .pile' ],
+      [ 'own prizes', '.gameboard > .prizes .pile' ],
+      [ 'own lost zone', '.gameboard > .lz .pile' ],
+      [ 'own bench', '.gameboard > .bench .bench-zone' ],
+      [ 'own active', '.gameboard > .active > .active1' ],
+      [ 'the Stadium', '.gameboard > .stadium-area > .stadium' ],
+      [ 'the Table', '.gameboard > .play' ]
+   ]
+
+   for (const [ name, sel ] of ownZones) {
+      await lookAtThree()
+      const before = await actionTrace(alice)
+      const beforeBadges = await badges(alice)
+      const out = await dragBetween(alice, lookCardExpr, `document.querySelector(${JSON.stringify(sel)})`)
+      await sleep(600)
+      const after = await actionTrace(alice)
+      const afterBadges = await badges(alice)
+
+      check(`and a window's card cannot be dropped on ${name}`,
+         out.started && out.highlighted === 0 &&
+            JSON.stringify(afterBadges) === JSON.stringify(beforeBadges) &&
+            (!before || !after || JSON.stringify(before.sentTo) === JSON.stringify(after.sentTo)),
+         `${out.why}, ${out.highlighted} zone(s) highlighted, own board ${JSON.stringify(beforeBadges) === JSON.stringify(afterBadges) ? 'unchanged' : `CHANGED ${JSON.stringify(beforeBadges)} -> ${JSON.stringify(afterBadges)}`}`)
    }
-
-   check('and a card out of a window cannot be put on the player\'s own side',
-      afterOwnSide.sent === beforeOwnSide.sent &&
-         afterOwnSide.discard === beforeOwnSide.discard &&
-         afterOwnSide.hand === beforeOwnSide.hand,
-      `${ontoOwnSide.why}; own discard ${beforeOwnSide.discard} -> ${afterOwnSide.discard}, own hand ${beforeOwnSide.hand} -> ${afterOwnSide.hand}, requests ${beforeOwnSide.sent} -> ${afterOwnSide.sent}`)
 
    /*
       And the request is waited for on the owner's board before anything else is counted.
@@ -749,9 +920,8 @@ try {
 
    /*
       And nothing was sent: the other board's log has the shuffle a look can end
-      with, and no line about a look having been taken. A spectator is not checked
-      here - `canReveal` refuses one before any of this, and a spectator gets no
-      deck menu at all.
+      with, and no line about a look having been taken. `canReveal` refuses a
+      spectator before any of this, and a spectator gets no deck menu at all.
    */
    const bobLog = await bob.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.trim())`)
    check('and the other player is not told the cards were seen',
@@ -779,13 +949,19 @@ try {
       module that is true - see the note over `discardTopOfTheirDeck`. So the *owner* is
       what these assertions are about, and the mirror is only asked to converge: it gets
       shorter when the owner's own event arrives, which is what a mirror is for.
+
+      Every count here is read off the two boards' own **badges** rather than off the
+      stores, so the section runs against a deployment as well as a dev server: each board
+      labels the same five piles with its own `count`, so `badges(bob).myDiscard` is Bob's
+      discard on Bob's screen and `badges(alice).theirDiscard` is the same pile as Alice's
+      mirror of it.
    */
    const discardOnce = async (entry, asked = null) => {
       const before = {
-         mirror: await alice.evaluate(`globalThis.__pvp.opponent.defaultOpponent.deck.get().length`),
-         ownerDeck: await bob.evaluate(`globalThis.__pvp.player.deck.get().length`),
-         ownerDiscard: await bob.evaluate(`globalThis.__pvp.player.discard.get().length`),
-         actingDiscard: await alice.evaluate(`globalThis.__pvp.player.discard.get().length`)
+         mirror: (await badges(alice)).theirDeck,
+         ownerDeck: (await badges(bob)).myDeck,
+         ownerDiscard: (await badges(bob)).myDiscard,
+         actingDiscard: (await badges(alice)).myDiscard
       }
 
       await alice.rightClick(THEIR_DECK)
@@ -796,11 +972,11 @@ try {
       const moved = asked ?? 1
 
       /* the owner answers with its own deck, so this is waited for rather than slept past */
-      await waitForCount(bob, (p) => p.evaluate(`globalThis.__pvp.player.deck.get().length`), before.ownerDeck - moved)
+      await waitForCount(bob, (p) => badges(p).then((b) => b.myDeck), before.ownerDeck - moved)
       const ownerMs = Date.now() - clickedAt
-      await waitForCount(bob, (p) => p.evaluate(`globalThis.__pvp.player.discard.get().length`), before.ownerDiscard + moved)
+      await waitForCount(bob, (p) => badges(p).then((b) => b.myDiscard), before.ownerDiscard + moved)
       /* and the mirror catches up from the owner's own event, so that is waited for too */
-      const mirror = await waitForCount(alice, (p) => p.evaluate(`globalThis.__pvp.opponent.defaultOpponent.deck.get().length`), before.mirror - moved)
+      const mirror = await waitForCount(alice, (p) => badges(p).then((b) => b.theirDeck), before.mirror - moved)
       const mirrorMs = Date.now() - clickedAt
 
       /*
@@ -812,6 +988,9 @@ try {
       */
       console.log(`   ${entry}: owner ${ownerMs}ms, acting board's mirror ${mirrorMs}ms (the relay's poll interval bounds both)`)
 
+      const afterBob = await badges(bob)
+      const afterAlice = await badges(alice)
+
       return {
          took,
          before,
@@ -819,9 +998,9 @@ try {
          mirror,
          ownerMs,
          mirrorMs,
-         ownerDeck: await bob.evaluate(`globalThis.__pvp.player.deck.get().length`),
-         ownerDiscard: await bob.evaluate(`globalThis.__pvp.player.discard.get().length`),
-         actingDiscard: await alice.evaluate(`globalThis.__pvp.player.discard.get().length`)
+         ownerDeck: afterBob.myDeck,
+         ownerDiscard: afterBob.myDiscard,
+         actingDiscard: afterAlice.myDiscard
       }
    }
 
@@ -855,13 +1034,18 @@ try {
    /*
       The request named no cards - that is the whole point of the pair - so the trace is
       what says the acting side sent a *count* rather than a guess at the top of a deck it
-      cannot read. Read off the store's own trace, because nothing on screen distinguishes
-      the two.
+      cannot read. Read off the store's own trace where there is one, because nothing on
+      screen distinguishes the two, and skipped on a deployment along with the rest of the
+      store-level section below.
    */
-   const topTrace = await alice.evaluate(`globalThis.__pvp.lastAction().sentTo`)
-   check('and the request carried a count rather than a card',
-      topTrace?.action === 'discardTop' && topTrace?.count === 3,
-      JSON.stringify(topTrace))
+   const topTrace = await actionTrace(alice)
+   if (topTrace) {
+      check('and the request carried a count rather than a card',
+         topTrace.sentTo?.action === 'discardTop' && topTrace.sentTo?.count === 3,
+         JSON.stringify(topTrace.sentTo))
+   } else {
+      console.log('  skip  the request carries a count - no development handle to read the trace from')
+   }
 
    /* ---------------------------------------- 4. close and shuffle on both windows -- */
 
@@ -1041,4 +1225,4 @@ if (failures) {
    console.log(`verdict: ${failures} failed - see the lines above`)
    process.exit(1)
 }
-console.log('verdict: ok - a reveal is on both boards, a look is on one, and an action on the other player\'s card lands on their board')
+console.log('verdict: ok - a reveal is on both players\' boards, a look is on the looker\'s and the watcher\'s, a window\'s card goes only to its owner\'s zones, and an action on the other player\'s card lands on their board')
