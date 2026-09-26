@@ -45,6 +45,7 @@ It is now a window, and it is this feature's third gesture rather than a flag:
 | how it ends | Close | toggled off |
 | reaches whom | the player who asked and the room's watchers, via `handRevealed` | the other player, via `handToggle` |
 | may be acted on | yes — the batch is the permission | no |
+| the hand zone | still card backs | faces, until it was switched off |
 
 Two things about the change are worth stating, because both were asked for in as many words:
 
@@ -55,19 +56,28 @@ Two things about the change are worth stating, because both were asked for in as
   record: *when the player performs this action it should just happen and add to the game
   log*. So there is no request, no *Allow*, and no answer — see *Who gets a window*.
 
-The flag survives the change and is now written *by* the gesture rather than by the hand's
-owner: a Reveal Hand sets `handRevealed` on the board that owns the hand, so the hand is face
-up on the board behind the window as well as in it. A window alone would have been two answers
-to one question — the same cards, in a panel, over a hand still drawn as card backs.
+**And the hand zone stays drawn as card backs**, which was asked for after the first version of
+the window: *when "Reveal Hand" is selected the cards in the hand zone should remain as Hidden
+Cards*. So the gesture sets no per-zone flag at all — the window is the whole of what it shows,
+on the board that asked and on the board that owns the hand alike. That is also the reading that
+keeps it honest: the cards are the opponent's, the player is being *shown* them, and the zone they
+came from goes on looking exactly as it did to both players. What the owner is told is the log
+line, and nothing about their own screen changes.
+
+That is a *reversal* of the first attempt, which set `handRevealed` — the flag the old toggle
+used — and drew the hand face up behind the window as well as in it. The flag and `handToggle`
+are both still there and still work (`opponent/Hand.svelte` reads the flag, `opponent.js` applies
+the event); nothing writes them any more, because nothing on this board turns a hand face up.
 
 ## The permission: "allowed to take action on this opponent card"
 
 A card a Reveal, a Look or a Reveal Hand is showing may be **acted on as the other
 player's**. It can be left-clicked like a card of the player's own, and right-clicking it
-gives this player's own card menu — *To Hand*, *To Discard*, *To Bench*, *To Active*,
-*To Stadium*, *Shuffle Into Deck*, *To Top/Bottom of Deck*, *To Lost Zone*, *To
-Prizes*, *To Table*, *Attach to Their Active*, *Show Details* — with every entry
-landing on the **owner's** half.
+gives this player's own card menu, minus one entry: *To Discard*, *To Bench*, *To Active*,
+*Shuffle Into Deck*, *To Top/Bottom of Deck*, *To Lost Zone*, *To
+Prizes*, *Attach to Their Active*, *Show Details* — with every entry
+landing on the **owner's** half. There is no *To Hand* and no shared-zone entry, and both
+absences are rules — see *The owner's hand is not a destination*.
 
 That property is not a field written onto the card. It is the **batch**: a card is
 actionable exactly when it is one of the cards of an open batch, and `isActionable`
@@ -84,27 +94,62 @@ decision rather than a shortcut:
   The batch is derived from the pile itself, so it cannot be stale.
 - **It cannot outlive the board it was about.** The batch is reset with the board
   (`onBoardCleanup`), and the next gesture replaces it wholesale.
-- **It is what makes a Reveal Hand allowed at all.** The cards come out of a hand, which
-  the reader has no other way to touch — the permission is the *only* reason those cards
-  can be moved off somebody else's board, and it is the same line of code a Reveal and a
-  Look already went through.
+What the player sees is **nothing at all**, and that is the second report this section answers:
+the cards that may be acted on used to be picked out with a 2px `--primary-color` outline whose
+colour breathed on a loop (`opponent/Card.svelte`). It is gone — see *No glow*, below — so the
+window has to *say* what a click does, because a Reveal's cards are the other player's and the
+default assumption is that they are inert.
 
-What the player sees is the pulse: a card that may be acted on wears a 2px
-`--primary-color` outline that breathes, drawn as an `outline` so it costs no room
-and so it can sit *beside* the selection ring rather than instead of it
-(`opponent/Card.svelte`). Without it there is nothing on screen to say which cards
-answer — a Reveal's cards are the other player's, so the default assumption is that
-they are inert, and a player who assumes that never finds the menu.
+### No glow
 
-The pulse is an **affordance and not a rule**, and a Look and a Reveal Hand both turn it
-off (`pulse={false}`). In a Reveal it distinguishes the one or two cards of the other
-player's from the cards of the player's own around them. In a Look or a Reveal Hand
-*every* card in the window answers, so a glow on all of them is decoration — and worse
-than decoration, it made a chosen card's own ring hard to read. What replaces it is a line
-in the header saying what a click does (`Look.svelte`, `HandReveal.svelte`), because the
-ring that appears *after* a click is then the only feedback there is, and a window with no
-hint and no pulse reports itself as "I cannot select the cards" (which is how that was
-reported).
+The outline animation was removed, and the two reasons are worth keeping because only the first
+is about this feature:
+
+- **it advertised a permission that was wrong.** A card this player had already moved went on
+  wearing it, because the batch that made it actionable still held its id — see *A card that has
+  been moved*, below. Reported as *this shouldn't be happening* about a card sitting in the
+  opponent's hand with a glowing border.
+- **a card that is always glowing never reads as chosen.** In solo *every* card of the far half
+  is actionable (`$solo` in `opponent/Card.svelte`), so the whole half breathed, and the glow
+  was asking to be mistaken for the selection ring — which is `--selection-color` and is
+  already spoken for.
+
+What says a card can be clicked instead is a line in the window's own header — *Click a card to
+pick it out, Ctrl-click to add, Ctrl+A for all* — in all three windows. That is the feedback that
+does not need a loop to be noticed, and it is the answer the Look window had already arrived at
+for its own cards.
+
+### A card that has been moved stops answering
+
+**Once a card in any of the windows is moved by the player to one of the owner's zones it is not
+actionable any more**, and that is a rule of its own rather than a consequence of the view. The
+view is "the batch's cards that are still in the pile it reads", so a card sent to a *discard*, a
+lost zone, a bench, a deck or a prize leaves the window by itself — while a card sent to a
+**hand** does not, because the hand is a pile the view still finds it in, and it went on being
+selectable, draggable and outlined. That asymmetry is the whole of the fault that was reported.
+
+`spendCards` in [src/lib/stores/reveal.js](../src/lib/stores/reveal.js) is the record of what this
+player has acted on, `isActionable` asks it, and every gesture asks `isActionable` — so one line
+refuses the click, the menu, the drag and the request together, in every window and for every
+destination rather than only where the view happens to agree.
+
+It is **emptied when a new batch goes up**, which is not tidiness: ids are handed out per board
+load (`loadDeck` numbers them 1..n), so a board that is reloaded hands the same ids to different
+cards, and a record that outlived its batch marked a fresh window's cards as spent. Measured:
+every drag of a card in a new window refused, on a board that had been reloaded since.
+
+### The owner's hand is not a destination
+
+A card out of a window may be sent to the owner's **zones**, and the hand is deliberately not one
+of them: *prevent the player from placing the owner's cards into the owner's hand zone*. The menu
+entry is gone (`OppCardActionMenu.svelte`) and so is the drop (`actionForPile` has no entry for
+it, and `opponent/Pile.svelte` only highlights a zone whose drop means something) — the two ways
+of moving a card agree, which is the rule every other zone in that table follows.
+
+The reason is the one above: a hand cannot be read back by the player who puts a card in it. The
+zone is drawn as card backs to them, so the card is out of their sight and out of their reach, and
+the only thing the gesture reliably produced was a card they could no longer act on — which is
+what the glow report was about.
 
 ### One card or several
 
@@ -235,9 +280,9 @@ way in `opponent.js`.
 
 ## Where a card out of a window may go
 
-A card of the other player's may be sent to **their own zones and nowhere else** — their
-hand, discard, lost zone, prizes, deck, bench or active spot. Two things are deliberately
-not on that list, and both were reported as bugs when they were:
+A card of the other player's may be sent to **their own zones, except their hand** — their
+discard, lost zone, prizes, deck, bench or active spot. Three things are deliberately
+not on that list, and each was reported as a bug when it was:
 
 - **the player's own zones.** The near half's `discard` and the far half's `discard` are
   different stores that both call themselves `discard`, so "is this pile one of theirs"
@@ -248,6 +293,11 @@ not on that list, and both were reported as bugs when they were:
   each half plays *its own* cards into them, so a card out of somebody else's deck has no
   business in either. The menu entries for them are gone as well as the drop, because the
   two ways of moving a card must agree.
+- **the owner's hand**, which is the one zone of theirs that is missing for a different
+  reason: a card put in a hand cannot be read back by the player who put it there. The zone is
+  drawn as card backs to them, so the card is out of their sight and out of their reach, and
+  the only thing the gesture reliably produced was a card they could no longer act on. See *A
+  card that has been moved stops answering* and *The owner's hand is not a destination*.
 
 ### How many cards at once
 
@@ -347,9 +397,9 @@ it is a live view of the same deck.
 **A Reveal Hand has a Look's audience and a Reveal's consequence for the owner.** The window
 opens on the player who asked for it and on the room's watchers, and the ids go the same way
 (`handRevealed`, the same addressed-event machinery and the same `audienceOf`) — because a hand
-is the pile its owner does not read, and an id out of one is exactly what it withholds. The
-owner is told two things instead, and both are consequences rather than courtesies: the log
-line, and their own hand turning face up (`handToggle`).
+is the pile its owner does not read, and an id out of one is exactly what it withholds. The owner
+is told one thing instead: the log line. Their own screen does not change at all, which is the
+point of the hand staying drawn as card backs.
 
 Two more things are specific to this gesture:
 
@@ -359,26 +409,6 @@ Two more things are specific to this gesture:
 - **and it is a Look in what it asks of the owner: nothing.** There is no request and no
   answer. *When the player performs this action it should just happen and add to the game
   log* — so the gesture is unilateral, and the log is the whole of the consent.
-
-### The hand turns face up, and on two boards that need two flags
-
-A Reveal Hand does not only open a window: the hand it is about is drawn **face up** from then
-on, on the board that asked and on the board that owns it. That takes two flags, and the reason
-is worth keeping because the mistake is invisible until two browsers are in the room.
-
-`handRevealed` — one of the three per-zone visibility flags ([board.md](board.md)) — belongs to
-the board that **owns** the hand. It lives in `board()`, it is read by `opponent/Hand.svelte` to
-decide whether to draw a face or a card back, and `handToggle` is how the gesture sets it on the
-owner's screen. It says nothing about the *reader's* screen, where the same hand is a **mirror**:
-a mirror is handed the owner's board state and its own events, and a flag the owner's board holds
-is not one of them.
-
-So the reader keeps its own record of what it has been shown (`farHandRevealed` in reveal.js),
-set locally by `revealHand` and by the arriving `handRevealed` event, and cleared with the board.
-Measured with the first version of this, which had only `handToggle`: the owner's board drew the
-hand face up, the reader's board drew seven card backs, and the window over them showed seven
-cards. `tools/reveal-check.mjs` asserts the two flags *disagree* on the reader's board, which is
-the whole reason there are two.
 
 ### What the log says, and to whom
 
@@ -401,11 +431,10 @@ goes to the room, which is what almost every line in the game is.
 
 A Reveal Hand writes **one line to the room** — `Revealed opponent's hand` — and it is the room's
 rather than the reader's, which is the opposite of the Look's split and is deliberate. There is
-nothing to withhold from the owner: this gesture's whole effect on them is that their hand is now
-face up, which they can see for themselves, so a line saying *what happened* is the record they are
-owed and there is no second, named line for anybody. The cards are not named for the same reason the
-Look's named line is addressed — an unnamed running log of a hand that has since changed would be a
-record of nothing in particular, and the window is where the cards are read.
+nothing to withhold from the owner beyond the cards themselves: they are told *that* it happened,
+by a line that names no card and no count, and their own screen says nothing at all. An unnamed
+running log of a hand that has since changed would be a record of nothing in particular, and the
+window is where the cards are read.
 
 ### One seam this leaves
 
@@ -459,8 +488,11 @@ would be a second copy of something the wire already carries.
   ids came from. Its `pileName` is `'hand'`, which is what picks the hand off that reader
   (`theirPileFor` in reveal.js). It is addressed, the way a Look is: the reader and the room's
   watchers, never the hand's owner.
-- `handToggle { revealed }` — the opposite direction to the batch, and the one part of the
-  gesture the owner is told: the hand turns face up on their own board.
+- `handToggle { revealed }` — the per-zone flag an *owner* sets to show their own hand, and the
+  one event in this group that **nothing in this feature sends**. It is still relayed, still
+  applied (`opponent.js`), and still read by `opponent/Hand.svelte`; a Reveal Hand leaves the
+  zone drawn as card backs, so there is nothing to flip. See the note in *Reveal Hand, and why
+  it stopped being a toggle*.
 - `backToDeck { owner }` — the shuffle that ends such a window. It carries a *half*
   rather than a list, because a shuffle is the deck's state and no client can mirror
   the order of a deck it cannot read. Only a Reveal and a Look have this ending.
@@ -666,10 +698,21 @@ shape of a batch (a live view of a pile, and not one of the board's own piles), 
 windows rendering with their cards and their buttons, and the wiring that offers
 the entries and picks the right menu for a card of the far half's.
 
+It holds the permission's two edges as well: a card stops answering the moment this player has
+acted on it, and the record of that does not outlive its batch. It also asserts, out of the
+component's own source, that the far half's card carries no action class and that there is no
+outline rule behind it — a binding with nothing to draw it and a rule with nothing to bind it are
+two separate bugs, and one assertion cannot see both.
+
 `node tools/reveal-check.mjs` drives the rest in two browsers: the window's audience, the whole
 of a hand in the window where the count says it should be, the one button, the log line on both
-boards, and the hand reading face up on the reader's board afterwards.
+boards, the hand still drawn as card backs afterwards, the owner's hand refusing a drop, the menu
+offering no *To Hand*, no card animating anywhere, and a card that has been moved going on
+refusing once it is out of the window.
 
-What neither can see is the clicks that make the feature real — a card's ring
-pulsing, a menu entry moving a card on *the other* board — and that is the same line
+`node tools/solo-check.mjs` asserts the same about the animation where it was worst — in solo
+every card of the far half is actionable, so the whole half used to breathe.
+
+What neither can see is the clicks that make the feature real — a card's ring appearing after a
+click, a menu entry moving a card on *the other* board — and that is the same line
 [diagnostics.md](diagnostics.md) draws for every other browser check.

@@ -11,7 +11,7 @@ import {
 } from './player.js'
 import { defaultOpponent } from './opponent.js'
 import { slot } from './custom/cards.js'
-import { isActionable } from './reveal.js'
+import { isActionable, spendCards } from './reveal.js'
 
 /*
    Acting on the *other* player's card.
@@ -78,9 +78,19 @@ import { isActionable } from './reveal.js'
    cannot disagree about what a zone is called (see docs/terminology.md). The four
    entries that are not a zone name - a deck end, a shuffle, and the two that put
    a card into play - are the four gestures a zone name cannot express.
+
+   **There is no entry for the owner's hand**, and it is the one zone of theirs that
+   is deliberately missing. A card sent to a hand cannot be read back - the zone it
+   lands in is drawn as card backs to the player who sent it, and the batch that
+   made it actionable still holds its id - so a move there is a card the player has
+   put beyond their own reach, having been shown it in order to act on it. That was
+   reported as the *"glowing issue"*: a card moved to the owner's hand went on
+   wearing the actionable outline, because the hand is the one pile a window is
+   still a live view of after a card has been moved into it. The drop and the menu
+   entry are both gone, so the two ways of moving a card agree (see `actionForPile`
+   and `OppCardActionMenu.svelte`).
 */
 export const OPP_ACTIONS = {
-   HAND: 'hand',
    DISCARD: 'discard',
    STADIUM: 'stadium',
    LZ: 'lz',
@@ -235,7 +245,6 @@ export function actionForPile (pile) {
    if (pile === o.discard) return OPP_ACTIONS.DISCARD
    if (pile === o.lz) return OPP_ACTIONS.LZ
    if (pile === o.prizes) return OPP_ACTIONS.PRIZES
-   if (pile === o.hand) return OPP_ACTIONS.HAND
    if (pile === o.deck) return OPP_ACTIONS.DECK_TOP
 
    /*
@@ -532,6 +541,16 @@ export function opponentCardAction (cards, action, options = {}) {
 
       if (!held.length) continue
 
+      /*
+         The cards are marked as spent **before** the move, and the order matters: the move
+         is what puts them where they are going, and the moment they land the window is a
+         live view of a pile that still holds them (a hand, a discard) - so a card that is
+         not marked here is actionable for as long as the batch lives. See `spendCards` in
+         reveal.js: the permission is the batch, and this is the one line that says the batch
+         has been used for this card.
+      */
+      spendCards(held)
+
       optimisticMove(held, pile, action)
 
       const ids = held.map((card) => card._id)
@@ -686,7 +705,6 @@ function holdsCard (s, card) {
 /* the pile of the far half an action lands in, for the ones that are a pile at all */
 function optimisticTarget (action) {
    switch (action) {
-      case OPP_ACTIONS.HAND:
       case OPP_ACTIONS.DISCARD:
       case OPP_ACTIONS.LZ:
       case OPP_ACTIONS.PRIZES:

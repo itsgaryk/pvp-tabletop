@@ -166,27 +166,6 @@ export const revealOpen = writable(false)
 export const lookOpen = writable(false)
 export const handRevealOpen = writable(false)
 
-/*
-   Whether **this board has been shown the far half's hand** - which is a question
-   `handRevealed` cannot answer, and finding that out is why there are two flags rather
-   than one.
-
-   `handRevealed` belongs to the board that **owns** the hand: it is how a player's own
-   screen knows their own hand is being shown, it lives in `board()`, and it is set on the
-   owner's board by the gesture (`handToggle`). It says nothing about the reader's screen,
-   where that same hand is a *mirror* - so a Reveal Hand that set only that flag left the
-   owner's hand face up on the owner's board and still drawn as card backs on the board that
-   had just read every card of it. Measured, in two browsers: `handRevealed` true on the
-   owner's board, false on the reader's mirror of the same hand, and seven card backs under
-   a window showing seven cards.
-
-   This is the reader's half of the same fact, and it is a second *flag* rather than a second
-   *event*: the owner is told by the one they already have, and the reader has the window, so
-   nothing here needs to travel. Cleared with the board, which is the lifetime every other
-   batch has.
-*/
-export const farHandRevealed = writable(false)
-
 /* the player's own deck, registered rather than imported (see below) */
 let myDeckStore = null
 
@@ -418,6 +397,12 @@ function actedOn (batch) {
 */
 function setBatch (which, view, batch) {
    stopWatching()
+
+   /*
+      A new gesture, so nothing has been acted on in it yet - see the note over `spentIds` for
+      what leaving the last window's record in place costs.
+   */
+   spentIds.clear()
 
    which.set(batch)
    view.set(viewOf(batch))
@@ -791,15 +776,18 @@ export function closeLook () {
    their own hand turned face up on the other player's board. It was asked for as a window
    - *when Reveal Hand is clicked it should show a window showing the entire of the
    opponent's hand with a Close button* - so the entry moved to the hand it is about (the
-   opponent's, where `opponent/Hand.svelte` renders it) and it now does three things at
-   once rather than one.
+   opponent's, where `opponent/Hand.svelte` renders it).
 
-   The flag is kept and set rather than replaced, and that is the honest reading of what
-   was asked for: *my own hand should always be hidden unless the opponent uses "Reveal
-   Hand" on my hand zone*. A window alone would leave the hand face down on the board and
-   show the same cards in a panel floating over it, which is two answers to one question.
-   So the hand is turned face up *and* the window says which cards are in it - the same
-   shape a Reveal has: the cards are on show, and the gesture has a window of its own.
+   **The hand itself stays hidden, and that was asked for too**: *when "Reveal Hand" is
+   selected the cards in the hand zone should remain as Hidden Cards*. So this gesture sets
+   no per-zone flag at all - there is no `handToggle` and no face-up hand behind the window -
+   and the window is the whole of what it shows. That is also the reading that keeps the
+   gesture honest: the cards are the opponent's, the player is being *shown* them, and the
+   zone they came from goes on looking exactly as it did, to both players.
+
+   That also means a Reveal Hand leaves no trace on the table that a later reader could
+   mistake for the owner turning their own hand up: the log line is the record, and the
+   window is for the player who asked.
 
    ---------------------------------------------------------------------------
    Who sees it, and who is told
@@ -809,9 +797,8 @@ export function closeLook () {
    The hand's **owner** is not among them - `revealedHand` is addressed the way
    `cardsLooked` is, and `audienceOf` in the relay's events route adds every watcher from
    membership - because the ids in the payload are cards out of a hand, which is the one
-   pile the opponent is not shown. Their copy of the gesture is the log line and their own
-   hand turning face up, which is what they are entitled to: that it happened, and that
-   they are showing it.
+   pile the opponent is not shown. Their copy of the gesture is the log line, which is what
+   they are entitled to: that it happened.
 
    Taking the gesture is unilateral - there is no request to answer and no *Allow* - which
    was asked for in as many words: *when the player performs this action it should just
@@ -835,19 +822,6 @@ export function revealHand () {
    if (applyHandReveal({ reader: null, pileName: pile.name, cards: ids }, false)) {
       handRevealOpen.set(true)
    }
-
-   /*
-      Two flags, because there are two screens and they are not the same one.
-
-      `farHandRevealed` is **this** board's record that it has been shown the far half's
-      hand, and it is what turns those cards face up in the zone here. `handToggle` tells
-      the other board the same thing about *its own* hand, which is the copy it draws -
-      neither flag reaches the other screen, and a hand drawn face up in a window over a
-      hand still drawn as card backs is the fault that made that plain (see
-      `farHandRevealed`).
-   */
-   farHandRevealed.set(true)
-   share('handToggle', { revealed: true })
 
    publishLog("Revealed opponent's hand")
    return true
@@ -930,18 +904,66 @@ export function lookCloseAndShuffle () {
    refusal for it: a gesture on the cards can only come from a window, and there is no
    window on that board to make one.
 
-   `opponent/Card.svelte` is what draws the answer: the cards that reply are the
-   ones wearing the pulse.
+   **A card this player has already moved stops answering**, and that is what `spent` is for -
+   see the note over it. Without that, a card sent to the owner's *hand* stayed actionable for
+   ever: it is still in the pile the batch reads, so the live view still shows it, and the card
+   could be picked up and sent somewhere else a second time.
 */
 export function isActionable (card) {
    if (!card) return false
    if (spectating.get()) return false
+   if (spentIds.has(card._id)) return false
 
    const inReveal = reveal.get() ? revealView.get().includes(card) : false
    const inLook = look.get() ? lookView.get().includes(card) : false
    const inHand = handReveal.get() ? handRevealView.get().includes(card) : false
 
    return inReveal || inLook || inHand
+}
+
+/*
+   The ids of the cards **this player has already acted on** out of the window that is open.
+
+   Why a set of ids and not one of the two things that look like they should answer it:
+
+   - **the view is not enough**, and that is the fault this exists for. A window's view is
+     "the batch's cards that are still in the pile", which is what makes a card that leaves a
+     *deck* leave the window. But a card sent to the owner's **hand** is still in a pile the
+     batch can read, so it is still on show - correctly, it is in their hand - and it went on
+     answering clicks. Measured: right-click a card in a Reveal Hand window, *To Hand*, and the
+     card is in the opponent's hand **and** still selectable and still draggable.
+   - **the record of the batch is not enough either**: `batch.cards` is what was *named* by the
+     gesture, and a card leaves it only when the batch is replaced (see `applyReveal`, which
+     keeps the ids the event named so the window can fill in late).
+   - **nothing on the card**, because a card object is shared between a board and its mirror
+     within one client - the same reason the permission is not a flag on the card at all (see
+     the note above).
+
+   Ids rather than objects, for the reason the batches use ids: a mirror holds *copies* of the
+   cards, and the object a window draws is the mirror's copy rather than the one the owner's
+   board holds.
+
+   **It is emptied when a new batch is put up** (`setBatch`), and that is not tidiness - it is
+   what keeps the record from outliving the gesture it belongs to. Ids are handed out per
+   *board load* (`loadDeck` in custom/board.js numbers them 1..n), so a board that is reloaded -
+   an import, an adopted board state, a spectator's mirror being filled - hands the same ids to
+   entirely different cards. Measured: without the reset, a check that moved a card and then
+   took a *fresh* look at a reloaded board found the new window's cards already marked spent,
+   and every drag of them refused. The batch is the gesture, so the record of what that gesture
+   has done is exactly as long-lived as the batch.
+*/
+const spentIds = new Set()
+
+/* record that these cards have been acted on, so a window stops offering them */
+export function spendCards (cards) {
+   for (const card of cards || []) {
+      if (card?._id !== undefined) spentIds.add(card._id)
+   }
+}
+
+/* exported for `tools/render-check.mjs`, which asks the permission rather than the window */
+export function spentCount () {
+   return spentIds.size
 }
 
 /*
@@ -1269,14 +1291,6 @@ react('handRevealed', ({ reader, pileName, cards }) => {
    const mine = !reader || reader === myId.get()
    const batch = applyHandReveal({ reader, pileName, cards }, !mine)
 
-   /*
-      A hand that has been shown to this board is drawn face up here, whichever route the
-      gesture arrived by - this client's own (`revealHand`) or somebody else's, seen from a
-      watcher's chair. Nothing on this board writes the *other* board's flag: the owner is
-      told separately, and by the flag that is theirs.
-   */
-   farHandRevealed.set(true)
-
    if (!batch) {
       handRevealOpen.set(false)
       return
@@ -1365,7 +1379,7 @@ function clearBatches () {
    lookOpen.set(false)
    clearBatch(handReveal, handRevealView)
    handRevealOpen.set(false)
-   farHandRevealed.set(false)
+   spentIds.clear()
 }
 
 onBoardCleanup(clearBatches)

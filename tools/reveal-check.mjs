@@ -304,6 +304,7 @@ async function dragBetween (page, fromExpr, toExpr) {
          own drag preview is on screen, which is the same thing the store says */
       return { card: document.querySelector('.z-30 img.card') ? true : null }
    })()`)
+
    const highlighted = await page.evaluate(`document.querySelectorAll('.dragover').length`)
    /* and which zones, so a refusal that highlighted something says what it landed on */
    const highlightedZones = await page.evaluate(`[...document.querySelectorAll('.dragover')].map((e) => String(e.className).split(' ')[0]).join(',')`)
@@ -725,16 +726,15 @@ try {
       bobHandLines.filter((l) => /hand/i.test(l)).join(' | ') || 'no line')
 
    /*
-      And the hand itself is on show from then on, on **both** boards - which is two flags
-      rather than one, and the pair of them is what this asserts.
+      **And the hand zone still shows card backs.** A Reveal Hand shows the player the cards
+      *in the window* and changes nothing about the zone they came from - *when "Reveal Hand"
+      is selected the cards in the hand zone should remain as Hidden Cards*.
 
-      On the reader's board the hand is a *mirror*, and the flag that turns it face up there
-      is the reader's own (`farHandRevealed` in reveal.js): `handRevealed` belongs to the
-      board that owns the hand and is set on the owner's screen, so a Reveal Hand that set
-      only that one left this half drawing card backs under a window showing every card.
-      Measured exactly that way, in two browsers, which is why the two are separate.
+      It is asserted on both boards and as the *drawing*, because that is exactly what the
+      report was about: a version of this that turned the hand face up passed every
+      assertion about the window and failed the one thing the player was looking at.
    */
-   const drawnFaceUp = async (page, zoneSelector) => page.evaluate(`(() => {
+   const handDrawing = async (page, zoneSelector) => page.evaluate(`(() => {
       const zone = document.querySelector(${JSON.stringify(zoneSelector)})
       if (!zone) return null
       const imgs = [...zone.querySelectorAll('img')]
@@ -744,34 +744,35 @@ try {
       }
    })()`)
 
-   const readersHand = await drawnFaceUp(alice, '.gameboard > .hand2')
-   check('and their hand is drawn face up on the reader\'s board',
-      Boolean(readersHand) && readersHand.images > 0 && readersHand.backs === 0,
-      `${readersHand?.backs} of ${readersHand?.images} still card backs`)
+   const readersHand = await handDrawing(alice, '.gameboard > .hand2')
+   check('and their hand is still drawn as card backs on the reader\'s board',
+      Boolean(readersHand) && readersHand.images > 0 && readersHand.backs === readersHand.images,
+      `${readersHand?.backs} of ${readersHand?.images} are card backs`)
 
-   const ownersHand = await drawnFaceUp(bob, '.gameboard > .hand')
-   check('and on the owner\'s own board too, because they are the one being shown',
-      Boolean(ownersHand) && ownersHand.images > 0 && ownersHand.backs === 0,
-      `${ownersHand?.backs} of ${ownersHand?.images} still card backs`)
+   /*
+      There is deliberately **no assertion about the owner's screen here**, and the reason is
+      worth keeping: a player's own hand is drawn face up to *them* by definition
+      (`board/Hand.svelte` is the near half's own component), so "the owner's hand is hidden"
+      is not a statement about the owner's own board at all. What the owner is owed is the log
+      line, asserted above, and the reader's view of that hand, asserted here.
+   */
 
    const flags = await alice.evaluate(`(() => {
       if (!globalThis.__pvp) return null
       return {
-         theirHandHere: globalThis.__pvp.reveal.farHandRevealed.get(),
-         theirCopyOfIt: globalThis.__pvp.opponent.defaultOpponent.handRevealed.get()
+         theirHandHere: globalThis.__pvp.opponent.defaultOpponent.handRevealed.get(),
+         ownHand: globalThis.__pvp.player.handRevealed.get()
       }
    })()`)
    if (flags) {
       /*
-         The two flags on one board, and the point is that they *disagree*: the reader's own
-         record of what it has been shown is set, and its mirror's copy of the owner's flag
-         is not - because nothing this board sends comes back to it (`emit` in relay/client.js
-         skips the sender), so the `handToggle` it sent went to the other board and not here.
-         Asserting the disagreement is asserting the whole reason the second flag exists.
+         And no flag was set on the way: the gesture sets none, so the hand a zone draws is
+         hidden on both boards. This is the half a browser can ask directly and a render check
+         cannot - a hand that is face down because *nothing set it* rather than because the
+         left-hand branch of a ternary happened to be false.
       */
-      check('and the reader\'s own record is set while the mirror\'s copy of the owner\'s flag is not',
-         flags.theirHandHere === true && flags.theirCopyOfIt === false,
-         JSON.stringify(flags))
+      check('and no per-zone flag was set by the gesture',
+         flags.theirHandHere === false && flags.ownHand === false, JSON.stringify(flags))
    }
 
    await closeWindow(alice)
@@ -852,11 +853,16 @@ try {
       aliceLook?.buttons.join(' | ') || 'no buttons')
 
    /*
-      And its cards do not pulse. The outline animation is a *Reveal's* affordance - one
-      or two cards of the other player's among cards of the player's own, with nothing
-      else to say which reply - while in a Look every card answers, so a glow on all of
-      them is decoration that makes a chosen card unreadable. Read off the wrapper rather
-      than the stylesheet, because the class is what the card wears.
+      The cards in a Look window are drawn by the far half's card component, and **nothing it
+      draws wears an outline or an animation any more**. It used to: a card this player may
+      act on wore a 2px `--primary-color` outline whose colour breathed on a loop, and that is
+      the glow the "glowing issue" is named after. It was removed - first because the
+      permission it advertised was wrong, and then because a card that is *always* glowing
+      never reads as chosen, and in solo the whole far half glows (`opponent/Card.svelte`
+      carries the full note).
+
+      Read off the wrapper rather than the stylesheet, because the class is what the card
+      wears - and both halves are read: no animation, and no outline either.
    */
    const lookCards = await alice.evaluate(`(() => {
       const pop = [...document.querySelectorAll('.popup')].find((x) => /Look /.test(x.innerText))
@@ -865,19 +871,23 @@ try {
       return {
          n: ws.length,
          pulsing: ws.filter((w) => getComputedStyle(w).animationName !== 'none').length,
+         outlined: ws.filter((w) => getComputedStyle(w).outlineStyle !== 'none').length,
          borders: [ ...new Set(ws.map((w) => getComputedStyle(w).borderTopColor)) ]
       }
    })()`)
-   check('and its cards do not pulse',
+   check('and its cards carry no animation at all',
       Boolean(lookCards) && lookCards.pulsing === 0,
-      `${lookCards?.pulsing} of ${lookCards?.n} pulsing`)
+      `${lookCards?.pulsing} of ${lookCards?.n} animating`)
+   check('and no outline either, so nothing singles a card out',
+      Boolean(lookCards) && lookCards.outlined === 0,
+      `${lookCards?.outlined} of ${lookCards?.n} outlined`)
    check('and they carry no ring of their own',
       Boolean(lookCards) && lookCards.borders.every((c) => c === 'rgba(0, 0, 0, 0)' || c === 'transparent'),
       JSON.stringify(lookCards?.borders))
 
    /*
-      And a card in it can be picked out, which is the report this answers: with the pulse
-      gone there is nothing on screen that says a click does anything, so the ring after
+      And a card in it can be picked out, which is the report this answers: with no marking
+      at all there is nothing on screen that says a click does anything, so the ring after
       the click and the line in the header are the whole of the feedback.
    */
    const picked = await alice.evaluate(`(() => {
@@ -989,7 +999,7 @@ try {
             })()
          }
       })()`)
-      check('and its cards are inert: no pulse, and a click selects nothing',
+      check('and its cards are inert: no animation, and a click selects nothing',
          Boolean(watchInert) && watchInert.pulsing === 0 && watchInert.selected === 0,
          JSON.stringify(watchInert))
    }
@@ -1092,7 +1102,7 @@ try {
       refuse, and re-using it reports "the zone refused it" for "there was nothing left to
       drop".
    */
-   const lookCardExpr = `[...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))?.querySelector('img.card')?.parentElement`
+   const lookCardExpr = `[...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))?.querySelector('img.card')`
 
    const ownZones = [
       [ 'own discard', '.gameboard > .discard .pile' ],
@@ -1103,7 +1113,17 @@ try {
       [ 'own bench', '.gameboard > .bench .bench-zone' ],
       [ 'own active', '.gameboard > .active > .active1' ],
       [ 'the Stadium', '.gameboard > .stadium-area > .stadium' ],
-      [ 'the Table', '.gameboard > .play' ]
+      [ 'the Table', '.gameboard > .play' ],
+      /*
+         **And the owner's hand**, which is the one zone of theirs a window's card may not be
+         put in. It is in this list rather than in the owner's-zones list below, and that is
+         the change: the drop used to be taken, and a card in a hand cannot be read back - the
+         player who sent it there is shown card backs, and the batch that made it actionable
+         still holds its id, so it went on being offered as a card to move. Reported as the
+         *"glowing issue"*. Both halves of the refusal are asserted here: nothing highlights
+         under the pointer, and nothing is sent.
+      */
+      [ 'the opponent\'s hand', '.gameboard > .hand2 .pile' ]
    ]
 
    for (const [ name, sel ] of ownZones) {
@@ -1122,6 +1142,7 @@ try {
          `${out.why}, ${out.highlighted} zone(s) highlighted, own board ${JSON.stringify(beforeBadges) === JSON.stringify(afterBadges) ? 'unchanged' : `CHANGED ${JSON.stringify(beforeBadges)} -> ${JSON.stringify(afterBadges)}`}`)
    }
 
+
    /*
       **And the owner's own zones take it, which is the half that was broken.**
 
@@ -1136,9 +1157,11 @@ try {
 
       A fresh Look for each zone, and the drag starts from the card's own wrapper - see the
       notes above for both.
+
+      **The hand is not in this list any more**: a card may not be put into the owner's hand
+      at all, so it is refused with the player's own zones above.
    */
    const theirZones = [
-      [ 'hand', '.gameboard > .hand2 .pile', 'myHand' ],
       [ 'bench', '.gameboard > .bench2 .bench-zone', 'myBench' ],
       [ 'active', '.gameboard > .active > .active2', 'theirActive' ],
       [ 'lost zone', '.gameboard > .lz2 .pile', 'myLostZone' ]
@@ -1171,7 +1194,6 @@ try {
       more than one. Its own check is below.
    */
    const spreadZones = [
-      [ 'hand', '.gameboard > .hand2 .pile', 'myHand' ],
       [ 'discard', '.gameboard > .discard2 .pile', 'myDiscard' ],
       [ 'lost zone', '.gameboard > .lz2 .pile', 'myLostZone' ],
       [ 'bench', '.gameboard > .bench2 .bench-zone', 'myBench' ]
@@ -1207,6 +1229,90 @@ try {
             picked === 2 && landedBoth === beforeSpread + 2,
             `${picked} picked, owner's ${key} ${beforeSpread} -> ${landedBoth}`)
       }
+   }
+
+   /*
+      **And a card this player has moved stops answering, wherever it went.**
+
+      The "glowing issue" in its own words: *once a card in any reveal window is moved by the
+      player to one of the owner's zones it should not be actionable any more*. The permission
+      is the batch, and the batch is a **live view of the pile it reads** - so a card sent to
+      a *discard*, a lost zone or a deck leaves the view and stops answering on its own, while
+      a card sent to a **hand** does not, because the hand is a pile the view still finds it
+      in. That asymmetry is why the refusal cannot be left to the view.
+
+      It runs *after* the drag sections rather than among them, and the reason is the one those
+      sections give for taking a fresh look each time: this block spends a window, and a block
+      that leaves the page with a spent batch makes the next section's drags start from a card
+      nobody may act on. It needs `lookAtThree`, which is defined above it - which is the other
+      half of why it sits here.
+
+      Asserted on the *permission* rather than on a click, because the permission is what every
+      gesture asks and a click would only prove one of them. `spentCount` is a read of the
+      record (see `spendCards` in reveal.js), so this is skipped on a deployment, where there
+      is no debug handle - the drag refusal above is the browser-visible half and runs on both.
+   */
+   const spentHandle = await alice.evaluate(`Boolean(globalThis.__pvp?.reveal?.spentCount)`)
+   if (!spentHandle) {
+      console.log('  skip  the "stops answering once it has been moved" assertions - no development handle to read the record from')
+   } else {
+      /*
+         One card of a fresh window is moved, and the two questions are asked about the card
+         that moved and the cards that did not. Only **one** card is picked up, and that is
+         what makes the second question mean anything: a selection travels whole
+         (`opponentCardAction` acts on the selection, not on the clicked card), so picking up
+         two and sending one would send both and leave nothing to ask about.
+      */
+      await lookAtThree()
+
+      /*
+         The menu is opened on the card the way a player opens one: a right click on it. A
+         `MouseEvent` rather than `browser.mjs`'s `rightClick`, which takes a *selector* - and
+         a window's card is not addressable by one, because it is `.popup img.card` among
+         however many windows are open. The right click also picks the card up, which is the
+         state the menu speaks for.
+      */
+      const firstCard = await alice.evaluate(`(() => {
+         const pop = [...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))
+         const wrapper = pop?.querySelector('img.card')?.parentElement
+         if (!wrapper) return null
+         const r = wrapper.getBoundingClientRect()
+         wrapper.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: Math.round(r.left + 5), clientY: Math.round(r.top + 5) }))
+         return wrapper.querySelector('img.card')?.getAttribute('alt') || 'a card'
+      })()`)
+      await sleep(700)
+      check('and a card of the window can be right-clicked', Boolean(firstCard), String(firstCard))
+      const cardMenu = await menuText(alice)
+      check('and the opponent-card menu no longer offers To Hand',
+         !cardMenu.some((t) => t.startsWith('To Hand')),
+         cardMenu.join(' | ') || 'no menu')
+
+      await clickMenuItem(alice, 'To Discard')
+      await sleep(1200)
+      /* the entry closes the menu; Escape is what puts the window away, as everywhere else */
+      await closeWindow(alice)
+      await sleep(400)
+
+      const afterMove = await alice.evaluate(`(() => {
+         if (!globalThis.__pvp) return null
+         const view = globalThis.__pvp.reveal.lookView.get().map((c) => c.name)
+         const actionable = [...document.querySelectorAll('.gameboard .actionable')].length
+         return { view, actionable, spent: globalThis.__pvp.reveal.spentCount() }
+      })()`)
+
+      check('and the card that was moved is no longer actionable',
+         Boolean(afterMove) && afterMove.spent >= 1 && !afterMove.view.includes(firstCard),
+         `${firstCard} moved, spent ${afterMove?.spent}, still in the view ${JSON.stringify(afterMove?.view)}`)
+      check('and the cards left in the window still are',
+         Boolean(afterMove) && afterMove.view.length > 0,
+         JSON.stringify(afterMove?.view))
+      /*
+         And nothing anywhere wears the action outline: the class was removed with the
+         animation (`opponent/Card.svelte`), so this is `0` on every board in every mode
+         rather than "the cards that are not actionable do not glow".
+      */
+      check('and no card on the board wears an action outline at all',
+         afterMove?.actionable === 0, `${afterMove?.actionable} card(s) wearing it`)
    }
 
    /*

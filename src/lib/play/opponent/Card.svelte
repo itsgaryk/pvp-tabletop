@@ -19,18 +19,6 @@
    export let revealed = true
 
    /*
-      Whether this card advertises itself with the pulse (see `.actionable`).
-
-      On in a Reveal, where a window of the other player's cards sits in a grid beside
-      cards of the player's own and nothing else says which reply; **off in a Look**,
-      where every card in the window is the player's to act on, so a pulse on all of
-      them is decoration - and worse than decoration, because a card that is always
-      glowing is a card that never reads as *chosen*. The Look window's cards still
-      answer a click and still take the selection ring; they just do not shout about it.
-   */
-   export let pulse = true
-
-   /*
       Whether this card may be acted on as the other player's.
 
       Two different situations answer yes, and they are the two ways this half is
@@ -38,9 +26,9 @@
 
          - **solo**, where the far half is the same person's - the whole half is
            played from this keyboard, which is why its zones are draggable there
-         - **a Reveal or a Look**, where the cards of the other half's *deck* have
-           been shown to this player on purpose, which is the "allowed to take
-           action on this opponent card" property (see docs/reveal.md)
+         - **a Reveal, a Look or a Reveal Hand**, where the cards of the other half's
+           pile have been shown to this player on purpose, which is the "allowed to
+           take action on this opponent card" property (see docs/reveal.md)
 
       Nothing else does. A card of the other half's that is merely visible - a
       Stadium in play, a Pokemon on the Bench - is not this player's to touch, and
@@ -50,8 +38,6 @@
       (`reveal.js`) rather than on the card object.
    */
    $: actionable = $solo || isActionable(card)
-   /* the pulse is a Reveal's affordance, not a Look's - see `pulse` above */
-   $: glowing = actionable && pulse
 
    /*
       A player may look at the far half's cards where they are on show - a Pokemon
@@ -139,7 +125,6 @@
    on:contextmenu={onCtx}
    on:dblclick={onDetails}
    class="border-2 border-transparent rounded-md"
-   class:actionable={glowing}
    class:dragged={$dragging && $selection.includes(card) && ($solo || actionable)}
    class:selected={actionable && $selection.includes(card)}
    use:dnd={dndConfig}>
@@ -169,49 +154,27 @@
    }
 
    /*
-      A card this player may act on is picked out where it lies.
+      There is deliberately no `.actionable` rule here, and the absence is the note.
 
-      It has to be, and this is the one thing about the property that is not
-      obvious: a card that can be clicked looks *exactly* like one that cannot -
-      the same face, in the same grid, in a window the player is reading - and the
-      only feedback a click gives is a ring that appears *after* it. A Reveal's
-      cards are the other player's, so the default assumption is that they are
-      inert, and a player who assumes that never finds the menu. So the cards that
-      answer are the ones that say so - in a Reveal, where a card of the other
-      player's is only one or two of the cards on screen. In a Look every card in the
-      window answers, so there is nothing to single out and the caller turns the pulse
-      off (`pulse` above).
+      A card this player may act on used to be picked out where it lies: a 2px
+      `--primary-color` outline whose *colour* breathed on a 1.8s loop, drawn as an
+      outline so it cost no room and could sit beside the selection ring. It was the
+      affordance for the permission - a card that can be clicked looks exactly like one
+      that cannot, and a Reveal's cards are the other player's, so the default assumption
+      is that they are inert.
 
-      It is an `outline` and not the `border` the selected state uses, and that is
-      not a style choice: the card wears Windi's `border-2 border-transparent` from its
-      own markup, and a scoped rule here compiles to a class of the same specificity,
-      later in the sheet - so an outline is what can be drawn *beside* the ring a
-      selection draws rather than instead of it. The two are on screen together the
-      moment a revealed card is clicked, and a border would have been one or the other.
+      It was removed for two reasons, and the first is a rule rather than a preference:
+      the *permission* it advertised was wrong. A card moved to the owner's hand stayed
+      actionable - the batch still held its id and the hand is a pile a window is a live
+      view of - so the outline said "you may still move this" about a card that had been
+      moved, which is how it was reported (*this shouldn't be happening*). That is fixed
+      where it belongs, in `isActionable` (`spentIds` in reveal.js), and it is fixed for
+      every window rather than for the one that was looked at.
 
-      That `border-transparent` is load-bearing and was dropped once: without it
-      `border-2` draws in `currentColor`, so **every** card of the other half's wore a
-      2px pale ring - a "permanent white border" on the opponent's hand, reported
-      exactly that way. A wrapper around a card is a box that draws things.
-
-      It is a *pulse* because the difference has to be visible at a glance without
-      being mistaken for a selection, which is `--selection-color` and is already
-      spoken for. Only the outline *colour* is animated, and an outline takes no
-      room, so a card cannot move when it starts to glow - which is the same rule
-      the selection ring follows (see docs/selection.md, rule 2).
+      The second is that a card that is *always* glowing is a card that never reads as
+      chosen, and in solo the whole far half glows - so the animation was asking to be
+      mistaken for the selection ring. The windows say what a click does in words instead
+      (`Look.svelte`, `HandReveal.svelte`), which is the feedback that does not need a
+      loop to be noticed.
    */
-   .actionable {
-      outline: 2px solid var(--primary-color);
-      outline-offset: -2px;
-      animation: actionable 1.8s ease-in-out infinite;
-   }
-
-   @keyframes actionable {
-      0%, 100% {
-         outline-color: var(--primary-color);
-      }
-      50% {
-         outline-color: rgba(255, 255, 255, 0.9);
-      }
-   }
 </style>

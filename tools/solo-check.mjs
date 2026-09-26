@@ -154,4 +154,34 @@ const after = await page.evaluate(ORIENT)
 show('AFTER FLIP', after)
 if (SHOTS) await shot('solo-after-flip')
 
+/*
+   And nothing on the board animates. This is the mode the animation had to be checked in
+   and could not be checked in from a room: in solo **every** card of the far half is
+   actionable (`$solo` in `opponent/Card.svelte`), so the whole half used to breathe - and
+   a glow that is always on is a glow that never says anything.
+
+   The elements are counted by the class the animation lived on as well as by the animation
+   itself, so the assertion holds whichever half of the rule comes back: a `class:actionable`
+   binding with no stylesheet behind it is a bug that looks like nothing at all.
+*/
+const animations = await page.evaluate(`(() => {
+   const wrappers = [...document.querySelectorAll('.gameboard .border-2')]
+   const named = wrappers.filter((w) => getComputedStyle(w).animationName !== 'none')
+   return {
+      wrappers: wrappers.length,
+      animated: named.length,
+      actionableClass: document.querySelectorAll('.gameboard .actionable').length,
+      names: [ ...new Set(named.map((w) => getComputedStyle(w).animationName)) ]
+   }
+})()`)
+console.log('\nno animation')
+console.log(`  ${animations.wrappers} card wrappers, ${animations.animated} animated, ${animations.actionableClass} wearing the action class`)
+if (animations.names.length) console.log(`  animations: ${animations.names.join(', ')}`)
+
+const failed = animations.animated > 0 || animations.actionableClass > 0
+console.log(failed
+   ? '\nverdict: FAILED - a card in solo wears an animation, and none of them should'
+   : '\nverdict: ok - no card animates in solo')
+
 browser.detach()
+if (failed) process.exit(1)
