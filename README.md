@@ -39,6 +39,7 @@ The technical documentation is in [`docs/`](docs/), one file per topic:
 | [deployment.md](docs/deployment.md) | Vercel setup, the KV/Redis requirement, the health endpoint and its probe, the environment-variable table, self-hosting a relay |
 | [rooms.md](docs/rooms.md) | A room's life: reconnecting, leaving, the two waits, a deploy ending the games it replaces, the idle prompt and the stale-member sweep |
 | [relay.md](docs/relay.md) | The three relay routes, the event log and its cursor, what a waiting poll costs, and what a burst costs |
+| [multiplayer-transport.md](docs/multiplayer-transport.md) | What the relay costs per game, whether WebSockets would be better, what the Vercel Marketplace offers instead, and why the store stays |
 | [timer.md](docs/timer.md) | The table clock, and how two different clocks are kept together |
 | [board.md](docs/board.md) | The grid and its zones, the Stadium, zone borders and names, flipping the board, spectating, the keyboard shortcuts, what the browser remembers |
 | [selection.md](docs/selection.md) | The selection: what it is, what a selected card glows with, and the rules a zone follows to draw it |
