@@ -741,6 +741,14 @@ export function lookCloseAndShuffle () {
    It is also what keeps a Look the looker's: a watcher is refused by the same line,
    and the opponent never had the batch at all - the relay does not send it there.
 
+   **A Reveal's batch reaches the opponent and its window does not** (see `cardsRevealed`),
+   so an opponent holds a permission with nothing to use it on: the revealed cards sit in a
+   face-down deck, which is one pile image, and the window was the only place they were
+   cards. That is the shape asked for rather than an oversight - the table is told what was
+   shown by the log, and the cards are not the opponent's to move. Nothing here needs a
+   refusal for it: a gesture on the cards can only come from a window, and there is no
+   window on that board to make one.
+
    `opponent/Card.svelte` is what draws the answer: the cards that reply are the
    ones wearing the pulse.
 */
@@ -994,28 +1002,28 @@ function applyLook ({ looker, lookerSeat = null, pileName, cards }, remote) {
    what makes those cards actionable and what the acting board's permission is checked
    against.
 
-   The **window** opens for both players, which is the whole of what a reveal is: either
-   of them may act on the cards afterwards, and the window is not only how they read them
-   but the only place on their board those cards *are* cards. The revealed cards stay in
-   the deck, and a face-down deck is one pile image (`opponent/Deck.svelte`), so a player
-   with no window has nothing to right-click and no way to take the action the batch gives
-   them permission for.
+   **The window opens for the player who revealed and for nobody else**, which is the
+   audience the gesture actually has. Everyone else is told by the game log, which names the
+   cards (`revealLine`): a reveal is a public act, so the log is the record of what the
+   table was shown, and a window over another board is the same information a second time
+   on a board whose player is not the one doing the revealing. The opponent said so - *the
+   cards are shown in the game log* - and a spectator has always read it that way.
 
-   A spectator is not given it: it is told what was shown by the game log, which names the
-   cards (`revealLine`), and it has no action to take on them. It is given the *look*'s
-   window, which is the other way round - see `cardsLooked`.
+   This handler is the *receiving* side and only ever runs on a board that is not the
+   revealer's: a player's own events are never handed back to them (see `emit` in
+   relay/client.js), so the revealer's window is opened by `shareReveal` itself. So the
+   batch is applied here and the window is not opened at all - and the batch still travels,
+   deliberately: it is the *permission* (`isActionable`), so an opponent who right-clicks a
+   card they can see on the board can still act on it, and a spectator is refused by the
+   same one rule. Withholding the batch to withhold the window would have taken the
+   permission with it.
 */
 react('cardsRevealed', (data) => {
    /* one function, one word: the sender's `owner` is what the batch keeps (see `pileFor`) */
    const applied = applyReveal(data)
 
-   if (!applied) {
-      /* nothing to show - so nothing is left on screen either */
-      revealOpen.set(false)
-      return
-   }
-
-   if (!spectating.get()) revealOpen.set(true)
+   /* nothing to show - so nothing is left on screen either */
+   if (!applied) revealOpen.set(false)
 })
 
 /*

@@ -6,7 +6,7 @@
    import { reveal, revealView, revealOpen, closeReveal, revealCloseAndShuffle } from '$lib/stores/reveal.js'
 
    /*
-      The Reveal window: the cards one player showed to both of them.
+      The Reveal window: the cards **this player** showed to the table.
 
       It is the same panel a pile's view is - the same `Card`, the same scroll
       container, the same foot of actions - because it is the same thing being
@@ -17,10 +17,12 @@
       are where a *search* takes a card out of a deck to, and a reveal is not a
       search: the cards are not the revealer's to move).
 
-      Both players see this window, because a Reveal is a shared act. It is drawn
-      from each client's own copy of the batch (`reveal.js`), so the two windows
-      are the same cards in the same order without a window ever being relayed:
-      what travels is what was shown, and this is how each board draws it.
+      **Only the player who took the reveal sees it**, and that is the whole of its
+      audience: the cards travel to every board as a batch - that is the permission, so
+      an opponent can still act on a card they can see on the board - but the *window* is
+      the revealer's, and everyone else is told by the game log, which names the cards
+      (see `cardsRevealed` in reveal.js). It is drawn from this client's own copy of the
+      batch, so nothing is relayed to draw it: what travels is what was shown.
 
       A card in here is right-clicked like any other card, and for a card of the
       *other* player's side the menu is the opponent-card menu - which is the whole
@@ -140,18 +142,16 @@
       one ending this window should not offer. Escape and a click outside still close it
       without shuffling, which is how every panel in the app closes.
 
-      **Once either player has shuffled, the shuffle is gone from both windows** and
-      Close is all that is left. A reveal is one act with one deck and one ending: the
-      other player's window is still open when one of them presses the button, and
-      offering them a second shuffle of a deck that has been shuffled would be two
-      endings for one gesture - and a deck rearranged a second time for no reason at
-      all. The `shuffled` flag arrives with the event, so which button each player has
-      never depends on which of them pressed it.
+      **Once the reveal has been shuffled, the button is Close** and nothing else. A
+      reveal is one act with one deck and one ending, so a second shuffle of a deck that
+      has already been shuffled would be two endings for one gesture - and a deck
+      rearranged a second time for no reason at all. The `shuffled` flag arrives with the
+      event, so the button this window offers never depends on who pressed it.
 
-      **A spectator gets no window at all**, and so has no button to press: it is told what
-      was revealed by the game log, which names the cards (see `cardsRevealed` in
-      reveal.js). Both endings belong to the players, and the one who is not looking at the
-      window is the one who still has a window open.
+      **Only the revealer is here to press anything**: everyone else was told by the game
+      log, which names the cards (see `cardsRevealed` in reveal.js). An opponent can still
+      act on a card they can see on the board - the batch is the permission - and the
+      endings belong to the player who made the reveal.
    -->
    <svelte:fragment slot="buttons">
       {#if $reveal?.shuffled}
