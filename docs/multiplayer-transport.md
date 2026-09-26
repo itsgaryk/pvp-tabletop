@@ -215,6 +215,14 @@ per delivery while Upstash bills per operation**, so the two are not comparable
 by "messages"; and **Ably's history is not included** — persistence and retrieval
 each consume quota, and a persisted publish counts double.
 
+The marketplace column is the one to check by hand rather than by fetching, and
+the reason is worth writing down: **a Vercel marketplace URL answers `200` even
+when the product does not exist**, and the "not found" only appears in the
+rendered page. Every "no listing" and "listing exists" in this table came from
+the rendered page or a category listing, never from an HTTP status — and Vercel's
+own guide's claim that Ably, Pusher and Liveblocks have Marketplace integrations
+could not be reproduced that way, so treat that sentence as unverified.
+
 ## If it ever has to change
 
 **Upstash Realtime is the cheapest change, and it is not free of work.** It is
@@ -251,6 +259,15 @@ own code:
   provisions Redis, Vector, QStash and Search. Realtime is an npm library on the
   Redis resource, and a database provisioned through Vercel is *not* a native
   Upstash account, so the Upstash Developer API is unavailable on it.
+- **Treat its delivery as at-least-once, whatever the docs say.** The serverless
+  guide claims *"Every message is guaranteed to be delivered exactly once"*
+  because it is built on Redis Streams — but Streams are inherently
+  at-least-once, and a replay during a reconnect can re-deliver. This is not a
+  problem for the relay as it stands, and the reason is worth keeping: a client
+  already skips its own events by `from`, applies events against a monotonic
+  sequence, and ignores anything at or below its cursor. Any move to a push
+  transport has to keep that discipline rather than trusting the transport to
+  have deduplicated.
 
 **The two alternatives, and why one of them may be the better answer.** If the
 Svelte client and the presence model are the parts worth not writing,
