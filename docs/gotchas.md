@@ -1311,6 +1311,16 @@ read from the **request's** `data` rather than from the reshaped `payload`. The 
 transformation between what arrives and what a rule reads — **ask what the rule is looking at, not
 what was sent.**
 
+**The far half draws a cardback while *Hide Pokémon* is on, so a check cannot match a Pokémon by
+name.** `opponent/Slot.svelte` renders `alt={$pokemonHidden ? 'Hidden Pokémon' : top.name}`, which is
+the point of the flag — a hidden Pokemon is hidden, name and all. A check that asserted "the card I
+dropped is the one in their Active spot" by reading the image's `alt` therefore failed against a
+board that was simply hidden, and the failure named the wrong culprit: measured, *their Active spot
+holds "Hidden Pokémon", sent "47"*. What is unambiguous in the DOM is that the **spot went from
+empty to holding a card** (`img.card` inside `.active2 .slot`), so that is what the check asserts.
+The tell is an assertion naming a card the board is entitled to conceal — **ask whether the board is
+supposed to be showing that name at all.**
+
 **A drag the board accepts and then does nothing with is not a refusal, and it reads as a bug.**
 A card out of a Reveal or a Look window belongs to the other player, so a drop on one of the
 player's own zones maps to no action (`actionForPile` knows only the far half's piles) — and the

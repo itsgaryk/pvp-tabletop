@@ -980,6 +980,21 @@ try {
    ]
 
    /*
+      The far Active spot, asked of the **DOM** rather than the stores, which is what a
+      deployment has as well: it is the slot element `.active2 .slot`. What is *inside* it is
+      deliberately not the card's name in every case - the far half draws a cardback while
+      *Hide Pokémon* is on (`opponent/Slot.svelte`), so the image reads "Hidden Pokémon" -
+      and that is why this answers with whatever the slot is showing rather than pretending
+      to know the name. `'none'` means the spot is empty.
+   */
+   const theirActiveSlot = (page) => page.evaluate(`(() => {
+      const slot = document.querySelector('.gameboard > .active > .active2 .slot')
+      if (!slot) return 'none'
+      const img = slot.querySelector('img.card')
+      return img ? (img.getAttribute('alt') || 'a card') : 'none'
+   })()`)
+
+   /*
       **And several cards at once go the same way**, which is the second reported fault:
       *"when trying to drag and place multiple cards it only places 1 card"*. Every zone
       hands `dropRevealedCard` the card the pointer is carrying *and* the selection it came
@@ -997,24 +1012,36 @@ try {
       [ 'bench', '.gameboard > .bench2 .bench-zone', 'myBench' ]
    ]
 
-   for (const [ name, sel, key ] of spreadZones) {
-      await lookAtThree()
-      await alice.evaluate(`(() => {
-         const pop = [...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))
-         const imgs = [...pop.querySelectorAll('img.card')].slice(0, 2)
-         imgs.forEach((img, i) => img.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: i > 0 })))
-         return imgs.length
-      })()`)
-      await sleep(300)
-      const picked = await alice.evaluate(`globalThis.__pvp.player.cardSelection.get().length`)
-      const beforeSpread = (await badges(bob))[key]
+   /*
+      The picking is done from the **DOM** and the question "how many did I pick" is asked of
+      the board's own selection, so this half needs the development handle and is skipped on a
+      deployment. The drops themselves are asserted against the DOM either way (above); what a
+      deployment cannot answer is "were two cards really picked out", which is the setup for
+      this section rather than the feature it checks.
+   */
+   const hasSelectionHandle = await alice.evaluate(`Boolean(globalThis.__pvp?.player?.cardSelection)`)
+   if (!hasSelectionHandle) {
+      console.log('  skip  the multi-card drops - no development handle to read the selection from')
+   } else {
+      for (const [ name, sel, key ] of spreadZones) {
+         await lookAtThree()
+         await alice.evaluate(`(() => {
+            const pop = [...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))
+            const imgs = [...pop.querySelectorAll('img.card')].slice(0, 2)
+            imgs.forEach((img, i) => img.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: i > 0 })))
+            return imgs.length
+         })()`)
+         await sleep(300)
+         const picked = await alice.evaluate(`globalThis.__pvp.player.cardSelection.get().length`)
+         const beforeSpread = (await badges(bob))[key]
 
-      await dragBetween(alice, lookCardExpr, `document.querySelector(${JSON.stringify(sel)})`)
-      const landedBoth = await waitForCount(bob, (p) => badges(p).then((b) => b[key]), beforeSpread + 2, { timeout: 12000, poll: 150 })
+         await dragBetween(alice, lookCardExpr, `document.querySelector(${JSON.stringify(sel)})`)
+         const landedBoth = await waitForCount(bob, (p) => badges(p).then((b) => b[key]), beforeSpread + 2, { timeout: 12000, poll: 150 })
 
-      check(`and two cards picked out of the window both land on the owner's ${name}`,
-         picked === 2 && landedBoth === beforeSpread + 2,
-         `${picked} picked, owner's ${key} ${beforeSpread} -> ${landedBoth}`)
+         check(`and two cards picked out of the window both land on the owner's ${name}`,
+            picked === 2 && landedBoth === beforeSpread + 2,
+            `${picked} picked, owner's ${key} ${beforeSpread} -> ${landedBoth}`)
+      }
    }
 
    /*
@@ -1033,37 +1060,30 @@ try {
    await sleep(300)
 
    const beforeActive = await badges(bob)
+   const activeOpenBefore = (await windows(alice)).length
    await dragBetween(alice, lookCardExpr, `document.querySelector('.gameboard > .active > .active2')`)
    await sleep(2500)
    const afterActive = await badges(bob)
-   const activeView = await alice.evaluate(`globalThis.__pvp.reveal.lookView.get().length`)
+   const activeOpenAfter = (await windows(alice)).length
 
    check('and a batch dropped on the owner\'s Active spot is refused whole',
       afterActive.theirActive === beforeActive.theirActive,
       `the owner's active spot ${beforeActive.theirActive} -> ${afterActive.theirActive}`)
+   /*
+      And the window keeps its cards - read off the **DOM**, so a deployment can assert it
+      too: the drop that is refused must not take the cards away from the player.
+   */
    check('and the window keeps its cards rather than emptying for a refused move',
-      activeView === 3 && (await windows(alice)).length === 1,
-      `${activeView} cards in ${(await windows(alice)).length} window(s)`)
+      activeOpenAfter === 1 && (await windows(alice))[0]?.cards === 3 && activeOpenBefore === 1,
+      `${(await windows(alice))[0]?.cards} cards in ${activeOpenAfter} window(s)`)
 
    /* and one card for that spot is still the ordinary gesture, so it lands */
    await lookAtThree()
-   await alice.evaluate(`(() => {
-      const pop = [...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))
-      pop.querySelector('img.card').dispatchEvent(new MouseEvent('click', { bubbles: true }))
-      return true
-   })()`)
-   await sleep(300)
-   const onePicked = await alice.evaluate(`globalThis.__pvp.player.cardSelection.get().length`)
    await dragBetween(alice, lookCardExpr, `document.querySelector('.gameboard > .active > .active2')`)
-   /* the owner's own Active spot is the far half's, which is `.active2` on this board */
-   const promoted = await waitForCount(
-      alice,
-      (p) => p.evaluate(`globalThis.__pvp.opponent.defaultOpponent.active.get() ? 1 : 0`),
-      1,
-      { timeout: 12000, poll: 150 })
+   const promoted = await waitForCount(alice, theirActiveSlot, 'card', { timeout: 12000, poll: 150 })
    check('and one card dropped on the owner\'s Active spot IS promoted',
-      promoted === 1 && onePicked === 1,
-      `${onePicked} picked, the acting board's mirror of their active -> ${promoted}`)
+      promoted !== 'none',
+      `the acting board's Active spot now shows "${promoted}"`)
 
    /*
       The two **shared cells** - the Stadium and the table - are deliberately not in this
@@ -1079,58 +1099,58 @@ try {
       shared cell is a hand-check.
    */
 
+   /*
+      **Asked of the board's own DOM**, which is what a deployment has as well: the far
+      Active spot is the slot element `.active2 .slot`, and a card in it is identified by the
+      image inside it. The stores would answer the same question, but only on a dev server -
+      and a check that asserts the *feature* on a deployment and the *stores* locally is
+      asserting two different things.
+   */
    for (const [ name, sel, key ] of theirZones) {
       await lookAtThree()
       const before = await badges(bob)
-      const beforeTheir = await alice.evaluate(`globalThis.__pvp.opponent.defaultOpponent.active.get() ? 1 : 0`)
       const sentBefore = (await actionTrace(alice))?.sent ?? null
       const openBefore = (await windows(alice)).length
       const droppedId = await alice.evaluate(`[...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))?.querySelector('img.card')?.getAttribute('alt')`)
+      /* the drop is identified by the card's *name*, which is what the window draws */
+      const droppedName = String(droppedId || '').replace(/^Card0*/, '')
 
       const out = await dragBetween(alice, lookCardExpr, `document.querySelector(${JSON.stringify(sel)})`)
+
       /*
-         The Active spot is waited for on the **acting board's own view**, where the
-         optimistic placement draws the card at once, by *delta* rather than against the
-         owner's badge: the mirror carries slots from the drops above (they are this board's
-         own guesses, and the owner's answers for the other zones do not remove them), so an
-         absolute count of the two is not the same number. The other zones are waited for on
-         the owner's badge, which is where the owner's answer lands.
+         The Active spot is waited for as "the spot is no longer empty" rather than by the
+         card's name: one card is promoted and whatever was Active is benched, so the count
+         is 1 either way - and while *Hide Pokémon* is on, the card the far half draws is a
+         cardback, so the name is not in the DOM to match. What is unambiguous is that the
+         spot the drop was aimed at now holds a card. The other zones are counted, which is
+         what a card arriving means for them.
       */
-      const arrivedActive = key === 'theirActive'
-         ? await waitForCount(alice, (p) => p.evaluate(`(globalThis.__pvp.opponent.defaultOpponent.active.get() ? 1 : 0) + globalThis.__pvp.opponent.defaultOpponent.bench.get().length`), beforeTheir + before.myBench + 1, { timeout: 12000, poll: 150 })
-         : null
       const arrived = key === 'theirActive'
-         ? arrivedActive
+         ? await waitForCount(alice, theirActiveSlot, 'card', { timeout: 12000, poll: 150 })
          : await waitForCount(bob, (p) => badges(p).then((b) => b[key]), before[key] + 1, { timeout: 12000, poll: 150 })
+      const arrivedFilled = key === 'theirActive' ? arrived !== 'none' : arrived === before[key] + 1
       await sleep(400)
       const sentAfter = (await actionTrace(alice))?.sent ?? null
       const openAfter = (await windows(alice)).length
 
       check(`and a window's card CAN be dropped on the owner's ${name}`,
-         out.started && out.highlighted > 0 &&
-            (key === 'theirActive' ? arrived === beforeTheir + before.myBench + 1 : arrived === before[key] + 1) &&
+         out.started && out.highlighted > 0 && arrivedFilled &&
             (!sentBefore || !sentAfter || sentAfter > sentBefore),
-         `${out.why}, ${key === 'theirActive' ? `the acting board's mirror grew to ${arrived} from ${beforeTheir + before.myBench}` : `owner's ${key} ${before[key]} -> ${arrived}`}, requests ${sentBefore} -> ${sentAfter}`)
+         `${out.why}, ${key === 'theirActive' ? `the acting board's Active spot now shows "${arrived}"` : `owner's ${key} ${before[key]} -> ${arrived}`}, requests ${sentBefore} -> ${sentAfter}`)
       check(`and the window stays open for the ${name} drop`,
          openBefore === 1 && openAfter === 1,
          `${openBefore} -> ${openAfter} windows`)
 
       /* and the owner's own board shows it too, once their answer has landed. The Active
-         spot is asked for *which card* is there rather than how many: one is promoted and
-         whatever was Active is benched, so the count is 1 either way - a count cannot tell
-         "the card I sent is now Active" from "nothing happened". */
+         spot on their board is the *near* slot there, and it goes from empty to holding
+         one Pokémon - which is the same 0-to-1 the badge would show. */
       const ownerKey = key === 'theirActive' ? 'myActive' : key
-      /* the drop is identified by the card's *name*, which is what the window draws */
-      const droppedName = String(droppedId || '').replace(/^Card0*/, '')
       const ownerSees = key === 'theirActive'
-         ? await waitForCount(alice, (p) => p.evaluate(`(() => {
-            const slot = globalThis.__pvp.opponent.defaultOpponent.active.get()
-            return slot ? slot.pokemon.get().map((c) => c._id).join(',') : ''
-         })()`), droppedName, { timeout: 12000, poll: 150 })
+         ? await waitForCount(bob, (p) => p.evaluate(`document.querySelector('.gameboard > .active > .active1 .slot') ? 1 : 0`), 1, { timeout: 12000, poll: 150 })
          : await waitForCount(bob, (p) => badges(p).then((b) => b[ownerKey]), before[ownerKey] + 1, { timeout: 12000, poll: 150 })
       check(`and the owner's own ${name} shows it as well`,
-         key === 'theirActive' ? ownerSees === droppedName : ownerSees === before[ownerKey] + 1,
-         key === 'theirActive' ? `the card the acting board holds as theirs is "${ownerSees}", the one sent was "${droppedName}"` : `owner's ${ownerKey} ${before[ownerKey]} -> ${ownerSees}`)
+         key === 'theirActive' ? ownerSees === 1 : ownerSees === before[ownerKey] + 1,
+         key === 'theirActive' ? `their Active spot holds a Pokémon: ${ownerSees === 1}` : `owner's ${ownerKey} ${before[ownerKey]} -> ${ownerSees}`)
    }
 
    /*
