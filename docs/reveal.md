@@ -204,13 +204,57 @@ authoritative for one gesture is a second source of truth for the board. It woul
 need an event per zone, a rule for the card having gone by the time the owner looks,
 and a way to tell "my mirror is behind" from "my mirror is wrong".
 
-**The one local mutation is a removal.** The acting player takes the card out of the
-pile it is in so the action reads as done immediately rather than as a card that sits
-there for a round trip; the owner's events then put it where it went. It is guarded
-by `takeFrom`, because `pile.remove` is `splice(indexOf(card), 1)` and `indexOf` on a
-card that is not there is `-1` — which removes the *last* card instead
-([gotchas.md](gotchas.md), and the note over `slots().remove` in
-`src/lib/stores/custom/cards.js`).
+**The local changes are the ones the acting board can make truthfully, and they are
+made at once.** A round trip between two boards is about three and a half seconds
+measured — two poll cycles — and an entry that leaves the board sitting there for that
+long reads as a menu entry that did nothing. So:
+
+- the card leaves the pile it was in (`takeFrom`, guarded — see below)
+- it is put where the owner's own move will put it (`optimisticMove`), including the
+  **slot** a Pokemon in play becomes
+- and the owner's events then confirm all of it
+
+`takeFrom` is what guards the removal, because `pile.remove` is
+`splice(indexOf(card), 1)` and `indexOf` on a card that is not there is `-1` — which
+removes the *last* card instead ([gotchas.md](gotchas.md), and the note over
+`slots().remove` in `src/lib/stores/custom/cards.js`).
+
+The two entries that put a card **into play** need one more thing than the rest: the
+owner's event carries *its* slot id, which this board cannot know in advance, so the
+owner's own handler takes the mirror's stand-in out of play before it adds the real one
+(`dedupeSlot`). Without that the board drew two Pokemon holding one card. The same seam
+exists for the **Stadium**, which is a list rather than a slot, and is closed the same
+way in `opponent.js`.
+
+## A card of theirs in a shared zone stays theirs
+
+The Stadium and the Table are the two zones the halves meet in, and **each half keeps its
+own list** for them. So "whose card is it" is answered by which list a card lands in, and
+a card of the opponent's goes into *their* list — the mirror's own pile on this board —
+never into the player's. An entry that put it in the player's own Stadium would be the
+player playing somebody else's card as their own, and that is what a check on this is for.
+
+The two zones differ in one way worth knowing: the Stadium is **replaced** when it is
+played into at its limit, so the owner's own move discards what was in play there first —
+which is why the acting board's guess is confirmed rather than repeated, and why a card
+sent to a Stadium can legitimately end up in the owner's discard a moment later.
+
+## A spectator sees the window and cannot touch it
+
+A Reveal is a public act, so a spectator is shown **the same window the two players have**,
+with the same cards. It used to get nothing, on the reasoning that the window was a tool it
+could not use — which read the window as a verb when it is also the only place the cards
+are *reported*: a spectator watching a table where a reveal happens was shown nothing at
+all.
+
+It is read-only by **one rule rather than a test in every gesture**: `isActionable` refuses
+a spectator, and the click, the right-click menu and the drag all ask it first
+(`opponent/Card.svelte`). Its window carries **Close** and not the two endings, because
+both belong to the players: a shuffle is somebody else's deck changing, and a spectator
+has no batch of its own to end.
+
+A Look is *not* shown to a spectator, because a Look is not shared at all — it never
+travels (see below), so there is nothing on a spectator's board to show.
 
 If the owner never answers — they closed the tab between the request and its arrival
 — the card is missing from the acting board's view until the next full board state.
@@ -265,7 +309,6 @@ worth knowing that it exists before adding a fourth thing that names a half.
 | the opponent's deck | *Discard Top X* | `discardTopOfTheirDeck(x)` |
 | the player's own deck | *Discard Top Card* | the top card, to the discard |
 | the player's own deck | *Discard Top X* | that many, to the discard |
-
 **The Look entry is called *View Top X*, not *Look at Top X*.** It was renamed so that the
 two decks' menus read the same way: *View Top X* is what the top of a deck is called on this
 board, and the player's own deck already has one. The two do different things — the player's
@@ -279,13 +322,20 @@ the top of the deck straight to the discard. Nothing is revealed by either — a
 face-up pile, so the *owner* sees what they lost, which is what a discard is, and the player
 who asked sees the deck get shorter.
 
-Both discards are **requests**, and they are the one pair here that names no cards. The top
-of a deck this player cannot read is not a card this board can name, so what travels is a
-**count** and the owner reads its own deck (`discardTopOfTheirDeck` → `discardOwnTop`). It is
-also the one action in that module that moves nothing on the acting board: the owner's events
-and an optimistic move would be removals from the same pile, and the mirror is not
-authoritative for what is on top of it, so a stale mirror would leave the two boards
-permanently short of each other. The deck gets shorter when the owner's own event says so.
+Both discards are **requests**, and they are the pair that carries a *count* as well as ids:
+the top of a deck this player cannot read is not a card this board can name, so the request
+says "the top *n*" and the owner reads its own deck for what that is
+(`discardTopOfTheirDeck` → `discardOwnTop`).
+
+The request **also names the ids this board's mirror has at the top**, and the owner uses
+them when it can. That is what lets the move be made here at once, like every other entry:
+the mirror's top *n* go to the mirror's discard, and the owner is asked to move *those*
+cards, so its events confirm a move this board has already made rather than making a second
+and different one. Without the ids the owner would take *its* top *n*, which is the same
+list only while the mirror is in step — and it is not always in step. The owner falls back
+to the count when the ids it was named are not all in its deck, which is what a stale mirror
+looks like from the other side: the gesture was "the top *n*", so it is answered as that
+rather than refused.
 
 The player's own two entries are local moves, because the deck is theirs: `moveTop(discard)`
 and `moveTop(discard, x)` in `board/Deck.svelte`, which is the same function the *Lost Zone
@@ -362,16 +412,23 @@ answers to is its own right-click menu, which is the permission above.
 
 | Gesture | Line |
 | --- | --- |
-| the player reveals their own deck | `Revealed the top 3 cards of their deck` |
-| the player reveals the opponent's | `Revealed the top 3 cards of the opponent's deck` |
+| the player reveals their own deck | `Revealed [Pikachu, Bulbasaur, Charmander] from the top of their deck` |
+| the player reveals the opponent's | `Revealed [Pikachu, Bulbasaur] from the top of the opponent's deck` |
 | the player looks at the opponent's | `Looked at the top 3 cards of the opponent's deck` |
 | Close & Shuffle | `Shuffled Deck` |
 | an entry taken on a revealed card | the move's own line, written by the owner |
 
-A Look is written even though the opponent cannot see the cards, for the same reason
-*Viewed deck* is (`logDeckView` in [logger.js](../src/lib/stores/logger.js)): the
-line names nothing, and it is what the opponent is entitled to know happened. A
-Reveal is written because it is a public act.
+**A Reveal names the cards and a Look does not**, and that pair is a rule rather than a
+wording. A reveal is a *public act* — the cards were shown to the table — so the log is the
+record of what was shown, and a line saying only "the top 3 cards" leaves out the one thing
+the gesture was for. A Look is the opposite: the opponent cannot see those cards, so naming
+them would tell them what the look was for, which is exactly the information a face-down
+deck withholds. The names sit in brackets the way every other line that names cards does
+(`logMove` in [logger.js](../src/lib/stores/logger.js)).
+
+A Look is still written even though the opponent cannot see the cards, for the same reason
+*Viewed deck* is (`logDeckView`): the line names nothing, and it is what the opponent is
+entitled to know happened.
 
 The line about a card acted on is the **owner's own move**, so it reads exactly as
 it would if they had moved the card themselves — which is the point of the design

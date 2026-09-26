@@ -408,7 +408,22 @@ export function shareReveal (owner, pile, ids) {
    if (applyReveal({ owner, pileName: pile.name, cards: ids }, true)) revealOpen.set(true)
 
    share('cardsRevealed', { owner, pileName: pile.name, cards: ids })
-   publishLog(revealLine(owner, ids.length))
+   publishLog(revealLine(owner, namesOf(pile, ids)))
+}
+
+/*
+   What the ids a reveal named are *called*, for the log line - looked up in the deck the
+   reveal was taken from, which is the only board that holds them at this moment.
+
+   An id the deck no longer holds is skipped rather than printed as `undefined`: the
+   reveal has already happened by the time this runs, and the line is a record of what was
+   named, so a card that left in the same tick is better left out than named as a blank.
+*/
+function namesOf (pile, ids) {
+   const cards = pile.get()
+   return ids
+      .map((id) => cards.find((card) => card._id === id)?.name)
+      .filter(Boolean)
 }
 
 /*
@@ -418,13 +433,24 @@ export function shareReveal (owner, pile, ids) {
    top N cards of their deck" is the deck they revealed, and the possessive is
    read from that player's chair - which is how every other line in the log is
    written (see `logPickup`, `logPlacement`).
-*/
-function revealLine (owner, count) {
-   const cards = `${count} ${count === 1 ? 'card' : 'cards'}`
 
-   return owner === 'mine'
-      ? `Revealed the top ${cards} of their deck`
-      : `Revealed the top ${cards} of the opponent's deck`
+   **The cards are named**, and that is the difference between this line and a Look's:
+   a reveal is a public act, so the log is a record of what the table was shown, and a
+   line that says only "the top 3 cards" leaves the one thing the gesture was *for*
+   out of the record. The names sit in brackets the way every other line that names
+   cards does (`logMove`), and the article follows them, so a reveal of one reads
+   "Revealed [Pikachu] from the top of their deck" rather than "the top 1 card".
+
+   A Look is the opposite and stays unnamed: the opponent cannot see those cards, so
+   naming them would tell them what the look was for - which is exactly the
+   information a face-down deck withholds (see `lookLine`).
+*/
+function revealLine (owner, names) {
+   const whose = owner === 'mine'
+      ? 'their deck'
+      : "the opponent's deck"
+
+   return `Revealed [${names.join(', ')}] from the top of ${whose}`
 }
 
 export function closeReveal () {
@@ -552,11 +578,18 @@ export function lookCloseAndShuffle () {
    that has already been moved is no longer on show, so it stops answering, and
    `oppAction.js` refuses it a second time (see the note over `asPile`).
 
+   **A spectator is refused here**, and that is the whole of how a spectator's window is
+   read-only: it sees the same batch (see the note over `cardsRevealed`), and every way of
+   acting on those cards - the click, the menu, the drag, `oppAction.js` - asks this one
+   question first. One refusal at the source rather than a `$spectating` test in each of
+   them, which is the same rule `share()` applies from the other end.
+
    `opponent/Card.svelte` is what draws the answer: the cards that reply are the
    ones wearing the pulse.
 */
 export function isActionable (card) {
    if (!card) return false
+   if (spectating.get()) return false
 
    const inReveal = reveal.get() ? revealView.get().includes(card) : false
    const inLook = look.get() ? lookView.get().includes(card) : false
@@ -669,16 +702,19 @@ export function lookTop (asked) {
    Their Reveal, arriving.
 
    Applied through the same function the revealer used, so the two boards cannot
-   disagree about what was shown, and - for the two players - the window opens,
-   because that is what a Reveal is: the opponent is meant to see it.
+   disagree about what was shown - and the window opens **wherever it lands**, which
+   includes a spectator's board.
 
-   A **spectator gets no window**, and that is a rule of the feature rather than a
-   property of the event. Reveal and Look are the two players' own verbs: they are
-   offered only in a room (see `canReveal`), and a watcher who is shown every
-   reveal would be shown a tool it cannot use and was not meant to have. The batch
-   is still applied, because that is what the other two boards are using it for -
-   the permission to act on those cards - and it costs a watcher nothing to hold a
-   list it will not act on. The window is the part that is withheld.
+   A spectator used to be given no window, on the reasoning that it was a tool it
+   could not use and was not meant to have. That read the window as a verb when it is
+   also the only place the cards are *reported*: a spectator watching a table where a
+   reveal happens is looking at a game whose whole point is that the cards were shown,
+   and it was shown nothing at all. So it gets the window, and it is read-only by the
+   one rule that can make it so - `isActionable` refuses a spectator, and every way of
+   acting on a window's cards asks that first. Its window also carries a **Close**
+   rather than the two endings, because the endings belong to the players: a spectator
+   cannot shuffle somebody else's deck, and it has no batch to shuffle (see
+   `Reveal.svelte`).
 */
 react('cardsRevealed', (data) => {
    /* one function, one word: the sender's `owner` is what the batch keeps (see `pileFor`) */
@@ -690,7 +726,7 @@ react('cardsRevealed', (data) => {
       return
    }
 
-   if (!spectating.get()) revealOpen.set(true)
+   revealOpen.set(true)
 })
 
 /*

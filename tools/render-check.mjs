@@ -86,12 +86,13 @@ writeFileSync(entry, `
    import { slot } from '${p('lib/stores/custom/cards.js')}'
    import { reveal, revealView, look, lookView, isActionable, canReveal, topCount, revealTop, lookTop, resetRevealState } from '${p('lib/stores/reveal.js')}'
    import { OPP_ACTIONS, opponentCardAction, respondToOpponentCardAction } from '${p('lib/stores/oppAction.js')}'
+   import { spectating } from '${p('lib/stores/connection.js')}'
    import InspectionView from '${join(root, 'tools', 'pile-dialog.svelte').split(sep).join('/')}'
    import RevealDialog from '${p('lib/play/dialogs/Reveal.svelte')}'
    import LookDialog from '${p('lib/play/dialogs/Look.svelte')}'
    /* what a decklist import does: the list of cards, then the board built from it */
    const setDeck = (cards_) => { cards.set(cards_); resetBoard() }
-   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, isActionable, look, LookDialog, lookTop, lookView, lz, moveSelection, OPP_ACTIONS, opponentCardAction, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, RevealDialog, revealTop, revealView, selectCard, setDeck, shuffleAfterLeavingDeck, slot, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
+   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, isActionable, look, LookDialog, lookTop, lookView, lz, moveSelection, OPP_ACTIONS, opponentCardAction, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, RevealDialog, revealTop, revealView, selectCard, setDeck, shuffleAfterLeavingDeck, slot, spectating, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
 `)
 
 const svelte = {
@@ -598,7 +599,20 @@ mod.revealView.set(viewOf())
 
 check('a revealed card is actionable', mod.isActionable(viewOf()[0]))
 check('and one that was not revealed is not', !mod.isActionable(farDeck[0]))
+
 /*
+   The reveal's log line, read off the source rather than run: `shareReveal` needs a room
+   to publish into, and what matters here is the *shape* of the line - it names the cards,
+   and a Look's does not. That pair is a rule rather than a wording: a reveal is a public
+   act, so the log is the record of what the table was shown, while naming a Look's cards
+   would tell the opponent what the look was for (see `revealLine` and `lookLine`).
+*/
+const revealSource = readFileSync(join(src, 'lib', 'stores', 'reveal.js'), 'utf8')
+check('and a reveal names the cards it showed in the log',
+   /Revealed \[\$\{names\.join/.test(revealSource) && /namesOf\(pile, ids\)/.test(revealSource),
+   'the log line interpolates the card names')
+check('while a Look still names nothing',
+   /Looked at the top \$\{cards\} of the opponent's deck/.test(revealSource))/*
    The card is in the far half's deck *and* in the batch, which is what makes the
    batch an id-only event possible. So the card's own pile is the far half's deck,
    and the batch is a different object from it: that difference is the whole of how a
@@ -630,6 +644,35 @@ check('and it says both players can see them',
    Boolean(revealHtml) && revealHtml.includes('both players can see these'))
 check('and it offers Close and Close &amp; Shuffle',
    Boolean(revealHtml) && revealHtml.includes('Close') && revealHtml.includes('Close &amp; Shuffle'))
+
+/*
+   **A spectator sees the window and cannot touch it.**
+
+   The window is not only a verb - it is the one place the cards a reveal put on the table
+   are *reported*, and a spectator given nothing was watching a game whose whole point is
+   that the cards were shown. So the window is rendered for one, and it is read-only by one
+   rule rather than by a `$spectating` test in every gesture: `isActionable` refuses a
+   spectator, and the click, the menu and the drag all ask it first.
+
+   Its ending is Close rather than the two the players have, because both of those belong
+   to the players: a shuffle is somebody else's deck changing, and a spectator has no batch
+   of its own to end.
+*/
+mod.spectating.set(true)
+const spectatorHtml = renders('a spectator gets the reveal window too', mod.RevealDialog, {
+   props: { renderOpen: true },
+   context: new Map([ [ 'boardActions', { openDetails () {}, openCardMenu () {}, openOppCardActionMenu () {} } ] ])
+})
+check('and a spectator is shown the same cards',
+   Boolean(spectatorHtml) && (spectatorHtml.match(/class="card"/g) || []).length === mod.revealView.get().length,
+   `${(spectatorHtml?.match(/class="card"/g) || []).length} cards rendered for the spectator`)
+check('and its only way out is Close',
+   Boolean(spectatorHtml) && spectatorHtml.includes('Close') && !spectatorHtml.includes('Close &amp; Shuffle'))
+check('and not one card of it answers a spectator',
+   !mod.isActionable(viewOf()[0]),
+   'isActionable is the single refusal every gesture asks')
+mod.spectating.set(false)
+check('and a player is not refused by it', mod.isActionable(viewOf()[0]))
 check('and it shows the cards of the batch',
    Boolean(revealHtml) && (revealHtml.match(/class="card"/g) || []).length === mod.revealView.get().length,
    `${(revealHtml?.match(/class="card"/g) || []).length} cards, ${mod.revealView.get().length} on show`)
@@ -654,8 +697,9 @@ const lookHtml = renders('the look window renders, with the cards on show', mod.
 })
 check('and it says only this player can see them',
    Boolean(lookHtml) && lookHtml.includes('only you can see these'))
-check('and it offers Close and Close &amp; Shuffle',
-   Boolean(lookHtml) && lookHtml.includes('Close') && lookHtml.includes('Close &amp; Shuffle'))
+check('and its only ending is Close &amp; Shuffle, with no Close beside it',
+   Boolean(lookHtml) && lookHtml.includes('Close &amp; Shuffle') && !/>Close</.test(lookHtml),
+   'a Look is one ending, and a Close beside it would be a second')
 
 /*
    And the view is the deck's, not a copy of it, which is the difference between a
@@ -690,6 +734,32 @@ check('and stops answering clicks with it', !mod.isActionable(shown))
 mod.resetRevealState()
 check('and nothing is actionable once the board is cleared',
    !mod.isActionable(shown) && !mod.isActionable(farDeck[0]))
+
+/*
+   **A card of theirs that goes into a shared zone stays theirs.**
+
+   The Stadium and the Table are the two zones the halves meet in, and each *half* keeps
+   its own list for them - so "whose card is it" is answered by which list it lands in.
+   Two rules hold that together, and both are read here rather than clicked because each is
+   one line in a store:
+
+      - the optimistic move puts it in the **far half's** list (`oppSTADIUM`, the mirror's
+        own pile), never in the player's
+      - the mirror's `stadiumPlayed` does not add the card a second time when the acting
+        board already put it there, which is the seam `dedupeSlot` closes for the Bench
+
+   Without the first, a player would be playing somebody else's card as their own; without
+   the second, the shared cell draws the same card twice.
+*/
+const oppActionForShared = readFileSync(join(src, 'lib', 'stores', 'oppAction.js'), 'utf8')
+const opponentForShared = readFileSync(join(src, 'lib', 'stores', 'opponent.js'), 'utf8')
+check('and a card of theirs sent to a shared zone goes into THEIR half\'s list',
+   /case OPP_ACTIONS\.STADIUM:[\s\S]{0,200}?oppPile\(/.test(oppActionForShared) ||
+      /case OPP_ACTIONS\.TABLE:[\s\S]{0,400}?oppPile\(/.test(oppActionForShared),
+   'the optimistic move targets the mirror\'s own pile, not this board\'s')
+check('and the owner\'s own event does not add it to the shared cell a second time',
+   /if \(!stadium\.get\(\)\.some\(\(c\) => c\._id === card\._id\)\) stadium\.push\(card\)/.test(opponentForShared),
+   'the mirror dedupes the card the acting board already placed')
 
 /*
    And the wiring, which a render cannot click: each deck's own menu offers the
