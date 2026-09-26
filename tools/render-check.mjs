@@ -84,15 +84,16 @@ writeFileSync(entry, `
    import Page from '${p('routes/+page.svelte')}'
    import { cards, cardSelection, deck, discard, bench, draw, hand, lz, moveSelection, resetBoard, resetSelection, attachSelection, selectCard, selectPile, shuffleAfterLeavingDeck, stadium, table, toBench, cardPile } from '${p('lib/stores/player.js')}'
    import { slot } from '${p('lib/stores/custom/cards.js')}'
-   import { reveal, revealView, look, lookView, isActionable, canReveal, topCount, revealTop, lookTop, resetRevealState } from '${p('lib/stores/reveal.js')}'
+   import { reveal, revealView, look, lookView, handReveal, handRevealView, isActionable, canReveal, topCount, revealTop, lookTop, resetRevealState } from '${p('lib/stores/reveal.js')}'
    import { OPP_ACTIONS, opponentCardAction, respondToOpponentCardAction } from '${p('lib/stores/oppAction.js')}'
    import { spectating } from '${p('lib/stores/connection.js')}'
    import InspectionView from '${join(root, 'tools', 'pile-dialog.svelte').split(sep).join('/')}'
    import RevealDialog from '${p('lib/play/dialogs/Reveal.svelte')}'
    import LookDialog from '${p('lib/play/dialogs/Look.svelte')}'
+   import HandRevealDialog from '${p('lib/play/dialogs/HandReveal.svelte')}'
    /* what a decklist import does: the list of cards, then the board built from it */
    const setDeck = (cards_) => { cards.set(cards_); resetBoard() }
-   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, isActionable, look, LookDialog, lookTop, lookView, lz, moveSelection, OPP_ACTIONS, opponentCardAction, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, RevealDialog, revealTop, revealView, selectCard, setDeck, shuffleAfterLeavingDeck, slot, spectating, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
+   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, handReveal, handRevealView, HandRevealDialog, isActionable, look, LookDialog, lookTop, lookView, lz, moveSelection, OPP_ACTIONS, opponentCardAction, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, RevealDialog, revealTop, revealView, selectCard, setDeck, shuffleAfterLeavingDeck, slot, spectating, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
 `)
 
 const svelte = {
@@ -691,6 +692,69 @@ check('and it says only this player can see them',
 check('and its only ending is Close &amp; Shuffle, with no Close beside it',
    Boolean(lookHtml) && lookHtml.includes('Close &amp; Shuffle') && !/>Close</.test(lookHtml),
    'a Look is one ending, and a Close beside it would be a second')
+
+/*
+   And the Reveal Hand window, which is the same permission over a different pile: the
+   whole of one player's hand, shown to the player who asked for it, with **Close and
+   nothing else** - a hand is not read in an order, so there is no order to lose and
+   nothing to shuffle.
+
+   The pile is the part that had to change rather than be copied: a Look resolves its batch
+   against a *deck* and a Reveal Hand against a *hand*, so `theirPileFor` answers both and
+   the batch's own `pileName` is what picks between them. That is asserted here by reading
+   the window rather than the store: a window that resolved a hand batch against the far
+   deck would draw nothing at all and still render perfectly.
+
+   The far hand is filled the way the far deck above is, and with the fields a card needs to
+   be *drawn* - `cardImage` reads its set and number, and a card without them is not a card
+   this renderer can draw. The one card already in there (`farCard`, from the two-half
+   selection check) is left alone: it is a card of that half's hand, which is exactly what
+   this window is about.
+*/
+for (let i = 0; i < 4; i++) {
+   mod.defaultOpponent.hand.push({ _id: 9500 + i, name: `Their Hand Card ${i + 1}`, set: 'sv1', number: String(i + 1), ptcgApiCode: 'sv1' })
+}
+const theirHand = get(mod.defaultOpponent.hand)
+check('and the far half has a hand to reveal', theirHand.length > 1, `${theirHand.length} cards`)
+
+const handIds = theirHand.slice(-3).map((card) => card._id)
+const handView = () => handIds.map((id) => theirHand.find((card) => card._id === id)).filter(Boolean)
+mod.handReveal.set({ looker: null, remote: false, pileName: 'hand', pile: { name: 'hand', get: handView, subscribe: (fn) => { fn(handView()); return () => {} } }, cards: handIds })
+mod.handRevealView.set(handView())
+
+check('a card of the revealed hand is actionable', mod.isActionable(handView()[0]))
+
+const handHtml = renders('the reveal hand window renders, with the cards on show', mod.HandRevealDialog, {
+   props: { renderOpen: true },
+   context: new Map([ [ 'boardActions', { openDetails () {}, openOppCardActionMenu () {} } ] ])
+})
+check('and it says only this player can see the hand',
+   Boolean(handHtml) && handHtml.includes('only you can see this hand'))
+check('and it draws every card of the batch',
+   Boolean(handHtml) && (handHtml.match(/class="card"/g) || []).length === mod.handRevealView.get().length,
+   `${(handHtml?.match(/class="card"/g) || []).length} cards, ${mod.handRevealView.get().length} in the batch`)
+check('and its one ending is Close, with no shuffle beside it',
+   Boolean(handHtml) && /<button[^>]*>Close<\/button>/.test(handHtml) && !handHtml.includes('Shuffle'),
+   'a hand has no order to lose, so there is no ending to offer beside Close')
+
+/*
+   The card selection is the other windows', because it is not written here at all: the
+   window hands each card the batch in a pile's shape, which is what makes a click select
+   it (`selectCard`), Ctrl+A take it (`selectPile`) and the card menu recognize it. So the
+   assertion is that the same gesture works on this batch - the selection is the board's
+   own, and the batch is a pile it accepts.
+*/
+mod.resetSelection()
+mod.selectCard(handView()[0], mod.handReveal.get().pile, false)
+mod.selectCard(handView()[1], mod.handReveal.get().pile, true)
+check('and its cards are picked out the way the other windows\' are',
+   get(mod.cardSelection).length === 2, `${get(mod.cardSelection).length} picked out`)
+mod.selectPile(mod.handReveal.get().pile)
+check('and Ctrl+A takes the whole hand batch',
+   get(mod.cardSelection).length === handIds.length, `${get(mod.cardSelection).length} of ${handIds.length}`)
+mod.resetSelection()
+mod.handReveal.set(null)
+mod.handRevealView.set([])
 
 /*
    And the view is the deck's, not a copy of it, which is the difference between a

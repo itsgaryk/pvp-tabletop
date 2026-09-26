@@ -7,6 +7,7 @@
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import { isTyping } from '$lib/util/typing.js'
    import { defaultOpponent, spectatorOpponents, spectatorFlipped, handRevealed as oppHandRevealed } from '$lib/stores/opponent.js'
+   import { farHandRevealed } from '$lib/stores/reveal.js'
    import { solo, onOpponentSelection, onOpponentHalf, soloSelectedTo, OPPONENT } from '$lib/stores/solo.js'
 import { isWindowPile } from '$lib/stores/reveal.js'
    import { playerName, zoneBorders } from '$lib/stores/settings.js'
@@ -46,6 +47,7 @@ import { isWindowPile } from '$lib/stores/reveal.js'
    import SlotMenu from './dialogs/SlotMenu.svelte'
    import Reveal from './dialogs/Reveal.svelte'
    import Look from './dialogs/Look.svelte'
+   import HandReveal from './dialogs/HandReveal.svelte'
 
    import OppInspection from './dialogs/OppInspection.svelte'
    import OppSlotDetails from './dialogs/OppSlotDetails.svelte'
@@ -515,13 +517,15 @@ import { isWindowPile } from '$lib/stores/reveal.js'
       <CardDetails bind:this={detailsModal} />
 
       <!--
-         Reveal and Look: the two windows cards out of a deck are shown in. Both
-         are opened by their *store* rather than by a call - a Reveal arrives as an
-         event on the other player's board and a Look is taken from the deck's own
-         menu - so neither takes a `bind:this` (see the note in Reveal.svelte).
+         Reveal, Look and Reveal Hand: the three windows cards out of somebody's pile are
+         shown in. All are opened by their *store* rather than by a call - a Reveal arrives
+         as an event on the other player's board, and a Look and a Reveal Hand are taken
+         from a pile's own menu - so none of them takes a `bind:this` (see the note in
+         Reveal.svelte).
       -->
       <Reveal />
       <Look />
+      <HandReveal />
 
       <OppInspection bind:this={oppInspectionModal} />
       <OppSlotDetails bind:this={oppSlotModal} />
@@ -585,7 +589,8 @@ import { isWindowPile } from '$lib/stores/reveal.js'
             The hand's pile menu is portalled out of the rotated subtree (see
             ContextMenu.svelte), so turning the half does not turn the menu with it.
          -->
-         <div class="hand2" class:flip={topFlipped} class:upright={topUpright}>
+         <div class="hand2" class:flip={topFlipped} class:upright={topUpright}
+            class:revealed={!$spectating && !soloSwapped && $farHandRevealed}>
             {#if soloSwapped}<Hand />{:else}<OppHand store={topStore} />{/if}
          </div>
 

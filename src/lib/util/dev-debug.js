@@ -71,8 +71,10 @@ export async function devDebug () {
          return {
             reveal: batch(reveal.reveal.get()),
             look: batch(reveal.look.get()),
+            handReveal: batch(reveal.handReveal.get()),
             revealOpen: reveal.revealOpen.get(),
             lookOpen: reveal.lookOpen.get(),
+            handRevealOpen: reveal.handRevealOpen.get(),
             ownerHere: reveal.revealOwnerHere(),
             /* which batch is still following its deck - see `watched` in reveal.js */
             watched: reveal.watched(),

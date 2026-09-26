@@ -62,6 +62,13 @@ const EVENTS = new Set([
    */
    'cardsRevealed',
    'cardsLooked',
+   /*
+      A Reveal Hand is the third of that family: it carries the ids of cards out of a
+      player's *hand*, and it goes to the player who asked for it and to the room's
+      watchers - never to the hand's owner, who is told by the log line and by their own
+      hand turning face up (`handToggle`). See `revealHand` in the client's reveal.js.
+   */
+   'handRevealed',
    'backToDeck',
    'oppCardAction'
 ])
@@ -70,11 +77,12 @@ const EVENTS = new Set([
    Which members an event is for, or null for the whole room.
 
    Every event here is the room's - both players and every watcher are told what
-   happened - with one exception, and it is the reason this exists at all. A **Look**
-   is private to the player who took it: `cardsLooked` carries the ids of cards out of
-   a face-down deck, and handing those ids to that deck's *owner* would tell them what
-   was looked at, which is the whole of what a face-down deck withholds (see
-   `lookLine` in the client's reveal.js).
+   happened - with two exceptions, and they are the same rule twice. A **Look** is
+   private to the player who took it: `cardsLooked` carries the ids of cards out of a
+   face-down deck, and handing those ids to that deck's *owner* would tell them what was
+   looked at, which is the whole of what a face-down deck withholds (see `lookLine` in
+   the client's reveal.js). A **Reveal Hand** is the same with a hand: `handRevealed`
+   carries the ids of cards out of a hand, which is the pile its owner is not shown.
 
    **`chatMessage` is in the list for the same reason and one line further on**: a Look
    writes two lines, and the one that *names* the cards goes to the same audience as the
@@ -92,7 +100,7 @@ const EVENTS = new Set([
    looker's member id is the sender's own, and every spectator in the room is
    found from membership here rather than trusted to the client.
 */
-const ADDRESSED = new Set([ 'cardsLooked', 'chatMessage' ])
+const ADDRESSED = new Set([ 'cardsLooked', 'handRevealed', 'chatMessage' ])
 
 function audienceOf (name, data, room, memberId) {
    if (!ADDRESSED.has(name)) return null
