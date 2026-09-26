@@ -8,6 +8,7 @@
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { solo, onOpponentHalf, onOpponentSlot } from '$lib/stores/solo.js'
+   import { isWindowPile } from '$lib/stores/reveal.js'
 
    /*
       A card of the other half's never lands here. The two halves are separate
@@ -25,8 +26,13 @@
       half's" - so a far Pokemon in play was let through here whenever the drop
       landed on the zone rather than on the Pokemon in it, and promoting it put
       the far half's Pokemon - and everything under it - in this player's spot.
+
+      A card out of a Reveal or a Look is refused by `isWindowPile` for the same
+      reason one of the far half's is: it belongs to the other player, and the
+      other player's Active spot is the one that takes it (`opponent/Active.svelte`,
+      which is where the request is made).
    */
-   const allowDrop = () => $source && $source !== stadium && $draggedCard !== $active
+   const allowDrop = () => !isWindowPile($source) && $source && $source !== stadium && $draggedCard !== $active
       && !($solo && (onOpponentHalf($source) || onOpponentSlot($draggedCard)))
       && ($slotSelection.length <= 1 && $cardSelection.length <= 1)
 

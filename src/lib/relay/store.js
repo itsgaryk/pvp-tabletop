@@ -777,12 +777,17 @@ export function timerSnapshot (room, now = Date.now()) {
    Callers that have not read the room (the relay's own idle prompt) leave it
    out and pay for the read.
 
+   `to` is the audience a poll filters on, or null for the whole room: an event
+   that is for some members and not others (see `audienceOf` in the events
+   route). It is a field of the event rather than of its data, so the payload
+   that travels is the game's own state and the routing is the relay's business.
+
    The event log is also the record of when the room last saw activity, but not
    the thing we can ask: reading the newest event costs the same LRANGE that
    fetch already does, while meta.lastActionAt is a field of a key this function
    must touch anyway.
 */
-export async function appendEvent (roomId, name, data, { from = null, meta = null } = {}) {
+export async function appendEvent (roomId, name, data, { from = null, meta = null, to = null } = {}) {
    const store = getStore()
    const id = normalizeRoomId(roomId)
    const now = Date.now()
@@ -792,6 +797,7 @@ export async function appendEvent (roomId, name, data, { from = null, meta = nul
 
    const seq = await store.nextSeq(id)
    const event = { seq, ts: now, name, from, data: data ?? {} }
+   if (to) event.to = to
    await store.pushEvent(id, event)
 
    await saveMeta(id, room, { lastActionAt: now, ...timerFields(name, event.data, now) })

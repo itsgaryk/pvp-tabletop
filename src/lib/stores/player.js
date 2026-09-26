@@ -8,7 +8,7 @@ import { fixOld } from './oldCards.js'
 import { s } from '$lib/util/strings.js'
 import { statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
 import { normalizeMarkerUsed } from '$lib/util/markers.js'
-import { registerOwnDeck } from './reveal.js'
+import { registerOwnDeck, registerPiles } from './reveal.js'
 import { logStatus, logStatusCleared } from './logger.js'
 import {
    logMove, logSlotMove, logPickup, logPlacement,
@@ -963,5 +963,10 @@ react('abilityUpdated', ({ slotId, used }) => {
    point the import graph back at itself (see the note in connection.js). So the
    deck is handed over instead - the same direction `onStadiumPlay` uses for the
    answer a board gives another board.
+
+   `piles` goes with it for the same reason and answers a different question: a
+   window's card may not be dropped on this player's own side, and "is this pile one
+   of mine" is this board's own answer (see `isWindowPile`).
 */
 registerOwnDeck(deck)
+registerPiles(piles)
