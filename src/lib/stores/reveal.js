@@ -437,19 +437,24 @@ function asPile (batch) {
    the receiving client knows it is not the sender.
 
    The record is the **ids**, not the objects, because a board and its mirror do not
-   hold the same objects (`viewOf`). What is kept is every id the event named that the
-   deck still holds: a card that leaves the deck afterwards drops out of the *view* of
-   the batch rather than out of the record. A batch with nothing in it at all - every
-   card named has already gone - leaves no batch, and the caller keeps its window shut.
+   hold the same objects (`viewOf`). What is kept is every id the event named: a card
+   that leaves the deck afterwards drops out of the *view* of the batch rather than
+   out of the record.
+
+   **A batch is dropped when there is no deck to read it against, and not when the
+   deck is momentarily empty** - `found` being empty is the ordinary state of a board
+   whose full state has not arrived yet, and giving up on it is the failure the note
+   below is about. Measured with a spectator in the room: the mirror read 0 for a
+   moment, the reveal landed in that moment, and with `!found.length` in this guard the
+   window never opened on that board at all.
 */
 function applyReveal ({ owner, pileName, cards }, senderIsMe = false) {
    trace.push({ owner, senderIsMe, count: cards?.length })
    if (trace.length > 8) trace.shift()
 
    const source = pileFor(owner, pileName)
-   const found = gather(source, cards)
 
-   if (!source || !found.length) {
+   if (!source || !Array.isArray(cards) || !cards.length) {
       clearBatch(reveal, revealView)
       return false
    }

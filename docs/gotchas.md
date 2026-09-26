@@ -1212,6 +1212,36 @@ acted on leaves the window and stops answering in the same moment, and a card mo
 the deck rejoins it. The tell to look for in a feature like this is a window whose contents are
 a snapshot: **ask what happens to a card in it after it moves.**
 
+**"The deck is empty right now" is not "there is no deck", and a guard that cannot tell them
+apart drops the window.** The live-view batch above has a healing poll, and the guard that
+decides whether to keep the batch at all used to be:
+
+```js
+const found = gather(source, cards)
+if (!source || !found.length) { clearBatch(reveal, revealView); return false }
+```
+
+`found.length === 0` is the *ordinary* state of a board whose full state has not arrived yet —
+the same transient state the poll exists to heal — so the guard threw away exactly the batch the
+poll was there to fill in, and `!source` never got the chance to mean anything. Measured with a
+third client in the room: both players' mirrors read 0 for about a second while the room
+re-announced itself, a reveal landed inside that second, the window never opened on that board,
+and every later assertion in the run cascaded off it. The guard is `!source || !cards.length`:
+**no deck to read it against** is the only thing that makes a batch meaningless, and a deck with
+nothing in it yet is what the poll is for. The tell is a guard that tests something the healing
+path is supposed to change — **ask whether the condition can be true again later and whether
+anything later fixes it.**
+
+**A watcher joining a room clears both players' mirrors for a moment, and it comes back.**
+Nobody's board is wrong afterwards — measured: `mirror 47 → 0` one second after a spectator
+joins, `47` again a few seconds later, on this commit and on the one before it, and a later
+shared event still reaches the mirror — but a check that reads a mirror at that instant reads
+`0` and reports the feature as broken. It is a race in the room's own re-announcement (the
+spectator's arrival changes the seats, and the board state that follows is a new one), and it is
+why `tools/reveal-check.mjs` **waits for the mirror it is about** rather than sleeping a fixed
+time and reading it. The tell is a numeric reading taken once at a moment the test chose — **ask
+whether the value has a settling time, and whether waiting is the honest assertion.**
+
 **The two boards name a half the same way, which means the word has to be flipped exactly once
 and nobody notices when it is not.** A reveal is written by the player who made it, so its
 event says `mine` for *their* deck and `theirs` for the other one. Everything on the receiving

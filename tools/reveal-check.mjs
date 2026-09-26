@@ -130,6 +130,21 @@ function windows (page) {
 }
 
 /*
+   What the last opponent-card request this board made and answered was, or null when
+   there is no development handle to read it from.
+
+   `globalThis.__pvp` is behind `import.meta.env.DEV` on purpose - a debug handle onto
+   the stores is the last thing a production bundle should carry - so it exists on a
+   dev server and not on a deployment. Nothing about the *feature* needs it: the same
+   section runs against a live URL, and the card moving is what says the request
+   happened. It is asked for where it sharpens a refusal, which leaves no other trace
+   at all (see the note over `trace` in oppAction.js).
+*/
+function actionTrace (page) {
+   return page.evaluate(`(() => (globalThis.__pvp ? JSON.parse(JSON.stringify(globalThis.__pvp.lastAction())) : null))()`)
+}
+
+/*
    The pile counts of one board, read off the *badges* rather than off the card
    images: a pile draws one cardback however many cards it holds, so `.deck img.card`
    is 1 for a deck of 49. The badged piles are the ones with a number in the corner
@@ -246,7 +261,7 @@ async function dragBetween (page, fromExpr, toExpr) {
    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: to.x, y: to.y, button: 'left' })
    await sleep(80)
 
-   const carrying = await page.evaluate(`globalThis.__pvp.drag()`)
+   const carrying = await page.evaluate(`(() => (globalThis.__pvp ? globalThis.__pvp.drag() : { card: null }))()`)
    const highlighted = await page.evaluate(`document.querySelectorAll('.dragover').length`)
 
    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: to.x, y: to.y, button: 'left', clickCount: 1 })
@@ -351,11 +366,30 @@ try {
    }
 
    await alice.waitForText('Leave Room')
-   await sleep(1200)
 
-   /* both boards have a deck and a hand before anything is revealed */
-   const start = await badges(alice)
-   const startBob = await badges(bob)
+   /*
+      Wait for each board's **mirror of the other** rather than sleeping a fixed time, and
+      that is not padding: a client's mirror of the opponent arrives with the full board
+      state, and a third client joining the room can catch it mid-flight - the mirror reads
+      empty for a moment and then fills again. Measured here: with a watcher joining, both
+      players' mirrors read 0 one second after the join and 47 a few seconds later, on this
+      commit and on the one before it, so it is a race in the room rather than anything
+      about a window. A fixed sleep turns it into "no deck on either board" and then into a
+      cascade of failures that all point at the feature; waiting for the thing the check is
+      actually about does not.
+   */
+   const waitForMirrors = async (page, timeout = 20000) => {
+      const deadline = Date.now() + timeout
+      for (;;) {
+         const b = await badges(page)
+         if (b.myDeck > 3 && b.theirDeck > 3) return b
+         if (Date.now() > deadline) return b
+         await sleep(400)
+      }
+   }
+
+   const start = await waitForMirrors(alice)
+   const startBob = await waitForMirrors(bob)
    check('both boards have a deck', start.myDeck > 3 && start.theirDeck > 3,
       `alice deck ${start.myDeck}, bob's deck as she sees it ${start.theirDeck}`)
    check('and the two boards agree about both decks',
@@ -801,15 +835,18 @@ try {
       `document.querySelector('.gameboard > .discard2 .pile') || document.querySelector('.gameboard > .discard2')`)
 
    /*
-      What is asserted is the *gesture*: the drag starts, the zone highlights for it, and
-      the request that follows is a discard out of the deck. The count is the selection -
-      Ctrl+A picked the whole batch up above, and a drag carries the selection exactly as a
-      menu entry does - so it is not a number to assert here.
+      What is asserted is the *gesture*, and the tell is the zone highlighting: the drag
+      started, the far half's discard lit up for it, and the card arrived in the owner's
+      discard. The request itself is read off the store when there is a development handle
+      to read it from - this section runs against a deployment too, where `globalThis.__pvp`
+      does not exist, and the moving card is what says the same thing without it.
    */
-   const dragAction = await alice.evaluate(`globalThis.__pvp.lastAction().sentTo`)
+   const dragAction = await actionTrace(alice)
+   const landedTheir = await waitForCount(bob, (p) => badges(p).then((b) => b.myDiscard), beforeDrag.myDiscard + 1)
    check('a card out of the look window can be dragged onto the other player\'s board',
-      dragged.started && dragged.highlighted > 0 && dragAction?.action === 'discard' && dragAction?.from === 'deck',
-      `${dragged.why}${dragged.card ? ` (carrying ${dragged.card})` : ''}, request ${JSON.stringify(dragAction)}`)
+      dragged.started && dragged.highlighted > 0 && landedTheir === beforeDrag.myDiscard + 1 &&
+         (!dragAction || (dragAction.sentTo?.action === 'discard' && dragAction.sentTo?.from === 'deck')),
+      `${dragged.why}${dragged.card ? ` (carrying ${dragged.card})` : ''}, bob's discard ${beforeDrag.myDiscard} -> ${landedTheir}, request ${JSON.stringify(dragAction?.sentTo ?? 'not readable here')}`)
 
    /*
       **A window's card cannot be put on this player's own side, the table or the
@@ -850,14 +887,18 @@ try {
 
    for (const [ name, sel ] of ownZones) {
       await lookAtThree()
-      const before = await alice.evaluate(`JSON.stringify(globalThis.__pvp.lastAction())`)
+      const before = await actionTrace(alice)
+      const beforeBadges = await badges(alice)
       const out = await dragBetween(alice, lookCardExpr, `document.querySelector(${JSON.stringify(sel)})`)
       await sleep(600)
-      const after = await alice.evaluate(`JSON.stringify(globalThis.__pvp.lastAction())`)
+      const after = await actionTrace(alice)
+      const afterBadges = await badges(alice)
 
       check(`and a window's card cannot be dropped on ${name}`,
-         out.started && out.highlighted === 0 && before === after,
-         `${out.why}, ${out.highlighted} zone(s) highlighted, request ${before === after ? 'unchanged' : 'SENT: ' + after}`)
+         out.started && out.highlighted === 0 &&
+            JSON.stringify(afterBadges) === JSON.stringify(beforeBadges) &&
+            (!before || !after || JSON.stringify(before.sentTo) === JSON.stringify(after.sentTo)),
+         `${out.why}, ${out.highlighted} zone(s) highlighted, own board ${JSON.stringify(beforeBadges) === JSON.stringify(afterBadges) ? 'unchanged' : `CHANGED ${JSON.stringify(beforeBadges)} -> ${JSON.stringify(afterBadges)}`}`)
    }
 
    /*
@@ -908,13 +949,19 @@ try {
       module that is true - see the note over `discardTopOfTheirDeck`. So the *owner* is
       what these assertions are about, and the mirror is only asked to converge: it gets
       shorter when the owner's own event arrives, which is what a mirror is for.
+
+      Every count here is read off the two boards' own **badges** rather than off the
+      stores, so the section runs against a deployment as well as a dev server: each board
+      labels the same five piles with its own `count`, so `badges(bob).myDiscard` is Bob's
+      discard on Bob's screen and `badges(alice).theirDiscard` is the same pile as Alice's
+      mirror of it.
    */
    const discardOnce = async (entry, asked = null) => {
       const before = {
-         mirror: await alice.evaluate(`globalThis.__pvp.opponent.defaultOpponent.deck.get().length`),
-         ownerDeck: await bob.evaluate(`globalThis.__pvp.player.deck.get().length`),
-         ownerDiscard: await bob.evaluate(`globalThis.__pvp.player.discard.get().length`),
-         actingDiscard: await alice.evaluate(`globalThis.__pvp.player.discard.get().length`)
+         mirror: (await badges(alice)).theirDeck,
+         ownerDeck: (await badges(bob)).myDeck,
+         ownerDiscard: (await badges(bob)).myDiscard,
+         actingDiscard: (await badges(alice)).myDiscard
       }
 
       await alice.rightClick(THEIR_DECK)
@@ -925,11 +972,11 @@ try {
       const moved = asked ?? 1
 
       /* the owner answers with its own deck, so this is waited for rather than slept past */
-      await waitForCount(bob, (p) => p.evaluate(`globalThis.__pvp.player.deck.get().length`), before.ownerDeck - moved)
+      await waitForCount(bob, (p) => badges(p).then((b) => b.myDeck), before.ownerDeck - moved)
       const ownerMs = Date.now() - clickedAt
-      await waitForCount(bob, (p) => p.evaluate(`globalThis.__pvp.player.discard.get().length`), before.ownerDiscard + moved)
+      await waitForCount(bob, (p) => badges(p).then((b) => b.myDiscard), before.ownerDiscard + moved)
       /* and the mirror catches up from the owner's own event, so that is waited for too */
-      const mirror = await waitForCount(alice, (p) => p.evaluate(`globalThis.__pvp.opponent.defaultOpponent.deck.get().length`), before.mirror - moved)
+      const mirror = await waitForCount(alice, (p) => badges(p).then((b) => b.theirDeck), before.mirror - moved)
       const mirrorMs = Date.now() - clickedAt
 
       /*
@@ -941,6 +988,9 @@ try {
       */
       console.log(`   ${entry}: owner ${ownerMs}ms, acting board's mirror ${mirrorMs}ms (the relay's poll interval bounds both)`)
 
+      const afterBob = await badges(bob)
+      const afterAlice = await badges(alice)
+
       return {
          took,
          before,
@@ -948,9 +998,9 @@ try {
          mirror,
          ownerMs,
          mirrorMs,
-         ownerDeck: await bob.evaluate(`globalThis.__pvp.player.deck.get().length`),
-         ownerDiscard: await bob.evaluate(`globalThis.__pvp.player.discard.get().length`),
-         actingDiscard: await alice.evaluate(`globalThis.__pvp.player.discard.get().length`)
+         ownerDeck: afterBob.myDeck,
+         ownerDiscard: afterBob.myDiscard,
+         actingDiscard: afterAlice.myDiscard
       }
    }
 
@@ -984,13 +1034,18 @@ try {
    /*
       The request named no cards - that is the whole point of the pair - so the trace is
       what says the acting side sent a *count* rather than a guess at the top of a deck it
-      cannot read. Read off the store's own trace, because nothing on screen distinguishes
-      the two.
+      cannot read. Read off the store's own trace where there is one, because nothing on
+      screen distinguishes the two, and skipped on a deployment along with the rest of the
+      store-level section below.
    */
-   const topTrace = await alice.evaluate(`globalThis.__pvp.lastAction().sentTo`)
-   check('and the request carried a count rather than a card',
-      topTrace?.action === 'discardTop' && topTrace?.count === 3,
-      JSON.stringify(topTrace))
+   const topTrace = await actionTrace(alice)
+   if (topTrace) {
+      check('and the request carried a count rather than a card',
+         topTrace.sentTo?.action === 'discardTop' && topTrace.sentTo?.count === 3,
+         JSON.stringify(topTrace.sentTo))
+   } else {
+      console.log('  skip  the request carries a count - no development handle to read the trace from')
+   }
 
    /* ---------------------------------------- 4. close and shuffle on both windows -- */
 
