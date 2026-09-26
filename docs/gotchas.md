@@ -260,10 +260,17 @@ The zone-level flags — `handRevealed`, `prizesFlipped`, `pokemonHidden` — ar
 card-level `revealed` prop that actually draws `cardback` instead of the image:
 
 ```
-opponent/Hand.svelte:18     revealed = handRevealed || spectating || solo
+opponent/Hand.svelte        revealed = handRevealed || farHandRevealed || spectating || solo
 opponent/Prizes.svelte:71   revealed = prizesFlipped || spectating
 opponent/Slot.svelte:184    src = pokemonHidden ? cardback : cardImage(top)
 ```
+
+`handRevealed` is the odd one of the three, and it is now written by the *other* player: its only
+writer is the **Reveal Hand** menu entry on the opponent's hand (`opponent/Hand.svelte` →
+`revealHand` in reveal.js), which shares `handToggle` at the same time as it opens its window. The
+player's own hand menu has no entry for it, so a hand is hidden until somebody else reveals it.
+`farHandRevealed` is the reader's own record of the same gesture, and the reason there are two is
+the last note in this file.
 
 `revealed` also reaches the drag ghost (`DndCard.svelte:25-44`, "a prize that is face down
 is carried face down") and the card menu, which prints *"Hidden card"* instead of a name
@@ -1402,7 +1409,33 @@ The *seat* half of that is the other trap. A Reveal names a half (`mine`/`theirs
 boards have the same two halves, so one deck store per board is enough. A Look is one player's
 reading of the other's deck, and a **watcher's board mirrors both players** — so "the deck being
 looked at" is a different mirror depending on who took the look, and the answer is the seat the
-looker holds, not a half. `registerTheirDeck` therefore takes a function of the looker rather
-than a store, and `opponent.js` — the module that owns both the mirrors and the seats — is what
-answers it. The failure mode of getting this wrong is quiet and total: the batch resolves against
+looker holds, not a half. `registerTheirPile` therefore takes a function of the reader rather
+than a store — and of the pile it is reading (see the note below) — and `opponent.js` — the
+module that owns both the mirrors and the seats — is what answers it. The failure mode of getting this wrong is quiet and total: the batch resolves against
 a mirror that was never filled, the window opens empty, and the healing poll asks for ever.
+
+**And a resolver that answers "which *deck*" is a resolver that has to be asked again the moment
+a second pile is read.** Reveal Hand is a Look over a *hand*: same audience machinery, same
+batch shape, same window — and it landed on a registration whose signature was
+`theirDeckFor(lookerId)`, with the pile implied by the name. The fix is the signature rather than
+a second registration (`theirPileFor(readerId, pileName)`, and the batch's own `pileName` is what
+is passed), because two registrations would be two places a spectator's mirrors are understood.
+What makes this worth writing down is the symptom: nothing throws and nothing looks wrong — the
+batch is applied, the window renders, the header is right — and the window is simply **empty**,
+because the ids were looked for in a pile they are not in. The tell is a resolver whose answer
+depends on *which* caller asked rather than only on what it was asked about, so **read the
+parameter list of an existing "which pile is that" function before adding a second pile to it.**
+
+**A flag that lives in `board()` describes the board that owns it, and the other player's copy of
+that board is a mirror the flag never reaches.** Reveal Hand turns the opponent's hand face up on
+both screens, and it was written as one flag plus one event: `handRevealed` is the per-zone flag
+every hidden zone has, `handToggle` already set it on the owner's board, and the gesture reused
+both. Measured with two browsers, that got the *owner's* board right and the *reader's* board
+exactly wrong — `handRevealed` true on the owner's screen, false on the reader's mirror of the same
+hand, seven card backs drawn under a window showing seven cards. A mirror receives the owner's
+board state and the owner's events; a writable the owner's board holds is not an event, so nothing
+carries it across. The fix is a second flag on the reader's side (`farHandRevealed` in reveal.js),
+not a second event: the reader has the window and its own record of what it was shown, and the
+owner has theirs. The tell is a shared *name* — two boards, one word, two different owners of it —
+so **ask which board a zone flag belongs to before reading it across the table**, and check the
+pair by running two browsers rather than one.

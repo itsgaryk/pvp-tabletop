@@ -5,7 +5,7 @@
    import Card from './Card.svelte'
    import { share, publishLog, spectating } from '$lib/stores/connection.js'
 
-   import { hand, deck, discard, handRevealed } from '$lib/stores/player.js'
+   import { hand, deck, discard } from '$lib/stores/player.js'
 
    let menu
 
@@ -56,12 +56,6 @@
       share('cardsMoved', { cards: [ card._id ], from: 'hand', to: 'discard' })
       publishLog(`Randomly discarded [${card.name}] from Hand`)
    }
-
-   function switchVisibility () {
-      handRevealed.update(val => !val)
-      menu.close()
-      share('handToggle', { revealed: handRevealed.get() })
-   }
 </script>
 
 <Pile pile={hand} name="Hand" bind:menu={menu}>
@@ -73,12 +67,25 @@
       </div>
    </Horizontal>
 
+   <!--
+      Five entries and no sixth, and the one that is *not* here is the point.
+
+      This menu used to end with *Reveal Hand* / *Hide Hand*, toggling `handRevealed` for
+      the other player to read. That toggle is gone: revealing a hand is now an act on the
+      hand it is about - *Reveal Hand* on the **opponent's** hand menu opens a window of it
+      (`opponent/Hand.svelte` → `revealHand` in reveal.js) - so a player no longer has a
+      switch that shows their own hand, and no longer needs one. A player's hand is hidden
+      unless the other player reveals it, which is what was asked for: *my own hand should
+      always be hidden unless the opponent uses "Reveal Hand" on my hand zone*.
+
+      `handRevealed` itself is still read - the far half draws the hand face up from it, and
+      `Board.svelte` tints the row - but nothing on this half writes it any more.
+   -->
    <svelte:fragment slot="menu">
       <ContextMenuOption click={() => discardAll()} text="Discard All" disabled={$spectating} />
       <ContextMenuOption click={() => shuffleBack()} text="Shuffle All Into Deck" disabled={$spectating} />
       <ContextMenuOption click={() => marnie()} text="Shuffle All to Bottom of Deck" disabled={$spectating} />
       <ContextMenuOption click={() => discardRandom()} text="Discard Random Card" disabled={$spectating} />
-      <ContextMenuOption click={switchVisibility} text={$handRevealed ? 'Hide Hand' : 'Reveal Hand'} disabled={$spectating} />
    </svelte:fragment>
 </Pile>
 

@@ -1,22 +1,25 @@
 /*
-   Reveal and Look, in a real browser, between two real players - and, where a third
-   browser is available, a watcher.
+   Reveal, Look and Reveal Hand, in a real browser, between two real players - and,
+   where a third browser is available, a watcher.
 
    This is the half of the feature that `tools/render-check.mjs` cannot reach: a
-   render to a string can hold the permission rule and draw both windows, and it
+   render to a string can hold the permission rule and draw the windows, and it
    cannot click a menu entry, answer a prompt, or see what appears on the *other*
-   browser. Five things are asserted here, and each needs two pages:
+   browser. Six things are asserted here, and each needs two pages:
 
      1. Reveal opens a window on the board that revealed, and on **nobody else's** -
         the rest of the table is told by the game log, which names the cards
-     2. Look on the opponent's deck opens a window on the acting board, and on a
+     2. Reveal Hand opens a window with the whole of the opponent's hand on the board
+        that asked, and on a watcher's, and NOT on the opponent's - whose hand it is.
+        The owner is told by the log line and by their own hand turning face up
+     3. Look on the opponent's deck opens a window on the acting board, and on a
         watcher's, and NOT on the opponent's - the deck's owner is never sent the
         ids of cards out of its own face-down deck
-     3. a revealed card can be acted on, and the action lands on the OWNER's board:
+     4. a revealed card can be acted on, and the action lands on the OWNER's board:
         a card sent to discard turns up in that deck's discard
-     4. both windows carry Close and Close & Shuffle, and the shuffle reaches the
-        deck's owner
-     5. a card out of either window cannot be dropped on the player's own side,
+     5. the endings: Close & Shuffle for the two deck windows, and the shuffle
+        reaching the deck's owner, while a reveal hand's only ending is Close
+     6. a card out of any of the windows cannot be dropped on the player's own side,
         the table or the Stadium of their own half - and can still be dropped on
         the owner's zones
 
@@ -92,16 +95,29 @@ async function menuText (page) {
    return page.evaluate(`(() => [...document.querySelectorAll('.item')].map((el) => (el.firstElementChild?.textContent || el.textContent).trim()))()`)
 }
 
+/*
+   The three pile-style windows, told apart by their heading.
+
+   `Revealed Hand` contains `Revealed`, so the two cannot be told apart by that word
+   alone - and a check that read one as the other would assert the wrong window's cards.
+   The heading is what each window names itself with, so that is what is read:
+   `Revealed Hand` is the hand, `Look ` is a look, and `Revealed` is a reveal.
+*/
+const WINDOW_KINDS = `[ [ 'hand', 'Revealed Hand' ], [ 'look', 'Look ' ], [ 'reveal', 'Revealed' ] ]`
+
 /* the words and the card images of whichever pile-style window is open, by kind */
 function windowShape (page, kind = null) {
    return page.evaluate(`(() => {
       const want = ${JSON.stringify(kind)}
+      const KINDS = ${WINDOW_KINDS}
+      const kindOf = (p) => (KINDS.find(([, head]) => p.innerText.includes(head)) || [ null ])[0]
       const boxes = [...document.querySelectorAll('.popup')]
-         .filter((p) => /Revealed|Look /.test(p.innerText))
-         .filter((p) => !want || (want === 'look' ? /Look /.test(p.innerText) : /Revealed/.test(p.innerText)))
+         .filter((p) => kindOf(p))
+         .filter((p) => !want || kindOf(p) === want)
       const pop = boxes[boxes.length - 1]
       if (!pop) return null
       return {
+         kind: kindOf(pop),
          text: pop.innerText.replace(/\\s+/g, ' ').trim(),
          /* the panel's own heading, which is where a window names whose deck it shows */
          heading: (pop.querySelector('.font-bold') || {}).textContent?.trim() || null,
@@ -115,18 +131,22 @@ function windowShape (page, kind = null) {
    })()`)
 }
 
-/* every pile-style window on a board, by kind - so "no window" can be asserted of both */
+/* every pile-style window on a board, by kind - so "no window" can be asserted of all three */
 function windows (page) {
-   return page.evaluate(`(() => [...document.querySelectorAll('.popup')]
-      .filter((p) => /Revealed|Look /.test(p.innerText))
-      .map((p) => ({
-         kind: /Look /.test(p.innerText) ? 'look' : 'reveal',
-         cards: p.querySelectorAll('img.card').length,
-         text: p.innerText.replace(/\\s+/g, ' ').trim(),
-         /* the panel's own heading, which is where a watcher's window names the seat */
-         heading: (p.querySelector('.font-bold') || {}).textContent?.trim() || null,
-         buttons: [...p.querySelectorAll('button')].map((b) => b.textContent.trim())
-      })))()`)
+   return page.evaluate(`(() => {
+      const KINDS = ${WINDOW_KINDS}
+      const kindOf = (p) => (KINDS.find(([, head]) => p.innerText.includes(head)) || [ null ])[0]
+      return [...document.querySelectorAll('.popup')]
+         .filter((p) => kindOf(p))
+         .map((p) => ({
+            kind: kindOf(p),
+            cards: p.querySelectorAll('img.card').length,
+            text: p.innerText.replace(/\\s+/g, ' ').trim(),
+            /* the panel's own heading, which is where a watcher's window names the seat */
+            heading: (p.querySelector('.font-bold') || {}).textContent?.trim() || null,
+            buttons: [...p.querySelectorAll('button')].map((b) => b.textContent.trim())
+         }))
+   })()`)
 }
 
 /*
@@ -612,7 +632,152 @@ try {
       Boolean(afterReveal) && afterReveal.cards.length === 3,
       `${afterReveal?.cards.length} on show`)
 
-   /* ---------------------------------------------------------------- 2. look -- */
+   /* --------------------------------------------------------- 2. reveal hand -- */
+
+   console.log('\nreveal hand: the opponent\'s whole hand, in a window of its own\n')
+
+   /*
+      The gesture, and it is the one the **opponent's** hand menu carries: the player's own
+      hand menu lost its *Reveal Hand* in the same change, because a player no longer has a
+      switch that shows their own hand - a hand is hidden unless the other player reveals it
+      (see `board/Hand.svelte`).
+
+      The menu is opened on the far half's hand, which on this board is the opponent's hand
+      and is not rotated into nothing: `.hand2` is where it lies.
+   */
+   const THEIR_HAND = '.gameboard > .hand2 .pile'
+
+   await alice.rightClick(THEIR_HAND)
+   const handMenu = await menuText(alice)
+   check('the opponent\'s hand menu offers Reveal Hand',
+      handMenu.some((t) => t.startsWith('Reveal Hand')), handMenu.join(' | '))
+
+   /*
+      And the player's own hand menu does not, which is the other half of the change that
+      was asked for: *reveal hand should only be applied to the opponent's hand zone; once
+      implemented remove it from the player's hand zone*. So the switch that used to show a
+      player's own hand is gone from the menu a player opens on their own hand.
+
+      The settle is what `clickMenuItem` does after a click, and it is needed here for the
+      same reason: opening this menu closes the last one through a Svelte update, so a read
+      taken in the same tick can still see the entries of the menu that is on its way out.
+   */
+   await alice.rightClick('.gameboard > .hand .pile')
+   await sleep(700)
+   const ownMenu = await menuText(alice)
+   check('and the player\'s own hand menu does not',
+      !ownMenu.some((t) => t.startsWith('Reveal Hand') || t.startsWith('Hide Hand')),
+      ownMenu.join(' | ') || 'no menu')
+   check('and it is still the player\'s own four entries',
+      ownMenu.some((t) => t.startsWith('Discard All')) && ownMenu.some((t) => t.startsWith('Discard Random Card')),
+      ownMenu.join(' | '))
+
+   /*
+      The hand count is read from the *badge* before the click, because that is the number
+      the window has to show: a reveal hand window that resolved its batch against the far
+      deck - which is the one thing a Look does and this does not - would draw nothing at
+      all, and an empty window is what that failure looks like.
+   */
+   await alice.rightClick(THEIR_HAND)
+   const theirHandBefore = (await badges(alice)).theirHand
+   check('and their hand has cards in it to reveal', theirHandBefore > 0, `${theirHandBefore} cards`)
+
+   await clickMenuItem(alice, 'Reveal Hand')
+   const handShape = await waitForWindow(alice, theirHandBefore, { kind: 'hand' })
+   check('and the window opens on the player who asked for it',
+      Boolean(handShape), handShape ? `${handShape.cards.length} cards` : 'no window')
+   check('and it shows the whole of the opponent\'s hand',
+      handShape?.cards.length === theirHandBefore,
+      `${handShape?.cards.length} in the window, ${theirHandBefore} in the hand`)
+   check('and its heading says which window it is',
+      handShape?.heading === 'Revealed Hand', handShape?.heading || 'no heading')
+   check('and its one ending is Close, with no shuffle beside it',
+      handShape?.buttons.length === 1 && handShape.buttons[0] === 'Close',
+      JSON.stringify(handShape?.buttons))
+
+   /*
+      **The owner is not shown the cards, and is told that they were shown.** A hand is the
+      pile its owner does not read, so the ids are addressed to the reader and the room's
+      watchers - and the log line is what the owner gets instead (see `revealHand` in
+      reveal.js). Both halves are asserted here: no window on the opponent's board, and the
+      line on both boards.
+   */
+   const theirHandOpen = (await windows(bob)).filter((w) => w.kind === 'hand')
+   check('and NO reveal hand window opens on the opponent\'s board',
+      theirHandOpen.length === 0, JSON.stringify(theirHandOpen.map((w) => w.kind)))
+
+   /*
+      The game log, on the reader's board and on the owner's. A chat line reads
+      `[Alice] 09:16:16 PM Revealed opponent's hand`, so the assertion is that the line
+      *contains* the words rather than that it equals them - the name and the clock are the
+      log's, not this feature's.
+   */
+   const handLine = "Revealed opponent's hand"
+   const aliceHandLines = await alice.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.replace(/\\s+/g, ' ').trim())`)
+   check('and the game log says what was done',
+      aliceHandLines.some((l) => l.includes(handLine)),
+      aliceHandLines.filter((l) => /Revealed/.test(l)).join(' | ') || 'no line')
+
+   await bob.waitForText(handLine, { timeout: 8000 })
+   const bobHandLines = await bob.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.replace(/\\s+/g, ' ').trim())`)
+   check('and the opponent is told their hand was revealed',
+      bobHandLines.some((l) => l.includes(handLine)),
+      bobHandLines.filter((l) => /hand/i.test(l)).join(' | ') || 'no line')
+
+   /*
+      And the hand itself is on show from then on, on **both** boards - which is two flags
+      rather than one, and the pair of them is what this asserts.
+
+      On the reader's board the hand is a *mirror*, and the flag that turns it face up there
+      is the reader's own (`farHandRevealed` in reveal.js): `handRevealed` belongs to the
+      board that owns the hand and is set on the owner's screen, so a Reveal Hand that set
+      only that one left this half drawing card backs under a window showing every card.
+      Measured exactly that way, in two browsers, which is why the two are separate.
+   */
+   const drawnFaceUp = async (page, zoneSelector) => page.evaluate(`(() => {
+      const zone = document.querySelector(${JSON.stringify(zoneSelector)})
+      if (!zone) return null
+      const imgs = [...zone.querySelectorAll('img')]
+      return {
+         images: imgs.length,
+         backs: imgs.filter((img) => /cardback/i.test(img.getAttribute('src') || '')).length
+      }
+   })()`)
+
+   const readersHand = await drawnFaceUp(alice, '.gameboard > .hand2')
+   check('and their hand is drawn face up on the reader\'s board',
+      Boolean(readersHand) && readersHand.images > 0 && readersHand.backs === 0,
+      `${readersHand?.backs} of ${readersHand?.images} still card backs`)
+
+   const ownersHand = await drawnFaceUp(bob, '.gameboard > .hand')
+   check('and on the owner\'s own board too, because they are the one being shown',
+      Boolean(ownersHand) && ownersHand.images > 0 && ownersHand.backs === 0,
+      `${ownersHand?.backs} of ${ownersHand?.images} still card backs`)
+
+   const flags = await alice.evaluate(`(() => {
+      if (!globalThis.__pvp) return null
+      return {
+         theirHandHere: globalThis.__pvp.reveal.farHandRevealed.get(),
+         theirCopyOfIt: globalThis.__pvp.opponent.defaultOpponent.handRevealed.get()
+      }
+   })()`)
+   if (flags) {
+      /*
+         The two flags on one board, and the point is that they *disagree*: the reader's own
+         record of what it has been shown is set, and its mirror's copy of the owner's flag
+         is not - because nothing this board sends comes back to it (`emit` in relay/client.js
+         skips the sender), so the `handToggle` it sent went to the other board and not here.
+         Asserting the disagreement is asserting the whole reason the second flag exists.
+      */
+      check('and the reader\'s own record is set while the mirror\'s copy of the owner\'s flag is not',
+         flags.theirHandHere === true && flags.theirCopyOfIt === false,
+         JSON.stringify(flags))
+   }
+
+   await closeWindow(alice)
+   await sleep(600)
+
+   /* ---------------------------------------------------------------- 3. look -- */
 
    console.log('\nlook: the opponent\'s deck, shown to the looker and the watchers\n')
 

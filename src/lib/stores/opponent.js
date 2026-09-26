@@ -5,7 +5,7 @@ import { slot } from './custom/cards.js'
 import { socket, myId, seatedPlayers } from './connection.js'
 import { fromRelay } from './timer.js'
 import { discardStadium } from './player.js'
-import { registerTheirDeck } from './reveal.js'
+import { registerTheirPile } from './reveal.js'
 import { normalizeStatus } from '$lib/util/status.js'
 import { normalizeMarkerUsed } from '$lib/util/markers.js'
 
@@ -437,58 +437,64 @@ export const defaultOpponent = createOpponent()
    closes the loop, and a cycle here is a 500 on every page load rather than a subtle
    bug: see the note in connection.js).
 
-   It is one direction only: reveal.js exposes `registerTheirDeck` and this calls it.
+   It is one direction only: reveal.js exposes `registerTheirPile` and this calls it.
    The registration is what reveal.js waits for, and a Reveal or a Look taken before
    it lands has no far deck to read, which is the correct answer rather than an error.
 
-   **It is a function of the looker, and that is what a watcher needs.** A Reveal
-   names a half and each board has the same two halves, so one store is enough for
-   it. A Look is one player's reading of the other's deck, and a watcher's board
-   mirrors *both* players - so "the deck being looked at" is a different mirror
-   depending on who took the look, and the answer is a seat rather than a half. The
-   seats are the relay's (`setPlayers`), the halves are this board's own, and this
-   module is the one that owns both.
+   **It is a function of the reader and the pile, and that is what a watcher needs.** A
+   Reveal names a half and each board has the same two halves, so one store is enough for
+   it. A Look is one player's reading of the other's deck, and a Reveal Hand is one
+   player's reading of the other's hand, and a watcher's board mirrors *both* players - so
+   "the pile being read" is a different mirror depending on who is reading it, and which
+   pile is the *name* rather than an assumption. The seats are the relay's (`setPlayers`),
+   the halves are this board's own, and this module is the one that owns both.
 */
 /*
-   Which deck store a Look by `lookerId` is a view of.
+   Which pile store a Look or a Reveal Hand by `readerId` is a view of.
 
-   `null` - and the looker's own member id - is a look this board took, and the
-   answer is the single mirror: the same deck every reveal of "theirs" reads. The
-   own id is checked here rather than left to the caller because the two boards send
-   the same event: a player's own `cardsLooked` comes back through the relay like
-   anybody's, and a watcher's board is the only one that has two mirrors to tell
+   `null` - and the reader's own member id - is a reading this board took, and the
+   answer is the single mirror: the same two piles every reveal of "theirs" reads. The
+   own id is checked here rather than left to the caller because the two boards send the
+   same event: a player's own `cardsLooked` or `handRevealed` comes back through the relay
+   like anybody's, and a watcher's board is the only one that has two mirrors to tell
    apart. A player's spectator mirrors exist but are switched off (`seat` in
-   `createSpectatorOpponents`), so resolving against them would show an empty window
-   and poll for ever - the cards are in the ordinary mirror.
+   `createSpectatorOpponents`), so resolving against them would show an empty window and
+   poll for ever - the cards are in the ordinary mirror.
 
-   Any other member id is a look taken by one of the two players a watcher is
-   showing, and the answer is the mirror of the seat that player is *not*: a look
-   reads the far half of the looker's own board, which is the other seat's deck.
+   Any other member id is a reading taken by one of the two players a watcher is showing,
+   and the answer is the mirror of the seat that player is *not*: both gestures read the
+   far half of the reader's own board, which is the other seat's pile.
+
+   The pile is named rather than assumed, because the two gestures read two different
+   things off the same member: `'deck'` for a Look, `'hand'` for a Reveal Hand.
 */
-function theirDeckFor (lookerId) {
-   if (!lookerId || lookerId === myId.get()) return defaultOpponent.deck
+function theirPileFor (readerId, pileName = 'deck') {
+   const mine = !readerId || readerId === myId.get()
+
+   if (mine) return defaultOpponent[pileName] || null
 
    const players = seatedPlayers.get()
-   const index = players.findIndex((player) => player?.id === lookerId)
-   if (index === -1) return defaultOpponent.deck
+   const index = players.findIndex((player) => player?.id === readerId)
+   if (index === -1) return defaultOpponent[pileName] || null
 
    /*
-      The halves a watcher shows are the two seats in order (`setPlayers`), so the
-      deck a look is a view of is the other seat's mirror. Which *screen* half that
-      mirror is on is the flip's business and not this one's: the batch is resolved
-      against the mirror of the seat, so flipping the board moves the window's cards
-      with the rest of that player's board rather than leaving them behind.
+      The halves a watcher shows are the two seats in order (`setPlayers`), so the pile a
+      reading is a view of is the other seat's mirror. Which *screen* half that mirror is
+      on is the flip's business and not this one's: the batch is resolved against the
+      mirror of the seat, so flipping the board moves the window's cards with the rest of
+      that player's board rather than leaving them behind.
    */
-   return index === 0 ? spectatorOpponents.bottom.deck : spectatorOpponents.top.deck
+   const mirror = index === 0 ? spectatorOpponents.bottom : spectatorOpponents.top
+   return mirror[pileName] || null
 }
 
 /*
    It is registered after the two spectator mirrors below are built, because
-   `theirDeckFor` reaches for them: a function declaration is hoisted, so this could
+   `theirPileFor` reaches for them: a function declaration is hoisted, so this could
    sit above them, but the registration is what makes `reveal.js` start asking and
    the mirrors are what it answers with.
 */
-registerTheirDeck(theirDeckFor)
+registerTheirPile(theirPileFor)
 
 /* the default mirror must receive relay events like every other instance */
 register(defaultOpponent)

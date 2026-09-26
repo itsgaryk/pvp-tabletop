@@ -143,21 +143,24 @@ anything's scrollable area — the wheel over it does nothing, and there is no b
 The panel takes its share of the window the same way the board does (see [The zones](#the-zones)), and
 the same is true of the multi-card selection dialog, which is the same grid.
 
-**Reveal and Look** are the other two ways cards come out of a deck, and they are
-about *who is shown them* rather than about moving them: a **Reveal** shows the top
-X cards to both players in a window on both boards, and a **Look** shows them to the
-one player who asked, in a window on their board alone. Both are entries on a deck's
-own menu — *Reveal Top X* on either deck, *View Top X* on the opponent's — and
-neither ever moves a card: they are views of the top of a deck, and the deck is
-exactly where it was until *Close & Shuffle* says otherwise.
+**Reveal, Look and Reveal Hand** are the other three ways cards come out of a deck or a hand,
+and they are about *who is shown them* rather than about moving them: a **Reveal** shows the top
+X cards to both players in a window on the revealer's board, a **Look** shows the top X of the
+opponent's deck to the one player who asked (and to the room's watchers), and a **Reveal Hand**
+shows the whole of the opponent's hand to the player who asked (and to the watchers). Reveal and
+Look are entries on a deck's own menu — *Reveal Top X* on either deck, *View Top X* on the
+opponent's — and Reveal Hand is the **opponent's hand** menu's entry; a player's own hand menu
+has none, so a hand is hidden unless the other player reveals it. None of them ever moves a
+card: they are views of the top of a deck or of a hand, and the pile is exactly where it was
+until *Close & Shuffle* says otherwise.
 
-A card either window is showing may be acted on **as the other player's**, which is
+A card any of the three is showing may be acted on **as the other player's**, which is
 the "allowed to take action on this opponent card" property: it can be clicked and
 right-clicked like a card of the player's own, and its menu's entries land on the
 owner's half. That is one whole subject of its own — the property, the split between
 the player who asks and the board that owns the card, and the two names a half is
 called by — and it is written up in **[reveal.md](reveal.md)**. What belongs here is
-where the entries are: both are refused outside a room, and a spectator is not given
+where the entries are: all three are refused outside a room, and a spectator is not given
 the menu at all (see [Spectating](#spectating)).
 
 **Putting cards back in a chosen order** — *Search & Order Deck* on the deck — is the

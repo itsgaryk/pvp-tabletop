@@ -107,6 +107,14 @@ import { solo } from './soloState.js'
 export const revealView = writable([])
 export const lookView = writable([])
 
+/*
+   The Live view of a Reveal Hand batch: the hand's own cards, and it shrinks as they are
+   acted on exactly as a Look's does - see `viewOf`. It needs a store of its own for the
+   same reason the other two do: a hand is a pile on the owner's board, and a card leaving
+   it writes no event on the reader's board.
+*/
+export const handRevealView = writable([])
+
 export const reveal = writable(null)
 
 /*
@@ -116,8 +124,8 @@ export const reveal = writable(null)
    'mine' for the player who took it.
 
       `looker`   the member id of the player who looked, or null when that is
-                 this board - which is what picks the deck the batch reads
-                 (`deckFor`) and what tells a watcher whose deck it is showing
+                 this board - which is what picks the pile the batch reads
+                 (`theirPileFor`) and what tells a watcher whose pile it is showing
       `seat`     `looker`'s seat in the game's own order, for a watcher that has
                  to name the half (see Board.svelte); null locally
       `remote`   whether this batch arrived from the other board. A look that is
@@ -125,11 +133,29 @@ export const reveal = writable(null)
                  Shuffle; one that arrived is a watcher's and has no ending of
                  its own.
 
-   `theirHere` is the deck store the batch reads, resolved by the owner of the
+   `theirHere` is the pile store the batch reads, resolved by the owner of the
    mirrors: the looker's own, or - for a watcher - the mirror of the player the
-   looker was reading. See `registerTheirDeck`.
+   looker was reading. See `registerTheirPile`. `pileName` is what says *which* of
+   that player's piles: a Look reads `'deck'`, a Reveal Hand `'hand'`.
 */
 export const look = writable(null)
+
+/*
+   The Reveal Hand batch on this board, or null: the whole of one player's hand, shown to
+   the player who asked for it.
+
+   It is a Look in every respect but the pile it reads and the ending it has, so it is the
+   same shape of batch, applied by the same function, and drawn by a window that is a
+   copy of the Look window (`dialogs/HandReveal.svelte` says why it is a copy rather than
+   a parameter). `pileName` is `'hand'`, which is what picks the hand off the member the
+   batch names.
+
+   **There is no `frozen` state and no shuffle**, because a hand is not a deck: a reveal
+   of a hand shows cards in a pile that is not being read in an order, and the order a
+   hand is held in is the owner's own business. So its window has one ending - Close - and
+   the batch is never frozen.
+*/
+export const handReveal = writable(null)
 
 /*
    Whether a window is on screen. A batch outlives its window (see the note
@@ -138,6 +164,28 @@ export const look = writable(null)
 */
 export const revealOpen = writable(false)
 export const lookOpen = writable(false)
+export const handRevealOpen = writable(false)
+
+/*
+   Whether **this board has been shown the far half's hand** - which is a question
+   `handRevealed` cannot answer, and finding that out is why there are two flags rather
+   than one.
+
+   `handRevealed` belongs to the board that **owns** the hand: it is how a player's own
+   screen knows their own hand is being shown, it lives in `board()`, and it is set on the
+   owner's board by the gesture (`handToggle`). It says nothing about the reader's screen,
+   where that same hand is a *mirror* - so a Reveal Hand that set only that flag left the
+   owner's hand face up on the owner's board and still drawn as card backs on the board that
+   had just read every card of it. Measured, in two browsers: `handRevealed` true on the
+   owner's board, false on the reader's mirror of the same hand, and seven card backs under
+   a window showing seven cards.
+
+   This is the reader's half of the same fact, and it is a second *flag* rather than a second
+   *event*: the owner is told by the one they already have, and the reader has the window, so
+   nothing here needs to travel. Cleared with the board, which is the lifetime every other
+   batch has.
+*/
+export const farHandRevealed = writable(false)
 
 /* the player's own deck, registered rather than imported (see below) */
 let myDeckStore = null
@@ -205,23 +253,25 @@ export const trace = []
    `theirs` is the far deck *this* board is looking at - the single mirror - which
    is what a Reveal names a half by and what a look taken here reads. A look taken
    by somebody else is a different deck depending on who took it, and that is
-   `deckFor`'s question rather than this table's.
+   `theirPileFor`'s question rather than this table's.
 */
-const decks = () => ({ mine: myDeckStore, theirs: resolveTheirDeck ? resolveTheirDeck(null) : null })
+const decks = () => ({ mine: myDeckStore, theirs: theirPileFor(null, 'deck') })
 
 /*
-   The deck a batch reads, which is the one thing a Look and a Reveal do not
-   answer the same way.
+   The pile a batch reads, which is the one thing a Look, a Reveal and a Reveal Hand
+   do not all answer the same way.
 
-   A Reveal names a half in the *sender's* words and `pileFor` flips that word
-   onto this board's two decks. A Look has no half to flip - a look is always
-   about the deck the looker is looking at - so the answer is asked of the
-   looker: this board's far mirror when the look is ours, and the mirror of the
-   player the looker was reading when it is a watcher's. `registerTheirDeck` is
-   where that question is answered, because the mirrors are `opponent.js`'s.
+   A Reveal names a half in the *sender's* words and `pileFor` flips that word onto
+   this board's two decks. A Look and a Reveal Hand have no half to flip - both are
+   always about the far half of the *reader's* own board - so the answer is asked of
+   the reader: this board's far mirror when the batch is ours, and the mirror of the
+   player the reader was reading when it is a watcher's. `registerTheirPile` is where
+   that question is answered, because the mirrors are `opponent.js`'s. The pile is
+   *named* as well, because the two gestures read two different things: a Look reads
+   a deck, a Reveal Hand reads a hand.
 */
-function deckFor (batch) {
-   return resolveTheirDeck ? resolveTheirDeck(batch.looker ?? null) : null
+function theirPileFor (readerId, pileName) {
+   return resolveTheirDeck ? resolveTheirDeck(readerId ?? null, pileName) : null
 }
 
 /*
@@ -249,12 +299,17 @@ export function registerSelection (selection) {
 }
 
 /*
-   The far half's deck, registered by opponent.js for the same reason.
+   The far half's piles, registered by `opponent.js` for the same reason.
 
-   `resolve` is handed the looker's member id - null for this board - and answers
-   with the deck store that player was reading.
+   `resolve` is handed the reader's member id - null for this board - and the *name* of the
+   pile that reader is reading (`'deck'`, `'hand'`), and answers with the store.
+
+   It is a name as well as a member, and that is what a Reveal Hand needed on top of what a
+   Look needed. A Look is always about a deck, so "which member" was the whole question; a
+   Reveal Hand is always about a hand, and a hand and a deck are two piles of the same
+   member - so the pile is named rather than assumed, and one registration answers both.
 */
-export function registerTheirDeck (resolve) {
+export function registerTheirPile (resolve) {
    resolveTheirDeck = resolve
 }
 
@@ -277,24 +332,30 @@ export function registerTheirDeck (resolve) {
    objects could not be matched against the board receiving it at all.
 */
 /*
-   The deck a batch is a view of.
+   The pile a batch is a view of.
 
    A Reveal names a half in the sender's words, and that word is this board's own
-   once `applyReveal` has flipped it (`ownerHere`). A Look has no half to name -
-   it is always about the deck the looker was reading - so `deckFor` answers it
-   from the looker instead.
+   once `applyReveal` has flipped it (`ownerHere`). A Look and a Reveal Hand have no
+   half to name - both are always about the pile the reader was reading - so
+   `theirPileFor` answers them from the reader and the pile they read.
+
+   The two are told apart by the field each one carries and the other does not: a
+   Look and a Reveal Hand both name the member that read (`looker`), and a Reveal
+   never does.
 */
-function deckOf (batch) {
-   return batch.looker !== undefined ? deckFor(batch) : decks()[batch.ownerHere] || null
+function pileOfBatch (batch) {
+   return batch.looker !== undefined
+      ? theirPileFor(batch.looker, batch.pileName)
+      : decks()[batch.ownerHere] || null
 }
 
 function viewOf (batch) {
    if (batch.frozen) return batch.frozen
 
-   const deck = deckOf(batch)
-   if (!deck) return []
+   const pile = pileOfBatch(batch)
+   if (!pile) return []
 
-   const cards = deck.get()
+   const cards = pile.get()
    return batch.cards
       .map((id) => cards.find((card) => card._id === id))
       .filter(Boolean)
@@ -361,7 +422,7 @@ function setBatch (which, view, batch) {
    which.set(batch)
    view.set(viewOf(batch))
 
-   const deck = deckOf(batch)
+   const deck = pileOfBatch(batch)
    if (!deck) return true
 
    const stop = deck.subscribe(() => view.set(viewOf(batch)))
@@ -642,7 +703,7 @@ export function revealCloseAndShuffle () {
    sender's word, while a Look has none at all because a look is always about the far
    half. `ownerHere` is the same pile either way, which is what makes this work for
    both, and a Look is only ever shuffled by the player who took it (`lookCloseAndShuffle`
-   is not offered to a watcher) so `pileFor` and `deckOf` agree about which deck that is.
+   is not offered to a watcher) so `pileFor` and `pileOfBatch` agree about which deck that is.
 
    The **event** carries the sender's word, which here is `ownerHere` itself: on the
    board that sends it, "the half I am looking at" is the same string this board would
@@ -715,6 +776,109 @@ export function closeLook () {
    lookOpen.set(false)
 }
 
+/* ------------------------------------------------------------------ a hand -- */
+
+/*
+   Reveal the whole of the opponent's hand: the window, the log line, and the flag that
+   turns the hand face up on its owner's board.
+
+   ---------------------------------------------------------------------------
+   Why this is a window and no longer a toggle
+   ---------------------------------------------------------------------------
+
+   The board had a *Reveal Hand* before this and it was one line on the **player's own**
+   hand menu that flipped `handRevealed`: the opponent read "Reveal Hand", clicked it, and
+   their own hand turned face up on the other player's board. It was asked for as a window
+   - *when Reveal Hand is clicked it should show a window showing the entire of the
+   opponent's hand with a Close button* - so the entry moved to the hand it is about (the
+   opponent's, where `opponent/Hand.svelte` renders it) and it now does three things at
+   once rather than one.
+
+   The flag is kept and set rather than replaced, and that is the honest reading of what
+   was asked for: *my own hand should always be hidden unless the opponent uses "Reveal
+   Hand" on my hand zone*. A window alone would leave the hand face down on the board and
+   show the same cards in a panel floating over it, which is two answers to one question.
+   So the hand is turned face up *and* the window says which cards are in it - the same
+   shape a Reveal has: the cards are on show, and the gesture has a window of its own.
+
+   ---------------------------------------------------------------------------
+   Who sees it, and who is told
+   ---------------------------------------------------------------------------
+
+   The audience is the Look's: the player who asked for it, and the room's spectators.
+   The hand's **owner** is not among them - `revealedHand` is addressed the way
+   `cardsLooked` is, and `audienceOf` in the relay's events route adds every watcher from
+   membership - because the ids in the payload are cards out of a hand, which is the one
+   pile the opponent is not shown. Their copy of the gesture is the log line and their own
+   hand turning face up, which is what they are entitled to: that it happened, and that
+   they are showing it.
+
+   Taking the gesture is unilateral - there is no request to answer and no *Allow* - which
+   was asked for in as many words: *when the player performs this action it should just
+   happen and add to the game log*. That is also why the line is written here rather than
+   by the owner's board when it acts on it.
+*/
+export function revealHand () {
+   if (!canReveal()) return false
+
+   const pile = theirPileFor(null, 'hand')
+   if (!pile) return false
+
+   const ids = pile.get().map((card) => card._id)
+   /*
+      An empty hand is nothing to look at, and a window over it would be a panel saying
+      "0 cards" with a Close button - so the gesture is refused rather than half-made.
+      Nothing is logged for it either: nothing happened.
+   */
+   if (!ids.length) return false
+
+   if (applyHandReveal({ reader: null, pileName: pile.name, cards: ids }, false)) {
+      handRevealOpen.set(true)
+   }
+
+   /*
+      Two flags, because there are two screens and they are not the same one.
+
+      `farHandRevealed` is **this** board's record that it has been shown the far half's
+      hand, and it is what turns those cards face up in the zone here. `handToggle` tells
+      the other board the same thing about *its own* hand, which is the copy it draws -
+      neither flag reaches the other screen, and a hand drawn face up in a window over a
+      hand still drawn as card backs is the fault that made that plain (see
+      `farHandRevealed`).
+   */
+   farHandRevealed.set(true)
+   share('handToggle', { revealed: true })
+
+   publishLog("Revealed opponent's hand")
+   return true
+}
+
+export function closeHandReveal () {
+   handRevealOpen.set(false)
+}
+
+/*
+   Apply a Reveal Hand batch, from either side - the same one function for the reader and
+   for everyone told about it that a Look and a Reveal have, and for the same reason.
+*/
+function applyHandReveal ({ reader, pileName, cards }, remote) {
+   if (!Array.isArray(cards) || !cards.length) {
+      clearBatch(handReveal, handRevealView)
+      return null
+   }
+
+   const batch = {
+      looker: reader ?? null,
+      remote,
+      pileName: pileName || 'hand',
+      cards: cards.slice()
+   }
+
+   batch.pile = asPile(batch)
+   setBatch(handReveal, handRevealView, batch)
+   return batch
+}
+
 /*
    Close a Look and shuffle the deck it was about.
 
@@ -775,8 +939,9 @@ export function isActionable (card) {
 
    const inReveal = reveal.get() ? revealView.get().includes(card) : false
    const inLook = look.get() ? lookView.get().includes(card) : false
+   const inHand = handReveal.get() ? handRevealView.get().includes(card) : false
 
-   return inReveal || inLook
+   return inReveal || inLook || inHand
 }
 
 /*
@@ -1085,6 +1250,42 @@ react('cardsLooked', ({ looker, lookerSeat, pileName, cards }) => {
 })
 
 /*
+   Their Reveal Hand, arriving - which is a hand shown by *one* player, on a board that is
+   either the reader's own or a watcher's.
+
+   The event reaches the player who asked and the room's watchers, and never the owner of
+   the hand: the ids it carries are cards out of a hand, and a hand is the pile its owner
+   is not shown. That is the Look's rule, the Look's machinery, and the Look's reason (see
+   `cardsLooked`). So this handler is never run on the owner's board with a batch about
+   somebody else's hand.
+
+   The window opens on both the reader's board and a watcher's: the reader reads their own
+   reveal, and a watcher reads the one they are watching. What differs is only what a
+   window may do with it, and for this gesture that is nothing at all - the window has a
+   Close button and no other ending, because a hand has no order to shuffle and the cards
+   belong to somebody else.
+*/
+react('handRevealed', ({ reader, pileName, cards }) => {
+   const mine = !reader || reader === myId.get()
+   const batch = applyHandReveal({ reader, pileName, cards }, !mine)
+
+   /*
+      A hand that has been shown to this board is drawn face up here, whichever route the
+      gesture arrived by - this client's own (`revealHand`) or somebody else's, seen from a
+      watcher's chair. Nothing on this board writes the *other* board's flag: the owner is
+      told separately, and by the flag that is theirs.
+   */
+   farHandRevealed.set(true)
+
+   if (!batch) {
+      handRevealOpen.set(false)
+      return
+   }
+
+   handRevealOpen.set(true)
+})
+
+/*
    Their shuffle of the deck a Reveal or a Look was about.
 
    A shuffle is the *deck's* state rather than a window's, so it is applied whichever
@@ -1162,6 +1363,9 @@ function clearBatches () {
    revealOpen.set(false)
    clearBatch(look, lookView)
    lookOpen.set(false)
+   clearBatch(handReveal, handRevealView)
+   handRevealOpen.set(false)
+   farHandRevealed.set(false)
 }
 
 onBoardCleanup(clearBatches)

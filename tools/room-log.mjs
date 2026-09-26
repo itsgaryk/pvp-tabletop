@@ -284,6 +284,14 @@ function describe (event) {
          return `prizes ${data.flipped ? 'flipped' : 'face down'}`
       case 'handToggle':
          return `hand ${data.revealed ? 'revealed' : 'hidden'}`
+      case 'handRevealed':
+         /*
+            A Reveal Hand, which is addressed to the player who asked and the room's
+            watchers - so it is news the hand's owner never sees in their own room log.
+            The cards are not named here for the same reason: this line is read off the
+            relay, which is what `room-log.mjs` is for.
+         */
+         return `hand revealed to ${data.reader ? shortId(data.reader) : 'this board'}: ${(data.cards || []).length} card(s)`
       default:
          return JSON.stringify(data).slice(0, 80)
    }
