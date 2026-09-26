@@ -261,14 +261,20 @@ async function dragBetween (page, fromExpr, toExpr) {
    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: to.x, y: to.y, button: 'left' })
    await sleep(80)
 
-   const carrying = await page.evaluate(`(() => (globalThis.__pvp ? globalThis.__pvp.drag() : { card: null }))()`)
+   const carrying = await page.evaluate(`(() => {
+      const t = globalThis.__pvp?.drag?.()
+      if (t) return t
+      /* no development handle (a deployment): the board is carrying a card when its
+         own drag preview is on screen, which is the same thing the store says */
+      return { card: document.querySelector('.z-30 img.card') ? true : null }
+   })()`)
    const highlighted = await page.evaluate(`document.querySelectorAll('.dragover').length`)
 
    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: to.x, y: to.y, button: 'left', clickCount: 1 })
 
    return {
       started: Boolean(carrying.card),
-      card: carrying.card,
+      card: typeof carrying.card === 'string' ? carrying.card : null,
       highlighted,
       why: carrying.card ? (highlighted ? 'ok' : 'nothing under the pointer accepted it') : 'the drag never started'
    }
@@ -484,10 +490,17 @@ try {
    check('and its only action is Close & Shuffle',
       JSON.stringify(aliceReveal?.buttons) === JSON.stringify([ 'Close & Shuffle' ]),
       aliceReveal?.buttons.join(' | '))
+   /*
+      The line the *revealer* writes, on the revealer's own board: the cards are named,
+      because a reveal is a public act and the log is the record of what the table was
+      shown. The names are whatever the deck holds - the stand-in deck API's are `Card07`
+      and the real one's are Pokemon - so what is asserted is the shape of the line, not
+      the words in it.
+   */
+   const revealLines = await alice.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.replace(/\\s+/g, ' ').trim())`)
    check('and that is what the table was told, with the cards named',
-      (await alice.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.trim())`))
-         .some((line) => /Revealed \[Card\d+, Card\d+, Card\d+\] from the top of their deck/.test(line)),
-      (await alice.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.trim())`)).filter((l) => /Revealed/.test(l)).join(' | ') || 'no reveal line')
+      revealLines.some((line) => /Revealed \[[^\]]+\] from the top of (their|the opponent's) deck/.test(line)),
+      revealLines.filter((l) => /Revealed/.test(l)).join(' | ') || `no reveal line among ${revealLines.length} lines`)
 
    /* ------------------------------------------- 3. an action on the other player -- */
 
@@ -709,11 +722,12 @@ try {
 
    const bulkMoved = await clickMenuItem(alice, 'To Discard')
    check('and one entry carries both cards', bulkMoved)
-   const bulkLanded = await waitForCount(
-      alice,
-      async (p) => p.evaluate(`globalThis.__pvp.opponent.defaultOpponent.discard.get().length`),
-      beforeBulk.theirDiscard + 2,
-      { timeout: 4000, poll: 60 })
+   /*
+      Where the two cards went is read on the **owner's own board**, off its badge, rather
+      than off the acting board's mirror: a deployment has no `globalThis.__pvp` to ask, and
+      the owner's discard is where the cards have to land either way.
+   */
+   const bulkLanded = await waitForCount(bob, (p) => badges(p).then((b) => b.myDiscard), beforeBulk.theirDiscard + 2, { timeout: 12000, poll: 150 })
    check('and both land in the owner\'s discard from one entry',
       bulkLanded === beforeBulk.theirDiscard + 2,
       `${beforeBulk.theirDiscard} -> ${bulkLanded} in bob's discard`)
@@ -808,6 +822,24 @@ try {
       reporting "the drag failed" for "there was nothing to drag".
    */
    const beforeDrag = await badges(bob)
+
+   /*
+      Take a **fresh** look before the drag, and that is not tidiness: the moves above
+      spend the batch - a card that has been acted on leaves the window and stops being
+      actionable (`isActionable`), and one of them was sent to the owner's discard - so
+      dragging what is left of the old batch is dragging a card nobody may act on. On a
+      dev server that reports "nothing under the pointer accepted it", which reads as the
+      far half refusing a drop it is supposed to take.
+   */
+   async function lookAtThree () {
+      await alice.rightClick(THEIR_DECK)
+      await answerNextPrompt(alice, 3)
+      await clickMenuItem(alice, 'View Top X')
+      await sleep(1800)
+   }
+
+   await lookAtThree()
+
    const dragCard = await alice.evaluate(`(() => {
       const p = [...document.querySelectorAll('.popup')].find((x) => /Look /.test(x.innerText))
       const img = p?.querySelector('img.card')
@@ -827,7 +859,7 @@ try {
       `badges(bob).theirDiscard` is Alice's pile, which is exactly the reading that made
       this section look like a failure when the card had landed correctly.
    */
-   check('and one card is left in the window for the drag', Boolean(dragCard), String(dragCard))
+   check('and a card is in the window for the drag', Boolean(dragCard), String(dragCard))
 
    const dragged = await dragBetween(
       alice,
@@ -839,7 +871,7 @@ try {
       started, the far half's discard lit up for it, and the card arrived in the owner's
       discard. The request itself is read off the store when there is a development handle
       to read it from - this section runs against a deployment too, where `globalThis.__pvp`
-      does not exist, and the moving card is what says the same thing without it.
+      does not exist, and the card moving is what says the same thing without it.
    */
    const dragAction = await actionTrace(alice)
    const landedTheir = await waitForCount(bob, (p) => badges(p).then((b) => b.myDiscard), beforeDrag.myDiscard + 1)
@@ -858,19 +890,11 @@ try {
       was, which reads as a card that was placed and came back. What is asserted is
       therefore both halves - nothing highlighted, and nothing moved or sent.
 
-      A fresh look is taken for each zone, and that is not tidiness: a batch is a live view
-      of the deck, so once a card has been acted on it leaves the window and stops being
-      actionable (`isActionable`) - a card already sent to the opponent's discard is not a
-      card a target can refuse, and re-using it reports "the zone refused it" for "there
-      was nothing left to drop".
+      A fresh look is taken for each zone, for the reason above: a batch is a live view of
+      the deck, so once a card has been acted on it stops being a card any target can
+      refuse, and re-using it reports "the zone refused it" for "there was nothing left to
+      drop".
    */
-   async function lookAtThree () {
-      await alice.rightClick(THEIR_DECK)
-      await answerNextPrompt(alice, 3)
-      await clickMenuItem(alice, 'View Top X')
-      await sleep(1800)
-   }
-
    const lookCardExpr = `[...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))?.querySelector('img.card')?.parentElement`
 
    const ownZones = [
