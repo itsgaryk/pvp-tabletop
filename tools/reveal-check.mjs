@@ -682,10 +682,54 @@ try {
       dragged.started && dragged.highlighted > 0 && dragAction?.action === 'discard' && dragAction?.from === 'deck',
       `${dragged.why}${dragged.card ? ` (carrying ${dragged.card})` : ''}, request ${JSON.stringify(dragAction)}`)
 
+   /*
+      **A window's card cannot be put on this player's own side.**
+
+      The zones that would take it are the player's own - their discard, their hand, their
+      deck - and a card shown out of somebody else's deck belongs to that somebody, so the
+      gesture has to be refused rather than quietly acted on. The refusal lives in
+      `actionForPile`, which knows only the *far* half's piles: a drop on one of this
+      board's own asks it and gets nothing, so no request is sent and nothing moves.
+   */
+   const beforeOwnSide = {
+      sent: await alice.evaluate(`globalThis.__pvp.lastAction().sent`),
+      discard: await alice.evaluate(`globalThis.__pvp.player.discard.get().length`),
+      hand: await alice.evaluate(`globalThis.__pvp.player.hand.get().length`)
+   }
+
+   const ontoOwnSide = await dragBetween(
+      alice,
+      `[...document.querySelectorAll('.popup')].find((p) => /Look —/.test(p.innerText))?.querySelector('img.card')?.parentElement`,
+      `document.querySelector('.gameboard .discard')`)
+
+   const afterOwnSide = {
+      sent: await alice.evaluate(`globalThis.__pvp.lastAction().sent`),
+      discard: await alice.evaluate(`globalThis.__pvp.player.discard.get().length`),
+      hand: await alice.evaluate(`globalThis.__pvp.player.hand.get().length`)
+   }
+
+   check('and a card out of a window cannot be put on the player\'s own side',
+      afterOwnSide.sent === beforeOwnSide.sent &&
+         afterOwnSide.discard === beforeOwnSide.discard &&
+         afterOwnSide.hand === beforeOwnSide.hand,
+      `${ontoOwnSide.why}; own discard ${beforeOwnSide.discard} -> ${afterOwnSide.discard}, own hand ${beforeOwnSide.hand} -> ${afterOwnSide.hand}, requests ${beforeOwnSide.sent} -> ${afterOwnSide.sent}`)
+
+   /*
+      And the request is waited for on the owner's board before anything else is counted.
+
+      A relayed request is answered a poll cycle or two later, so the card this drag sent is
+      still in flight when this section ends. The next section counts the owner's deck
+      before and after *its* move, and a card arriving from the drag in between made its
+      discard look like it took two - which is a fault in the check, not in the discard:
+      the deck is what it says it is once the drag's own answer has landed.
+   */
+   await waitForCount(bob, (p) => badges(p).then((b) => b.myDiscard), beforeDrag.myDiscard + 1)
+   await sleep(500)
+
    const afterDrag = await badges(bob)
-   check('and dragging a card out of a window moves nothing on the player\'s own side',
-      afterDrag.theirDiscard === beforeDrag.theirDiscard && afterDrag.myDiscard === beforeDrag.myDiscard,
-      `alice's discard ${beforeDrag.theirDiscard} -> ${afterDrag.theirDiscard}, bob's ${beforeDrag.myDiscard} -> ${afterDrag.myDiscard}`)
+   check('and the drag sends a request rather than moving the player\'s own cards',
+      afterDrag.theirDiscard === beforeDrag.theirDiscard,
+      `alice's own discard ${beforeDrag.theirDiscard} -> ${afterDrag.theirDiscard}`)
 
    /*
       And nothing was sent: the other board's log has the shuffle a look can end
@@ -714,7 +758,6 @@ try {
       to still be in it.
    */
    console.log('\nthe top of their deck, discarded\n')
-
    /*
       Nothing is moved on the acting board for this pair, which is the one place in this
       module that is true - see the note over `discardTopOfTheirDeck`. So the *owner* is

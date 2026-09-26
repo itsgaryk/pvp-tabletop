@@ -253,35 +253,35 @@ export function dropRevealedCard (target, dragged, source) {
 
 /*
    *Discard Top Card* and *Discard Top X* on the **other** player's deck: the top card, or
-   a chosen number of them, off the top of a deck this board cannot read, into its
+   a chosen number of them, off the top of a deck this player cannot read, into its
    owner's discard.
 
-   It is the one request that names no cards, and that is not a shortcut: the cards on top
-   of the owner's deck are the one thing here this board is not entitled to know, and a
-   mirror's copy of a deck is not the authority for what is on top of it. A request that
-   named ids would be guessing at cards it was never shown.
-
    ---------------------------------------------------------------------------
-   Why nothing is moved here, unlike every other entry
+   A count and the ids, and why both
    ---------------------------------------------------------------------------
-   Every other action in this module takes the card off the acting board's mirror at once,
-   so the gesture reads as done rather than as a card that sits still for a round trip.
-   This one deliberately does not, and the reason is a race that the others cannot have:
-   the *owner's* events for this action and this board's own optimistic move are removals
-   from the same pile, and the mirror is not authoritative for what is on top of it.
+   What the player asked for is *n cards off the top*, so the request carries `count`, and
+   the owner reads its own deck for what "the top" is - that is the only board that knows.
 
-   Whenever an earlier event is still in flight - a discard one click ago, a card drawn on
-   the other board - the mirror's top n are not the owner's top n. Moving the mirror's
-   then leaves the two boards permanently short of each other: the owner removes its own n,
-   this board has already removed n different cards, and nothing reconciles the difference
-   because the deck's order is private and a full board state is the only thing that
-   restores it. `tools/reveal-check.mjs` caught exactly that, one card past the end.
+   It also carries the **ids this board's mirror holds at the top**, and the owner uses
+   them when it can. That is not belt-and-braces: it is what lets the move be made here at
+   once, like every other entry in this module. A relayed request is two poll cycles -
+   about three and a half seconds between two boards, measured - and a discard that leaves
+   the deck sitting there for that long reads as a menu entry that did nothing.
 
-   So the deck gets shorter when the owner's own event says so, which is what a mirror is
-   for. The cost is the length of one round trip on a number in the corner of a pile
-   nobody is reading, against a board that can end up disagreeing about how many cards are
-   in a deck. The other entries take that trade the other way because the card they move is
-   one this board was *shown* - it is in a batch, and the batch is the permission.
+   So the mirror's top n are moved on this board immediately, and the ids travel so that
+   the owner moves **the same cards**. Without them the owner would take *its* top n,
+   which is only the same list when the mirror is in step - and a mirror is not always in
+   step: a card drawn on the other board, a discard one click ago, an event still in
+   flight. Then the owner removes n cards, this board has already removed n different ones,
+   and nothing reconciles the difference, because a deck's order is private and a full
+   board state is the only thing that restores it. `tools/reveal-check.mjs` caught exactly
+   that, one card past the end.
+
+   The owner still **falls back to the count** when the ids it was named are not all in its
+   deck, which is what a stale mirror looks like from the other side: the gesture was "the
+   top n", so it is answered as that rather than refused. The two boards can differ by a
+   card until the next full board state in that case, which is the downside of the guess
+   and is bounded by one gesture rather than permanent.
 */
 export function discardTopOfTheirDeck (count = 1) {
    if (spectating.get()) return false
@@ -289,7 +289,23 @@ export function discardTopOfTheirDeck (count = 1) {
    const n = Math.min(Math.max(1, Math.floor(count) || 1), defaultOpponent.deck.get().length)
    if (!n) return false
 
-   share('oppCardAction', { from: 'deck', action: OPP_ACTIONS.DISCARD_TOP, count: n })
+   /*
+      The mirror's own top n, to the mirror's own discard: the same move the owner is about
+      to make, so its events confirm rather than move a second time. The top of the deck is
+      the *end* of its array (see `placeOrdered` in custom/cards.js), so `slice(-n)` reads
+      the same cards the owner's own `pop` will.
+   */
+   const top = defaultOpponent.deck.get().slice(-n)
+   for (const card of top) {
+      if (takeFrom(defaultOpponent.deck, card)) defaultOpponent.discard.push(card)
+   }
+
+   share('oppCardAction', {
+      from: 'deck',
+      action: OPP_ACTIONS.DISCARD_TOP,
+      count: n,
+      cards: top.map((card) => card._id)
+   })
 
    trace.sent += n
    trace.sentTo = { count: n, action: OPP_ACTIONS.DISCARD_TOP, from: 'deck' }
@@ -607,13 +623,13 @@ export function respondToOpponentCardAction ({ card, cards, from, action, slotId
    }
 
    /*
-      *Discard Top X* names no cards, so it is answered before there is anything to look
-      up: the count is the whole request, and the cards it means are read off this board's
-      own deck - which is the only board that has them. See `discardTopOfTheirDeck` for why
-      the ids never travel.
+      *Discard Top Card* / *Discard Top X* is answered before there is anything to look up
+      in `ownPile`: the request is about *the top of a deck* rather than about a card, and
+      its own function reads this board's deck and discard. See `discardTopOfTheirDeck` for
+      why the count travels and what the named ids are for.
    */
    if (action === OPP_ACTIONS.DISCARD_TOP) {
-      return discardOwnTop(count)
+      return discardOwnTop(count, ids)
    }
 
    /*
@@ -774,8 +790,8 @@ function slotPile (name) {
 }
 
 /*
-   The top `count` cards of the **owner's own** deck, discarded: the answer to a *Discard
-   Top Card* / *Discard Top X* request, performed with this board's own piles.
+   The top cards of the **owner's own** deck, discarded: the answer to a *Discard Top Card*
+   / *Discard Top X* request, performed with this board's own piles.
 
    It is deliberately the same move the player's own deck menu makes for the same two
    entries (`moveTop` in `board/Deck.svelte`) - take them off the end of the deck, push
@@ -784,23 +800,37 @@ function slotPile (name) {
    player discarded themselves. That is the whole design of this module: the owner
    performs the move, and the acting board's copy follows the events.
 
-   Nothing here is `optimistic` on the acting side beyond the deck getting shorter: the
-   owner is the authority for what was under those cards, and the acting board was never
-   shown them.
+   **The named cards win when they are all here.** The request carries both a count and the
+   ids the asking board had at the top, and it is answered with the ids whenever this deck
+   holds every one of them - because that board has already moved those cards on its own
+   copy, and answering with a *different* list is how the two boards drift apart (see
+   `discardTopOfTheirDeck`). The count is the fallback for a mirror that is out of step:
+   the gesture was "the top n", so it is answered as that rather than refused.
 */
-function discardOwnTop (count) {
-   const n = Math.min(Math.max(1, Math.floor(count) || 1), myDeck.get().length)
-   if (!n) {
-      mark('refused: the deck is empty')
-      return false
-   }
+function discardOwnTop (count, ids = []) {
+   const asked = Math.max(1, Math.floor(count) || 1)
+
+   const named = ids.length
+      ? ids.map((id) => myDeck.get().find((c) => c._id === id)).filter(Boolean)
+      : []
+
+   const useNamed = named.length === ids.length && named.length > 0
 
    const cards = []
-   for (let i = 0; i < n; i++) {
-      const card = myDeck.pop()
-      if (!card) break
-      cards.push(card)
-      myDiscard.push(card)
+
+   if (useNamed) {
+      for (const card of named) {
+         if (!takeFrom(myDeck, card)) continue
+         cards.push(card)
+         myDiscard.push(card)
+      }
+   } else {
+      for (let i = 0; i < Math.min(asked, myDeck.get().length); i++) {
+         const card = myDeck.pop()
+         if (!card) break
+         cards.push(card)
+         myDiscard.push(card)
+      }
    }
 
    if (!cards.length) {
@@ -811,7 +841,7 @@ function discardOwnTop (count) {
    share('cardsMoved', { cards: cards.map((c) => c._id), from: 'deck', to: 'discard' })
    logMove(cards, 'deck', 'discard', { top: true })
 
-   mark(`discarded the top ${cards.length}`)
+   mark(`discarded ${useNamed ? 'the named' : 'the top'} ${cards.length}`)
    return true
 }
 

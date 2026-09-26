@@ -348,7 +348,15 @@ export function createOpponent () {
       stadiumPlayed: ({ cardId, from }) => {
          const card = removeCard(cardId, getPile(from))
          if (!card) return
-         stadium.push(card)
+         /*
+            The card the event names may already be in this mirror's Stadium, put there by
+            the acting player's optimistic move (see `optimisticMove` in oppAction.js): that
+            board moves the card into the far half's Stadium as soon as the entry is taken,
+            and this event is the owner saying the same thing. Adding it again would draw
+            the same card twice in the shared cell - the seam `dedupeSlot` closes for the
+            Bench, closed here for the Stadium, which is a list rather than a slot.
+         */
+         if (!stadium.get().some((c) => c._id === card._id)) stadium.push(card)
          discardStadium()
       },
       pokemonToggle: ({ hidden }) => pokemonHidden.set(hidden),

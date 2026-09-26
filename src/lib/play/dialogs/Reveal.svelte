@@ -3,6 +3,7 @@
    import Popup from './Popup.svelte'
    import { ctrlA } from '$lib/actions/customEvents.js'
    import { selectPile } from '$lib/stores/player.js'
+   import { spectating } from '$lib/stores/connection.js'
    import { reveal, revealView, revealOpen, closeReveal, revealCloseAndShuffle } from '$lib/stores/reveal.js'
 
    /*
@@ -116,10 +117,14 @@
       <div class="text-sm text-[var(--text-color-two)]">
          {cards.length} {cards.length === 1 ? 'card' : 'cards'} · both players can see these
       </div>
-      {#if cards.length}
+      {#if cards.length && !$spectating}
          <div class="hint">
             Click a card to pick it out, Ctrl-click to add, Ctrl+A for all — then right-click
             one to act on its owner's board, or drag one onto it.
+         </div>
+      {:else if cards.length}
+         <div class="hint">
+            Both players saw these. Nothing on this window is yours to move.
          </div>
       {/if}
    </div>
@@ -147,9 +152,17 @@
       endings for one gesture - and a deck rearranged a second time for no reason at
       all. The `shuffled` flag arrives with the event, so which button each player has
       never depends on which of them pressed it.
+
+      **A spectator gets Close and nothing else.** It is shown the window - the cards a
+      reveal put on the table are the point of the reveal - but both endings are the
+      players': a shuffle is somebody else's deck changing, and the spectator has no
+      batch of its own to end. Close is what a read-only panel has, which is the shape
+      every inspection dialog in the app already has.
    -->
    <svelte:fragment slot="buttons">
-      {#if $reveal?.shuffled}
+      {#if $spectating}
+         <button class="action" on:click={() => popup.close()}>Close</button>
+      {:else if $reveal?.shuffled}
          <button class="action" on:click={() => popup.close()}>Close</button>
       {:else}
          <button class="action" on:click={revealCloseAndShuffle}>Close &amp; Shuffle</button>
