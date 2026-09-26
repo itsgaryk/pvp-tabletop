@@ -5,7 +5,7 @@
    import Card from './Card.svelte'
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import { spectating } from '$lib/stores/connection.js'
-   import { canReveal, revealHand, farHandRevealed } from '$lib/stores/reveal.js'
+   import { canReveal, revealHand } from '$lib/stores/reveal.js'
    import {
       solo, soloHandIntoPlay, soloHandAttachToActive,
       soloShuffleHandIntoDeck
@@ -18,13 +18,12 @@
    /*
       A spectator always sees both hands, and in solo it is your own hand too.
 
-      `$farHandRevealed` is the third answer and the one that has to be asked of *this*
-      board: `handRevealed` belongs to the board that owns the hand and is set on the
-      owner's own screen, so it says nothing about the mirror being drawn here. A Reveal
-      Hand sets both - the owner's copy through the event, this one locally - and this half
-      draws the hand face up because of it.
+      A **Reveal Hand does not add itself here**, and that is deliberate: the hand stays
+      drawn as card backs while the window over it shows every card (*when "Reveal Hand" is
+      selected the cards in the hand zone should remain as Hidden Cards*). There is no flag
+      to add - the gesture sets none - so this expression is the same one it always was.
    */
-   $: revealed = $handRevealed || $farHandRevealed || $spectating || $solo
+   $: revealed = $handRevealed || $spectating || $solo
 
    /*
       Whether this hand's menu may be opened at all.
@@ -48,9 +47,9 @@
       Reveal the whole of this hand, to this player and the room's watchers.
 
       The whole of the gesture is `revealHand` in the store: which hand, what travels, who
-      is told and what the log says. It is deliberately not a move on this board: nothing
-      in this hand changes, and the owner's copy of it turns face up through the flag the
-      event carries.
+      is told and what the log says. It is deliberately not a move on this board and not a
+      change to how the hand is drawn either: nothing in the hand changes, and the zone goes
+      on showing card backs - the window is where the cards are.
    */
    function revealTheirHand () {
       revealHand()

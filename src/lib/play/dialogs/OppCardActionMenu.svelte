@@ -130,8 +130,15 @@
          cards into them - so a card out of somebody else's deck has no business in either,
          from the menu or from a drag (see `actionForPile`, which is the drag's half of the
          same answer). They were entries here until this was reported.
+
+         **And neither is *To Hand*.** A hand is the one zone of the owner's a window goes
+         on showing the cards of after they have been moved into it - the batch still holds
+         the id and the hand still holds the card - so a card sent there stayed actionable,
+         wearing the outline of a card that may be acted on, and it could be picked up and
+         sent somewhere else a second time. Reported as the *"glowing issue"*. The drop is
+         gone with it (`actionForPile`), because the two ways of moving a card have to
+         agree.
       -->
-      <ContextMenuOption click={() => act(OPP_ACTIONS.HAND)} text="To Hand" disabled={$spectating} />
       <ContextMenuOption click={() => act(OPP_ACTIONS.DISCARD)} text="To Discard" disabled={$spectating} />
 
       <ContextMenuOption click={() => act(OPP_ACTIONS.BENCH)} text="To Bench" disabled={$spectating} />

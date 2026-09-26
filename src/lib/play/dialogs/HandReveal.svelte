@@ -87,11 +87,10 @@
       </div>
       <!--
          What a click does, said out loud, because nothing on the card says it: a window's
-         cards do not pulse (`pulse={false}` here, for the same reason a Look turns it off -
-         every card in the window answers, so a glow on all of them is decoration), so a
-         ring that appears *after* a click is the only feedback there is. "I cannot select
-         the cards" is what a window with no hint and no pulse reports as, which is how the
-         Look window's own hint came to be written.
+         cards carry no outline and no animation (see the note in `opponent/Card.svelte`),
+         so a ring that appears *after* a click is the only feedback there is. "I cannot
+         select the cards" is what a window with no hint and no marking reports as, which
+         is how the Look window's own hint came to be written.
 
          A watcher gets the other half of that sentence, because for it there is nothing to
          click: a spectator is refused by `isActionable`.
@@ -112,7 +111,7 @@
    <div class="cards focus:outline-none inspection"
       tabindex="0" use:ctrlA on:ctrlA={selectAll}>
       {#each cards as card (card._id)}
-         <Card {card} {pile} revealed={true} pulse={false} />
+         <Card {card} {pile} revealed={true} />
       {/each}
    </div>
 

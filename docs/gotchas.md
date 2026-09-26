@@ -260,17 +260,18 @@ The zone-level flags — `handRevealed`, `prizesFlipped`, `pokemonHidden` — ar
 card-level `revealed` prop that actually draws `cardback` instead of the image:
 
 ```
-opponent/Hand.svelte        revealed = handRevealed || farHandRevealed || spectating || solo
+opponent/Hand.svelte        revealed = handRevealed || spectating || solo
 opponent/Prizes.svelte:71   revealed = prizesFlipped || spectating
 opponent/Slot.svelte:184    src = pokemonHidden ? cardback : cardImage(top)
 ```
 
-`handRevealed` is the odd one of the three, and it is now written by the *other* player: its only
-writer is the **Reveal Hand** menu entry on the opponent's hand (`opponent/Hand.svelte` →
-`revealHand` in reveal.js), which shares `handToggle` at the same time as it opens its window. The
-player's own hand menu has no entry for it, so a hand is hidden until somebody else reveals it.
-`farHandRevealed` is the reader's own record of the same gesture, and the reason there are two is
-the last note in this file.
+`handRevealed` is the odd one of the three: it is the only one with **no writer any more**. The
+player's own hand menu never had a switch for it (it was removed), and the **Reveal Hand** entry
+that briefly set it now opens a window and leaves the zone drawn as card backs — *when "Reveal
+Hand" is selected the cards in the hand zone should remain as Hidden Cards* (see
+[reveal.md](reveal.md)). The flag, the `handToggle` event and its handler are all still here and
+still correct; nothing sends them, so a hand is hidden unless a spectator, solo, or somebody else
+turns it up.
 
 `revealed` also reaches the drag ghost (`DndCard.svelte:25-44`, "a prize that is face down
 is carried face down") and the card menu, which prints *"Hidden card"* instead of a name
@@ -1427,15 +1428,27 @@ depends on *which* caller asked rather than only on what it was asked about, so 
 parameter list of an existing "which pile is that" function before adding a second pile to it.**
 
 **A flag that lives in `board()` describes the board that owns it, and the other player's copy of
-that board is a mirror the flag never reaches.** Reveal Hand turns the opponent's hand face up on
-both screens, and it was written as one flag plus one event: `handRevealed` is the per-zone flag
-every hidden zone has, `handToggle` already set it on the owner's board, and the gesture reused
-both. Measured with two browsers, that got the *owner's* board right and the *reader's* board
-exactly wrong — `handRevealed` true on the owner's screen, false on the reader's mirror of the same
-hand, seven card backs drawn under a window showing seven cards. A mirror receives the owner's
-board state and the owner's events; a writable the owner's board holds is not an event, so nothing
-carries it across. The fix is a second flag on the reader's side (`farHandRevealed` in reveal.js),
-not a second event: the reader has the window and its own record of what it was shown, and the
-owner has theirs. The tell is a shared *name* — two boards, one word, two different owners of it —
-so **ask which board a zone flag belongs to before reading it across the table**, and check the
-pair by running two browsers rather than one.
+that board is a mirror the flag never reaches.** This was measured while Reveal Hand briefly turned
+the opponent's hand face up on both screens, and it is kept because the trap is general even though
+that version was withdrawn (the hand stays drawn as card backs now — see
+[reveal.md](reveal.md)). `handRevealed` is the per-zone flag every hidden zone has, and
+`handToggle` sets it on the owner's board; the gesture reused both, and the reader's board — which
+draws a **mirror** of that hand — was left with `handRevealed` false. Measured with two browsers:
+the owner's screen drew faces, the reader's drew seven card backs under a window showing seven
+cards. A mirror receives the owner's board state and the owner's events; a writable the owner's
+board holds is not an event, so nothing carries it across. There is no fix *here* — the flag belongs
+to the board that owns the hand and cannot describe another screen — which is exactly why the
+feature stopped setting it. The tell is a shared *name*: two boards, one word, two different owners
+of it, so **ask which board a zone flag belongs to before reading it across the table.**
+
+**Ids are handed out per board load, so a record keyed by id has to die with the thing it is
+about.** The rule that a moved card stops being actionable was written as a set of spent ids
+(`spendCards` in reveal.js), which is right for the gesture and wrong for the session: `loadDeck`
+numbers a deck's cards `1..n` every time the board is loaded, so a board that is reloaded — an
+import, an adopted board state, a spectator's mirror filling in — hands the same ids to entirely
+different cards. Measured: a drag of every card in a *fresh* window refused, on a board that had
+been reloaded since the set was filled, and the check's own report said the new window's cards were
+already spent. The fix is one line in `setBatch` — the record is emptied when a new batch goes up,
+because the batch **is** the gesture — and the tell is a set that outlives the object it is a set
+*of*, so **ask what else is keyed by that id and how long it lives** before trusting an id across
+a reload.

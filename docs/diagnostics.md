@@ -183,13 +183,20 @@ everything that can go wrong with them needs *two* boards to see:
   ("Your deck" over there, "Your opponent's deck" here)
 - a Look is opened on one board only, and the other board is not merely idle — it was
   never sent anything, which is what makes a look private rather than merely hidden
-- a Reveal Hand is the same, with one thing more: the hand's owner is told *that* it
-  happened (the log line and their own hand turning face up) and never shown *what* —
-  and the window's card count has to match the hand badge, because the failure mode of
-  resolving a hand batch against a deck is an empty window that still renders
+- a Reveal Hand is the same, with two things more: the hand's owner is told *that* it
+  happened (the log line) and never shown *what* — and the window's card count has to match
+  the hand badge, because the failure mode of resolving a hand batch against a deck is an
+  empty window that still renders
 - a card acted on from a reveal lands on its **owner's** board: the acting player's own
   discard must not move, and their mirror of the owner's discard must
 - and the batch is a *view*: the card leaves both windows the moment it leaves the deck
+
+Three of the assertions in that set are about faults reported from play rather than about the
+shape of the feature, and each is worth knowing before touching them: the hand zone is still
+drawn as **card backs** after a Reveal Hand (read as images, on both boards), a window's card
+**cannot be dropped on the owner's hand** (the refusal is asserted as "nothing highlighted and
+nothing was sent"), and a card that has been moved **stops answering** (asserted on the store's
+record, and skipped on a deployment, which has no debug handle for it).
 
 It is the check that found the two faults this feature shipped with, and neither was
 reachable from a single board: the window was gathered off the wrong deck (so the

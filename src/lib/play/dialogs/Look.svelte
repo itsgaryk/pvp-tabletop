@@ -100,10 +100,11 @@
          {#if $spectating}the table is shown this look{:else}only you can see these{/if}
       </div>
       <!--
-         What a click does, said out loud, because nothing on the card says it: the Look
-         window's cards do not pulse (see `pulse` in opponent/Card.svelte), so a ring that
-         appears *after* a click is the only feedback there is - and "I cannot select the
-         cards" is what a window with no hint and no pulse reports as.
+         What a click does, said out loud, because nothing on the card says it: no card of
+         the other half's wears an outline or an animation any more (see the note in
+         `opponent/Card.svelte`), so a ring that appears *after* a click is the only feedback
+         there is - and "I cannot select the cards" is what a window with no hint and no
+         marking reports as.
 
          A watcher gets the other half of that sentence, because for it there is nothing
          to click: a Look travels so that the table can *see* one, and the cards are still
@@ -125,7 +126,7 @@
    <div class="cards focus:outline-none inspection"
       tabindex="0" use:ctrlA on:ctrlA={selectAll}>
       {#each cards as card (card._id)}
-         <Card {card} {pile} revealed={true} pulse={false} />
+         <Card {card} {pile} revealed={true} />
       {/each}
    </div>
 

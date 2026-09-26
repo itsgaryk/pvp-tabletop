@@ -10,7 +10,7 @@
       soloSlotToDiscard, soloSlotToPile,
       onOpponentHalf, onOpponentSlot
    } from '$lib/stores/solo.js'
-   import { dropRevealedCard, isDraggingRevealed } from '$lib/stores/oppAction.js'
+   import { dropRevealedCard, isDraggingRevealed, actionForPile } from '$lib/stores/oppAction.js'
 
    export let pile
    export let name = null
@@ -64,15 +64,23 @@
 
          - **in solo**, that half is yours, so a card dragged from one of its zones
            moves between them on this board, and nothing crosses between the halves
-         - **a card out of a Reveal or a Look**, which is not on the board at all: the
-           drop is a request to its owner (`dropRevealedCard`), the same request the
-           card's menu makes
+         - **a card out of a Reveal, a Look or a Reveal Hand**, which is not on the
+           board at all: the drop is a request to its owner (`dropRevealedCard`), the
+           same request the card's menu makes
 
       Both are answered in `onDrop`; this only says whether *something* can land here,
       which is what draws the highlight under the pointer.
+
+      **A window's card highlights this pile only when the drop would mean something
+      here**, and that answer is `actionForPile` - the same table `onDrop` reads. It used
+      to be `isDraggingRevealed` alone, which answers "is a window's card being carried"
+      and not "may it land here", so the owner's **hand** lit up under the pointer and then
+      refused the drop: a card that was placed and came back, which is the shape of fault
+      that distinction was reported as the last time it came up. The hand has no entry in
+      the table (see the note over `OPP_ACTIONS`), so it no longer lights up.
    */
    const allowDrop = () =>
-      isDraggingRevealed($draggedCard, $source) ||
+      (isDraggingRevealed($draggedCard, $source) && Boolean(actionForPile(pile))) ||
       Boolean($solo && $source && $source !== pile && (
          onOpponentHalf($source) ||
          ($source === 'slot' && onOpponentSlot($draggedCard))

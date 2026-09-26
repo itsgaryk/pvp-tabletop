@@ -84,7 +84,7 @@ writeFileSync(entry, `
    import Page from '${p('routes/+page.svelte')}'
    import { cards, cardSelection, deck, discard, bench, draw, hand, lz, moveSelection, resetBoard, resetSelection, attachSelection, selectCard, selectPile, shuffleAfterLeavingDeck, stadium, table, toBench, cardPile } from '${p('lib/stores/player.js')}'
    import { slot } from '${p('lib/stores/custom/cards.js')}'
-   import { reveal, revealView, look, lookView, handReveal, handRevealView, isActionable, canReveal, topCount, revealTop, lookTop, resetRevealState } from '${p('lib/stores/reveal.js')}'
+   import { reveal, revealView, look, lookView, handReveal, handRevealView, isActionable, canReveal, topCount, revealTop, lookTop, spendCards, resetRevealState } from '${p('lib/stores/reveal.js')}'
    import { OPP_ACTIONS, opponentCardAction, respondToOpponentCardAction } from '${p('lib/stores/oppAction.js')}'
    import { spectating } from '${p('lib/stores/connection.js')}'
    import InspectionView from '${join(root, 'tools', 'pile-dialog.svelte').split(sep).join('/')}'
@@ -93,7 +93,7 @@ writeFileSync(entry, `
    import HandRevealDialog from '${p('lib/play/dialogs/HandReveal.svelte')}'
    /* what a decklist import does: the list of cards, then the board built from it */
    const setDeck = (cards_) => { cards.set(cards_); resetBoard() }
-   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, handReveal, handRevealView, HandRevealDialog, isActionable, look, LookDialog, lookTop, lookView, lz, moveSelection, OPP_ACTIONS, opponentCardAction, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, RevealDialog, revealTop, revealView, selectCard, setDeck, shuffleAfterLeavingDeck, slot, spectating, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
+   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, handReveal, handRevealView, HandRevealDialog, isActionable, look, LookDialog, lookTop, lookView, lz, moveSelection, OPP_ACTIONS, opponentCardAction, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, RevealDialog, revealTop, revealView, selectCard, setDeck, shuffleAfterLeavingDeck, slot, spendCards, spectating, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
 `)
 
 const svelte = {
@@ -755,6 +755,65 @@ check('and Ctrl+A takes the whole hand batch',
 mod.resetSelection()
 mod.handReveal.set(null)
 mod.handRevealView.set([])
+
+/*
+   **And a card the player has moved stops being actionable.** This is the "glowing issue":
+   a card sent out of a window to the owner's **hand** stayed on show *and* stayed
+   actionable, because the hand is a pile the batch is still a live view of - the view is
+   "the batch's cards that are still in the pile", and the card really is in that pile. So
+   the window went on offering a card that had already been sent somewhere, and its outline
+   went on saying "you may move this".
+
+   The answer is a record of what this player has acted on (`spendCards`), asked by the one
+   function every gesture goes through. It is asserted here rather than in a browser because
+   the rule is a store's and the browser check can only see the drawing.
+*/
+const spentCard = { _id: 9701, name: 'Spent Card', set: 'sv1', number: '1' }
+const otherCard = { _id: 9702, name: 'Other Card', set: 'sv1', number: '2' }
+mod.defaultOpponent.hand.push(spentCard, otherCard)
+mod.handReveal.set({ looker: null, remote: false, pileName: 'hand', pile: { name: 'hand', get: () => [ spentCard, otherCard ], subscribe: (fn) => { fn([ spentCard, otherCard ]); return () => {} } }, cards: [ spentCard._id, otherCard._id ] })
+mod.handRevealView.set([ spentCard, otherCard ])
+
+check('a card of a window is actionable to begin with', mod.isActionable(spentCard))
+mod.spendCards([ spentCard ])
+check('and stops the moment this player has acted on it', !mod.isActionable(spentCard))
+check('and the rest of the window still answers', mod.isActionable(otherCard))
+check('and the card is still in the pile, which is why the view alone could not answer it',
+   get(mod.defaultOpponent.hand).includes(spentCard))
+
+/*
+   And the record does not outlive the board it was about. Asserted by putting the *same*
+   batch back after the reset: without that the claim would be answered by the batch being
+   gone rather than by the record being cleared, which is the shape of assertion that passes
+   for the wrong reason.
+*/
+mod.resetRevealState()
+mod.handReveal.set({ looker: null, remote: false, pileName: 'hand', pile: { name: 'hand', get: () => [ spentCard, otherCard ], subscribe: (fn) => { fn([ spentCard, otherCard ]); return () => {} } }, cards: [ spentCard._id, otherCard._id ] })
+mod.handRevealView.set([ spentCard, otherCard ])
+check('and the board being cleared forgets what was spent', mod.isActionable(spentCard),
+   'the record does not outlive the batch it was about')
+mod.handReveal.set(null)
+mod.handRevealView.set([])
+
+/*
+   **And the far half's card has no action outline at all.** The animation that used to mark
+   a card this player may act on is gone - the "glowing issue" - and this is the half of that
+   which no store can see: it was a `class:actionable={glowing}` binding on the wrapper plus a
+   rule with a `@keyframes` behind it, and a check that only asked the permission would pass
+   with both back in place.
+
+   Both halves are read out of the component's own source, because a render to a string is
+   where a class binding is at its least visible - the markup carries the class only when the
+   permission answers for that card - so a rule with nothing to bind it and a binding with
+   nothing to draw it are two bugs, and one assertion cannot see both.
+*/
+const farCardSource = readFileSync(join(src, 'lib', 'play', 'opponent', 'Card.svelte'), 'utf8')
+check('and no card of the far half is bound to an action class',
+   !/class:actionable/.test(farCardSource),
+   'the binding is gone, so there is nothing for a rule to draw on')
+check('and there is no action outline to wear',
+   !/\.actionable\s*\{/.test(farCardSource) && !/@keyframes actionable/.test(farCardSource),
+   'the rule and its keyframes are both gone')
 
 /*
    And the view is the deck's, not a copy of it, which is the difference between a

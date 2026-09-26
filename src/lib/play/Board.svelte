@@ -7,7 +7,6 @@
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import { isTyping } from '$lib/util/typing.js'
    import { defaultOpponent, spectatorOpponents, spectatorFlipped, handRevealed as oppHandRevealed } from '$lib/stores/opponent.js'
-   import { farHandRevealed } from '$lib/stores/reveal.js'
    import { solo, onOpponentSelection, onOpponentHalf, soloSelectedTo, OPPONENT } from '$lib/stores/solo.js'
 import { isWindowPile } from '$lib/stores/reveal.js'
    import { playerName, zoneBorders } from '$lib/stores/settings.js'
@@ -589,8 +588,7 @@ import { isWindowPile } from '$lib/stores/reveal.js'
             The hand's pile menu is portalled out of the rotated subtree (see
             ContextMenu.svelte), so turning the half does not turn the menu with it.
          -->
-         <div class="hand2" class:flip={topFlipped} class:upright={topUpright}
-            class:revealed={!$spectating && !soloSwapped && $farHandRevealed}>
+         <div class="hand2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<Hand />{:else}<OppHand store={topStore} />{/if}
          </div>
 
