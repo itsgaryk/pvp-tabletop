@@ -242,6 +242,19 @@ not on that list, and both were reported as bugs when they were:
   business in either. The menu entries for them are gone as well as the drop, because the
   two ways of moving a card must agree.
 
+### How many cards at once
+
+**Several, to every zone but the Active spot.** A window's cards are picked out with clicks —
+Ctrl/Cmd adds, Ctrl+A takes the batch — and a drag carries the *selection*, so dropping one of
+three picked cards sends all three. That is the same rule the board's own zones follow, and the
+same rule the card menu follows when an entry acts on the cards picked out.
+
+The **Active spot takes one card**, and a batch aimed at it is refused whole rather than
+half-answered. One Pokemon is Active, so the player's own `toActive` declines a selection of more
+than one; a request to the owner's Active spot is answered the same way, and the acting board does
+not guess at it either — moving the cards out of the window for a request that is about to be
+refused would empty a window the player is still reading.
+
 ### And the drop is refused, rather than quietly doing nothing
 
 `actionForPile` maps only the far half's piles, so a drop on one of the player's own reads
@@ -323,6 +336,25 @@ A Look is *not* shared in the sense a Reveal is. The looker may still act on the
 was shown (that is the permission the batch carries), the opponent is told nothing, and the
 cards leave the deck the moment they are moved, which the watcher's window follows because
 it is a live view of the same deck.
+
+### What the log says, and to whom
+
+A Reveal writes one line and it is the room's, with the cards named — a reveal is a public act, so
+the record of what the table was shown belongs to the table.
+
+A Look writes **two**, and they go to different people:
+
+- the **unnamed** line — `Looked at the top 3 cards of the opponent's deck` — is the room's, so the
+  deck's owner knows a look happened without being told what was in it
+- the **named** line — `Looked at [Pikachu, Switch, Boss's Orders]` — goes to the looker and the
+  room's watchers, the same people the window reaches
+
+That split is a second audience, and it rides the same machinery as the window: the sender names its
+audience, the relay adds the room's spectators from membership and delivers to those members only
+(`audienceOf` in the events route), and the routing field is stripped before the event is stored.
+`publishLogTo` is the client's half of it — it writes the line locally, because a client is never
+handed its own events back, and sends it to the members it named. An ordinary `publishLog` still
+goes to the room, which is what almost every line in the game is.
 
 ### One seam this leaves
 

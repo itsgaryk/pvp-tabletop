@@ -1,5 +1,5 @@
 import { writable } from './custom/writable.js'
-import { share, react, publishLog, spectating, myId, seatedPlayers as seated, onBoardCleanup } from './connection.js'
+import { share, react, publishLog, publishLogTo, spectating, myId, seatedPlayers as seated, onBoardCleanup } from './connection.js'
 import { solo } from './soloState.js'
 
 /*
@@ -694,6 +694,23 @@ function lookLine (count) {
    return `Looked at the top ${cards} of the opponent's deck`
 }
 
+/*
+   What a look found, for the log of the player who took it and the room's watchers.
+
+   The same audience as the window, and the same reason: the cards were read out of a
+   face-down deck, so the record of *which* cards belongs to the people who were shown them.
+   The deck's owner is not among them - their log keeps the unnamed `lookLine`, which is
+   what tells them a look happened without telling them what was in it.
+
+   The names are read on the board that holds the deck, at the moment of the look, which is
+   the same reading the window is built from (`topIds`). Both routes find them the same way
+   if the deck moves - a card acted on afterwards leaves this line alone, because a log is a
+   record of what was done rather than of what is still there.
+*/
+function lookedLine (names) {
+   return `Looked at [${names.join(', ')}]`
+}
+
 export function closeLook () {
    lookOpen.set(false)
 }
@@ -924,21 +941,32 @@ function shareLook (pile, ids) {
    const batch = applyLook({ looker: null, cards: ids }, false)
    if (batch) lookOpen.set(true)
 
+   /*
+      Who the relay is to address the look to. The looker is the sender and already
+      knows; the watchers are not named here - the relay finds every spectator in the
+      room from membership, so a client cannot name a member it should not reach (see
+      `audienceOf`).
+   */
+   const to = [ myId.get() ]
+
    share('cardsLooked', {
       looker: myId.get(),
       lookerSeat: seatOf(myId.get()),
       pileName: pile.name,
       cards: ids,
-      /*
-         Who the relay is to address it to. The looker is the sender and already
-         knows; the watchers are not named here - the relay finds every spectator in
-         the room from membership, so a client cannot name a member it should not
-         reach (see `audienceOf`).
-      */
-      to: [ myId.get() ]
+      to
    })
 
+   /*
+      Two lines, and they go to different people.
+
+      The **unnamed** one is the room's: it says a look happened and nothing about what was
+      in it, which is what the deck's owner is entitled to know. The **named** one goes to
+      the looker and the watchers, who were shown those cards - it is the log's copy of what
+      the window is drawing.
+   */
    publishLog(lookLine(ids.length))
+   publishLogTo(lookedLine(namesOf(pile, ids)), to)
 }
 
 /*

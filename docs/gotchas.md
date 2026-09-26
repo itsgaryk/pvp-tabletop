@@ -1288,6 +1288,29 @@ one about `$name` on a plain value — both are reactivity the compiler cannot f
 clean, and the tell is a value that is *right when asked* and *wrong on screen* — **ask what the
 compiler can see as the input, not what the value is.**
 
+**A drop handed `($draggedCard, $cardSelection)` that uses the first one moves one card.** Every zone
+of the far half calls `dropRevealedCard(target, $draggedCard, $cardSelection)` — the card the pointer
+is carrying, and the selection it came from — and the drop passed the *card* on to
+`opponentCardAction`, so a drag of one card out of three selected moved one and left the rest in the
+window: reported as *"when trying to drag and place multiple cards it only places 1 card"*. The
+board's own zones have always carried the selection (`onDrag` in `board/Card.svelte`), and so does
+the card menu, so the far half was the one place a drag did not mean what it means everywhere else.
+The tell is a signature with two things in it that can disagree — **ask which of them the callee
+actually reads.**
+
+**Reshaping a payload drops the fields you were not thinking about, and an audience is one of them.**
+The relay learns who an event is for by reading `data.to` (`audienceOf`), and the route *rebuilds* a
+`chatMessage` — `{ message, type, name }` — before deciding the audience. The rebuild did not carry
+`to`, and the absence of an audience was read as the fallback for `cardsLooked`: "the sender and the
+room's spectators". So one type being in the addressed set was enough to send **every** ordinary log
+line to the sender and the watchers and never to the opponent — their game log went silent for
+reveals, shuffles, draws and everything else, and it looked fine from the sender's side because a
+sender writes its own lines locally. Two rules came out of it, and both are in the route now: an
+addressed event with no `to` is the room's (`return null` before the fallback), and the audience is
+read from the **request's** `data` rather than from the reshaped `payload`. The tell is a
+transformation between what arrives and what a rule reads — **ask what the rule is looking at, not
+what was sent.**
+
 **A drag the board accepts and then does nothing with is not a refusal, and it reads as a bug.**
 A card out of a Reveal or a Look window belongs to the other player, so a drop on one of the
 player's own zones maps to no action (`actionForPile` knows only the far half's piles) — and the

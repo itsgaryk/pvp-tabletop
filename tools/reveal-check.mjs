@@ -172,6 +172,12 @@ function badges (page) {
          */
          myBench: document.querySelectorAll('.gameboard > .bench .slot').length,
          myActive: document.querySelectorAll('.gameboard > .active > .active1 .slot').length,
+         /*
+            The **far** half's Active spot, and it is by *slot* rather than by card: the
+            optimistic placement puts a slot there with an id of this board's own, so the
+            count has to be of what is drawn, not of what the mirror's store holds.
+         */
+         theirActive: document.querySelectorAll('.gameboard > .active > .active2 .slot').length,
          myStadium: document.querySelectorAll('.gameboard > .stadium-area > .stadium .stadium-cards > div').length,
          myTable: document.querySelectorAll('.gameboard > .play .table-card').length
       }
@@ -969,9 +975,95 @@ try {
    const theirZones = [
       [ 'hand', '.gameboard > .hand2 .pile', 'myHand' ],
       [ 'bench', '.gameboard > .bench2 .bench-zone', 'myBench' ],
-      [ 'active', '.gameboard > .active > .active2', 'myActive' ],
+      [ 'active', '.gameboard > .active > .active2', 'theirActive' ],
       [ 'lost zone', '.gameboard > .lz2 .pile', 'myLostZone' ]
    ]
+
+   /*
+      **And several cards at once go the same way**, which is the second reported fault:
+      *"when trying to drag and place multiple cards it only places 1 card"*. Every zone
+      hands `dropRevealedCard` the card the pointer is carrying *and* the selection it came
+      from, and the drop used to pass the card - so a drag of one card out of three moved
+      one and left the rest in the window.
+
+      The Active spot is deliberately not in this list: one Pokemon is Active, so a batch
+      for it is refused whole, exactly as the player's own `toActive` refuses a selection of
+      more than one. Its own check is below.
+   */
+   const spreadZones = [
+      [ 'hand', '.gameboard > .hand2 .pile', 'myHand' ],
+      [ 'discard', '.gameboard > .discard2 .pile', 'myDiscard' ],
+      [ 'lost zone', '.gameboard > .lz2 .pile', 'myLostZone' ],
+      [ 'bench', '.gameboard > .bench2 .bench-zone', 'myBench' ]
+   ]
+
+   for (const [ name, sel, key ] of spreadZones) {
+      await lookAtThree()
+      await alice.evaluate(`(() => {
+         const pop = [...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))
+         const imgs = [...pop.querySelectorAll('img.card')].slice(0, 2)
+         imgs.forEach((img, i) => img.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: i > 0 })))
+         return imgs.length
+      })()`)
+      await sleep(300)
+      const picked = await alice.evaluate(`globalThis.__pvp.player.cardSelection.get().length`)
+      const beforeSpread = (await badges(bob))[key]
+
+      await dragBetween(alice, lookCardExpr, `document.querySelector(${JSON.stringify(sel)})`)
+      const landedBoth = await waitForCount(bob, (p) => badges(p).then((b) => b[key]), beforeSpread + 2, { timeout: 12000, poll: 150 })
+
+      check(`and two cards picked out of the window both land on the owner's ${name}`,
+         picked === 2 && landedBoth === beforeSpread + 2,
+         `${picked} picked, owner's ${key} ${beforeSpread} -> ${landedBoth}`)
+   }
+
+   /*
+      And a batch for the owner's **Active** spot is refused, like the player's own: the drag
+      is accepted by the zone, the request is refused whole, and - the half that matters to
+      the player - the window keeps its cards rather than emptying itself for a move that is
+      not going to happen.
+   */
+   await lookAtThree()
+   await alice.evaluate(`(() => {
+      const pop = [...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))
+      const imgs = [...pop.querySelectorAll('img.card')].slice(0, 2)
+      imgs.forEach((img, i) => img.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: i > 0 })))
+      return imgs.length
+   })()`)
+   await sleep(300)
+
+   const beforeActive = await badges(bob)
+   await dragBetween(alice, lookCardExpr, `document.querySelector('.gameboard > .active > .active2')`)
+   await sleep(2500)
+   const afterActive = await badges(bob)
+   const activeView = await alice.evaluate(`globalThis.__pvp.reveal.lookView.get().length`)
+
+   check('and a batch dropped on the owner\'s Active spot is refused whole',
+      afterActive.theirActive === beforeActive.theirActive,
+      `the owner's active spot ${beforeActive.theirActive} -> ${afterActive.theirActive}`)
+   check('and the window keeps its cards rather than emptying for a refused move',
+      activeView === 3 && (await windows(alice)).length === 1,
+      `${activeView} cards in ${(await windows(alice)).length} window(s)`)
+
+   /* and one card for that spot is still the ordinary gesture, so it lands */
+   await lookAtThree()
+   await alice.evaluate(`(() => {
+      const pop = [...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))
+      pop.querySelector('img.card').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      return true
+   })()`)
+   await sleep(300)
+   const onePicked = await alice.evaluate(`globalThis.__pvp.player.cardSelection.get().length`)
+   await dragBetween(alice, lookCardExpr, `document.querySelector('.gameboard > .active > .active2')`)
+   /* the owner's own Active spot is the far half's, which is `.active2` on this board */
+   const promoted = await waitForCount(
+      alice,
+      (p) => p.evaluate(`globalThis.__pvp.opponent.defaultOpponent.active.get() ? 1 : 0`),
+      1,
+      { timeout: 12000, poll: 150 })
+   check('and one card dropped on the owner\'s Active spot IS promoted',
+      promoted === 1 && onePicked === 1,
+      `${onePicked} picked, the acting board's mirror of their active -> ${promoted}`)
 
    /*
       The two **shared cells** - the Stadium and the table - are deliberately not in this
@@ -990,22 +1082,55 @@ try {
    for (const [ name, sel, key ] of theirZones) {
       await lookAtThree()
       const before = await badges(bob)
+      const beforeTheir = await alice.evaluate(`globalThis.__pvp.opponent.defaultOpponent.active.get() ? 1 : 0`)
       const sentBefore = (await actionTrace(alice))?.sent ?? null
       const openBefore = (await windows(alice)).length
+      const droppedId = await alice.evaluate(`[...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))?.querySelector('img.card')?.getAttribute('alt')`)
 
       const out = await dragBetween(alice, lookCardExpr, `document.querySelector(${JSON.stringify(sel)})`)
-      const arrived = await waitForCount(bob, (p) => badges(p).then((b) => b[key]), before[key] + 1, { timeout: 12000, poll: 150 })
+      /*
+         The Active spot is waited for on the **acting board's own view**, where the
+         optimistic placement draws the card at once, by *delta* rather than against the
+         owner's badge: the mirror carries slots from the drops above (they are this board's
+         own guesses, and the owner's answers for the other zones do not remove them), so an
+         absolute count of the two is not the same number. The other zones are waited for on
+         the owner's badge, which is where the owner's answer lands.
+      */
+      const arrivedActive = key === 'theirActive'
+         ? await waitForCount(alice, (p) => p.evaluate(`(globalThis.__pvp.opponent.defaultOpponent.active.get() ? 1 : 0) + globalThis.__pvp.opponent.defaultOpponent.bench.get().length`), beforeTheir + before.myBench + 1, { timeout: 12000, poll: 150 })
+         : null
+      const arrived = key === 'theirActive'
+         ? arrivedActive
+         : await waitForCount(bob, (p) => badges(p).then((b) => b[key]), before[key] + 1, { timeout: 12000, poll: 150 })
       await sleep(400)
       const sentAfter = (await actionTrace(alice))?.sent ?? null
       const openAfter = (await windows(alice)).length
 
       check(`and a window's card CAN be dropped on the owner's ${name}`,
-         out.started && out.highlighted > 0 && arrived === before[key] + 1 &&
+         out.started && out.highlighted > 0 &&
+            (key === 'theirActive' ? arrived === beforeTheir + before.myBench + 1 : arrived === before[key] + 1) &&
             (!sentBefore || !sentAfter || sentAfter > sentBefore),
-         `${out.why}, owner's ${key} ${before[key]} -> ${arrived}, requests ${sentBefore} -> ${sentAfter}`)
+         `${out.why}, ${key === 'theirActive' ? `the acting board's mirror grew to ${arrived} from ${beforeTheir + before.myBench}` : `owner's ${key} ${before[key]} -> ${arrived}`}, requests ${sentBefore} -> ${sentAfter}`)
       check(`and the window stays open for the ${name} drop`,
          openBefore === 1 && openAfter === 1,
          `${openBefore} -> ${openAfter} windows`)
+
+      /* and the owner's own board shows it too, once their answer has landed. The Active
+         spot is asked for *which card* is there rather than how many: one is promoted and
+         whatever was Active is benched, so the count is 1 either way - a count cannot tell
+         "the card I sent is now Active" from "nothing happened". */
+      const ownerKey = key === 'theirActive' ? 'myActive' : key
+      /* the drop is identified by the card's *name*, which is what the window draws */
+      const droppedName = String(droppedId || '').replace(/^Card0*/, '')
+      const ownerSees = key === 'theirActive'
+         ? await waitForCount(alice, (p) => p.evaluate(`(() => {
+            const slot = globalThis.__pvp.opponent.defaultOpponent.active.get()
+            return slot ? slot.pokemon.get().map((c) => c._id).join(',') : ''
+         })()`), droppedName, { timeout: 12000, poll: 150 })
+         : await waitForCount(bob, (p) => badges(p).then((b) => b[ownerKey]), before[ownerKey] + 1, { timeout: 12000, poll: 150 })
+      check(`and the owner's own ${name} shows it as well`,
+         key === 'theirActive' ? ownerSees === droppedName : ownerSees === before[ownerKey] + 1,
+         key === 'theirActive' ? `the card the acting board holds as theirs is "${ownerSees}", the one sent was "${droppedName}"` : `owner's ${ownerKey} ${before[ownerKey]} -> ${ownerSees}`)
    }
 
    /*
@@ -1026,14 +1151,34 @@ try {
       `alice's own discard ${beforeDrag.theirDiscard} -> ${afterDrag.theirDiscard}`)
 
    /*
-      And nothing was sent: the other board's log has the shuffle a look can end
-      with, and no line about a look having been taken. `canReveal` refuses a
-      spectator before any of this, and a spectator gets no deck menu at all.
+      **Who the log tells, which is the second thing a Look's audience decides.**
+
+      The *named* line - the cards themselves - goes to the looker and the room's watchers,
+      the same people the window reaches. The deck's owner gets the **unnamed** line, which
+      says a look happened and nothing about what was in it. Neither of those is the other:
+      the owner is not shown the cards, and the looker is not left out of the record of what
+      they read.
    */
-   const bobLog = await bob.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.trim())`)
-   check('and the other player is not told the cards were seen',
-      !bobLog.some((line) => /^Looked at the top/.test(line)),
-      bobLog.filter((l) => /[Ll]ook/.test(l)).join(' | ') || 'no look line')
+   const logLines = (page) => page.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.replace(/\\s+/g, ' ').trim())`)
+   const aliceLookLines = (await logLines(alice)).filter((l) => /Looked at/.test(l))
+   const bobLookLines = (await logLines(bob)).filter((l) => /Looked at/.test(l))
+
+   check('the log names the cards for the player who looked',
+      aliceLookLines.some((line) => /Looked at \[[^\]]+\]/.test(line)),
+      aliceLookLines.join(' | ') || 'no look line')
+   check('and does NOT name them for the deck\'s owner',
+      !bobLookLines.some((line) => /Looked at \[[^\]]+\]/.test(line)),
+      bobLookLines.join(' | ') || 'no look line')
+   check('and the owner is still told a look happened',
+      bobLookLines.some((line) => /Looked at the top \d+ cards/.test(line)),
+      bobLookLines.join(' | ') || 'no look line')
+
+   if (watcher) {
+      const watchLookLines = (await logLines(watcher)).filter((l) => /Looked at/.test(l))
+      check('and the watcher is told which cards were seen, like the looker',
+         watchLookLines.some((line) => /Looked at \[[^\]]+\]/.test(line)),
+         watchLookLines.join(' | ') || 'no look line')
+   }
 
    /* ------------------------------- 3c. the top of the other player's deck, discarded -- */
 
@@ -1192,8 +1337,13 @@ try {
       1)
    check('and the owner sees the shuffle, without being told about a look', sawShuffle === 1, `${sawShuffle} shuffle lines`)
 
-   const bobLookLines = await bob.evaluate(`[...document.querySelectorAll('.chat p')].filter((x) => /^Looked at the top/.test(x.innerText)).length`)
-   check('and no look line was written on their board', bobLookLines === 0, `${bobLookLines} look lines`)
+   /*
+      The owner **is** told a look happened - the unnamed line - and is not told what was in
+      it, which is asserted where the look is taken (see the log-audience checks above).
+      What matters here is the other column: the shuffle reaches them and the *names* do not.
+   */
+   const bobLookCount = await bob.evaluate(`[...document.querySelectorAll('.chat p')].filter((x) => x.innerText.includes('Looked at [')).length`)
+   check('and the owner is still never told which cards a look saw', bobLookCount === 0, `${bobLookCount} named look lines`)
 
    /* ------------------------- 5. one shuffle, and one window -- */
 

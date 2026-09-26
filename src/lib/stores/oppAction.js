@@ -336,7 +336,23 @@ export function dropRevealedCard (target, dragged, source) {
    const action = actionForPile(target)
    if (!action) return false
 
-   opponentCardAction(dragged, action, { pile: source })
+   /*
+      **The whole selection, not the card that was picked up.**
+
+      Every caller hands over `($draggedCard, $cardSelection)` - the card the pointer is
+      carrying and the selection it came from - and this used to pass the *card*, so a drag
+      of one card out of three selected moved one card and left the other two in the window:
+      reported as *"when trying to drag and place multiple cards it only places 1 card"*. It
+      is the same rule the board's own zones follow, where a drag carries the selection (see
+      `onDrag` in `board/Card.svelte`), and the same rule the menu follows when it acts on
+      the cards picked out.
+
+      `dragged` is still what decides *whether* this is the gesture at all, because that is
+      what the drag stores are carrying.
+   */
+   const moving = Array.isArray(source) && source.includes(dragged) ? source.slice() : [ dragged ]
+
+   opponentCardAction(moving, action, { pile: source })
    return true
 }
 
@@ -575,6 +591,14 @@ export function opponentCardAction (cards, action, options = {}) {
 function optimisticMove (cards, source, action) {
    let moved = false
 
+   /*
+      A batch for the Active spot is refused by the owner *whole* (one card, one spot), so
+      this does not guess at it either: moving the cards out of the window here would empty
+      it for a request the owner is about to refuse, and the window would never get them
+      back. One card is the ordinary gesture and is drawn as usual.
+   */
+   if (action === OPP_ACTIONS.ACTIVE && cards.length > 1) return false
+
    for (const card of cards) {
       if (!takeFrom(source, card)) continue
 
@@ -737,6 +761,19 @@ export function respondToOpponentCardAction ({ card, cards, from, action, slotId
       return false
    }
 
+   /*
+      **One destination, one card, for the Active spot.** The board's own `toActive` refuses
+      a selection of more than one, because "put these three Pokemon in the Active spot" is
+      not a move the game has. A request that named several for it is refused whole rather
+      than partially: promoting one and leaving the rest in the deck is a move nobody asked
+      for, and the acting board has already drawn exactly that (it optimistically promotes
+      the first card), so half-answering it is how the two boards come to disagree.
+   */
+   if (action === OPP_ACTIONS.ACTIVE && found.length > 1) {
+      trace.last.stage = `refused: ${found.length} cards for one Active spot`
+      return false
+   }
+
    trace.last.stage = `found ${found.length} of ${ids.length}`
 
    /* the board's one selection is what its own moves work from */
@@ -761,6 +798,7 @@ export function respondToOpponentCardAction ({ card, cards, from, action, slotId
 
       case OPP_ACTIONS.ACTIVE:
          if (slotId) return intoSlot(card0, source, slotId)
+         /* one card here, guaranteed by the check above - `toActive` refuses more */
          toActive()
          return true
 
