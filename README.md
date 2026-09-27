@@ -32,10 +32,14 @@ without `?probe=1`, every environment variable, and running a relay of your own
 
 ## Documentation
 
-The technical documentation is in [`docs/`](docs/), one file per topic:
+The technical documentation is in [`docs/`](docs/), one file per topic.
+[**mechanics.md**](docs/mechanics.md) is the odd one out and the place to start: it is
+the *game's* rules — what a player may do and what the app leaves to the players —
+where the rest are about the code:
 
 | Document | What it covers |
 | --- | --- |
+| [mechanics.md](docs/mechanics.md) | The game's rules as the app implements them: setup and mulligans, the turn, the actions each zone offers, Pokémon in play, the Stadium, information and the log, the clock, and everything the app deliberately leaves to the players |
 | [deployment.md](docs/deployment.md) | Vercel setup, the KV/Redis requirement, the health endpoint and its probe, the environment-variable table, self-hosting a relay |
 | [rooms.md](docs/rooms.md) | A room's life: reconnecting, leaving, the two waits, a deploy ending the games it replaces, the idle prompt and the stale-member sweep |
 | [relay.md](docs/relay.md) | The three relay routes, the event log and its cursor, what a waiting poll costs, and what a burst costs |
