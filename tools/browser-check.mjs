@@ -847,7 +847,7 @@ if (want('idle')) {
    thing that was wrong rather than against the code that replaced it.
 */
 if (want('panel')) {
-   const room = await seatGame('the board panel: the glow, the clock, the Chat tab and both markers')
+   const room = await seatGame('the board panel: the glow, the clock, the Chat tab and both markers', { withWatcher: true })
    console.log(`  room ${room}`)
 
    const hideButton = () => alice.evaluate(`(() => {
@@ -858,6 +858,24 @@ if (want('panel')) {
    const chatTab = () => alice.evaluate(`(() => {
       const b = [...document.querySelectorAll('.tabs button')].find((el) => el.textContent.trim() === 'Chat')
       return b ? { unread: b.classList.contains('unread'), active: b.classList.contains('active') } : null
+   })()`)
+
+   /*
+      The message box, which belongs to the Chat tab and to nothing else: it is
+      read inside the window it is part of (`.chat .composer`), its own disabled
+      state, and which tab it is on. Both halves matter - a composer that is
+      merely greyed out is the rule this replaced, and one that is on screen
+      while the log is showing is the box the change moved.
+   */
+   const composer = (page) => page.evaluate(`(() => {
+      const box = document.querySelector('.chat .composer')
+      if (!box) return null
+      const input = box.querySelector('input[name="message"]')
+      return {
+         disabled: input ? input.disabled : null,
+         placeholder: input ? input.placeholder : null,
+         button: box.querySelector('button') ? box.querySelector('button').textContent.trim() : null
+      }
    })()`)
 
    const timerRowFor = (page) => page.evaluate(`(() => {
@@ -1132,15 +1150,34 @@ if (want('panel')) {
 
    /* the Chat tab, which is only ever lit by a message that arrived unseen */
    check('the Chat tab starts quiet', (await chatTab())?.unread === false, JSON.stringify(await chatTab()))
+
+   /*
+      The message box is the Chat tab's: on the Game tab there is no box and no
+      greyed-out control, and on the Chat tab it is in the window it writes to
+      and usable. A spectator gets the same window, so it is read there too.
+   */
+   check('the Game tab has no message box at all', (await composer(alice)) === null, JSON.stringify(await composer(alice)))
+   await alice.clickText('Chat', { settle: 1200, kinds: 'button' })
+   const box = await composer(alice)
+   check('the Chat tab has one, in the chat window itself', box !== null && box.button === 'Send', JSON.stringify(box))
+   check('and it is usable rather than greyed out', box?.disabled === false, JSON.stringify(box))
    await bob.clickText('Chat', { settle: 1200, kinds: 'button' })
+   check('the other player gets the same box', (await composer(bob))?.disabled === false, JSON.stringify(await composer(bob)))
+   if (watcher) {
+      await watcher.clickText('Chat', { settle: 1200, kinds: 'button' })
+      check('and so does a spectator', (await composer(watcher))?.button === 'Send', JSON.stringify(await composer(watcher)))
+   }
+   await alice.clickText('Game', { settle: 1200, kinds: 'button' })
+
    await bob.setInput('message', 'hello there')
-   await bob.clickText('Send', { settle: 1500, kinds: 'button' })
+   await bob.clickText('Send', { settle: 1500 })
    await sleep(4000)
    check('a chat line lights it while the log is showing', (await chatTab())?.unread === true, JSON.stringify(await chatTab()))
    await alice.clickText('Chat', { settle: 1500, kinds: 'button' })
    check('looking at the tab puts it out', (await chatTab())?.unread === false, JSON.stringify(await chatTab()))
    check('and the message is there', (await alice.counts()).chat > 0, String((await alice.counts()).chat))
    await alice.clickText('Game', { settle: 1200, kinds: 'button' })
+   check('leaving the tab takes the message box with it', (await composer(alice)) === null, JSON.stringify(await composer(alice)))
    await alice.clickText('Flip Coin', { settle: 2000, kinds: 'button' })
    await sleep(2500)
    check('a game-log line does not light it', (await chatTab())?.unread === false, JSON.stringify(await chatTab()))

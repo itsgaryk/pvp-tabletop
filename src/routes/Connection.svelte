@@ -10,7 +10,7 @@
    import {
       connected, room, spectating, spectators, chat,
       createRoom, joinRoom, spectateRoom, leaveRoom, roomSummary, roomError,
-      idle, resume, socket, waiting
+      socket, waiting
    } from '$lib/stores/connection.js'
    import { solo, startSolo, exitSolo } from '$lib/stores/solo.js'
 
@@ -312,18 +312,6 @@
       </div>
 
       <!--
-         Nothing has happened here for ten minutes, so the board is being checked
-         for lazily. Saying so, with a way to catch up at once, beats a board that
-         silently lags behind.
-      -->
-      {#if $idle && !$solo}
-         <div class="flex items-center gap-2 p-2 mb-2 rounded-md text-sm bg-[var(--bg-color-two)]">
-            <span class="flex-1">Idle for 10 minutes - updates may be delayed.</span>
-            <button class="px-2 py-1 font-bold rounded-md text-white bg-[var(--primary-color)]" on:click={resume}>Reconnect</button>
-         </div>
-      {/if}
-
-      <!--
          Waiting for a player who vanished. The room is being held for them, so
          this is a pause rather than an ending - and the ending, if it comes, says
          so in the dialog.
@@ -450,7 +438,7 @@
       @apply opacity-50;
    }
 
-   /* the notice a waiting room shows: the same shape as the idle one */
+   /* the notice a waiting room shows */
    .notice {
       @apply flex items-center gap-2 p-2 mb-2 rounded-md text-sm bg-[var(--bg-color-two)];
    }
