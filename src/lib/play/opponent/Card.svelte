@@ -4,7 +4,6 @@
    import cardback from '$lib/assets/cardback_int.png'
    import { solo } from '$lib/stores/solo.js'
    import { spectating } from '$lib/stores/connection.js'
-   import { defaultOpponent } from '$lib/stores/opponent.js'
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { dragging } from '$lib/dnd/pointer.js'
@@ -53,11 +52,32 @@
    $: actionable = $solo || isActionable(card, pile, $windows)
 
    /*
-      A player may look at the far half's cards where they are on show - a Pokemon
-      in play, a Stadium, and now a card a Reveal has shown them - but not what is
-      in its hand or its prizes. Those are hidden for a reason, and a double click
-      must not be a way round it. A spectator, and solo, may open anything: nothing
-      there is a secret from them.
+      A player may look at the far half's cards wherever they are on show - a Pokemon
+      in play, a Stadium, a card played to the table, a card in a pile that is public,
+      and a card a Reveal, a Look or a Reveal Hand has shown them - and not at what is
+      hidden: the opponent's hand and their prizes, which are drawn as card backs. A
+      double click must not be a way round that. A spectator, and solo, may open
+      anything: nothing there is a secret from them.
+
+      **What says so is `revealed`, and it is the only thing that can.** The rule used
+      to be asked of `actionable`, which is the permission a *window* hands a card -
+      and since that permission became "the card as the window carries it" (see
+      `isActionable` in reveal.js) a card lying in a zone of the far half is not
+      actionable at all, in a room, however visible it is. So the check refused every
+      card the far half draws: double clicking the opponent's Stadium or a card they
+      played to the table did nothing at all, which is what was reported - *"a player
+      should be able to double click on an opponent's card in both the Stadium Zone and
+      Table Zone for the Show Details function"*. It had in fact been dead for longer
+      than that, and invisibly: `hidden` below it was unreachable, because a card that
+      is actionable is one a window is carrying and a window's pile is never the hand.
+
+      `revealed` is the same fact the card's own `<img>` is drawn from - one line below
+      in this component, and `$prizesFlipped` or `$handRevealed` where the two hidden
+      zones pass it - so a card that is drawn face up is exactly a card that may be
+      read, and a prize the owner has turned up is one the table can already see. That
+      is the rule `opponent/Slot.svelte` states for a Pokemon in play (*"it is on the
+      table, not in a hand"*), and this is the same rule for the cards that are not in
+      a slot.
    */
    function onDetails () {
       if ($spectating || $solo) {
@@ -65,10 +85,9 @@
          return
       }
 
-      if (!actionable) return
+      if (!revealed) return
 
-      const hidden = pile === defaultOpponent.hand || pile === defaultOpponent.prizes
-      if (!hidden) openDetails(card)
+      openDetails(card)
    }
 
    /*

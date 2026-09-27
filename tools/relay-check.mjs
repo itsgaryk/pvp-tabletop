@@ -305,6 +305,36 @@ console.log('\nwho an event is for')
    check('an ordinary event still reaches everybody',
       (bOrdinary.body.events || []).some((e) => e.name === 'turnChanged'),
       JSON.stringify((bOrdinary.body.events || []).map((e) => e.name)))
+
+   /*
+      **And the other `to` on this wire, which is the same word meaning something
+      else.** A move names the zone a card went *to* - `cardsMoved` and `slotsMoved`
+      are both `{ …, from, to }` - so the relay has two fields called `to` to deal
+      with and only one of them is its own. Stripping the field whenever it was there
+      deleted the destination from every move in the game: the event arrived, the
+      mirror asked its own zones for a pile called `undefined`, found none and
+      returned, so **a card moved on one board never appeared on the other, in any
+      zone**, with nothing thrown and nothing logged. The draw that starts a game was
+      in the same class (`deck -> undefined`), and it was reported as cards played to
+      the table and to the discard not showing up on the opponent's board.
+
+      The two are told apart by *shape*, because the name is the same one: an audience
+      is a list of member ids, and a zone is a string. What is asserted here is both
+      halves of that - the destination survives, and the audience is still spliced out
+      above - because a fix for one that broke the other would be the same bug from the
+      other end.
+   */
+   await emit(a.roomId, a.memberId, 'cardsMoved', { cards: [ 11, 12 ], from: 'hand', to: 'table' })
+   await emit(a.roomId, a.memberId, 'slotsMoved', { slots: [ 'a-slot' ], to: 'discard' })
+   const bMoved = await poll(a.roomId, b.memberId, bOrdinary.body.seq)
+
+   const move = (bMoved.body.events || []).find((e) => e.name === 'cardsMoved')
+   check('a move keeps the zone it was going to', move?.data?.to === 'table', JSON.stringify(move?.data))
+   check('and the zone it came from', move?.data?.from === 'hand', JSON.stringify(move?.data))
+   check('and the cards it named', JSON.stringify(move?.data?.cards) === JSON.stringify([ 11, 12 ]), JSON.stringify(move?.data))
+
+   const slots = (bMoved.body.events || []).find((e) => e.name === 'slotsMoved')
+   check('so does a move of Pokemon in play', slots?.data?.to === 'discard', JSON.stringify(slots?.data))
 }
 
 /* -------------------------------------------------------- 2. waiting ------- */

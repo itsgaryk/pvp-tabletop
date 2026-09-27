@@ -32,6 +32,11 @@ a protocol change, and the receiver's `getPile()` returning `undefined` is how i
 fails: `cardsMoved` opens with `if (!pile2) return`, so **the card silently does
 not move** on the other board. Nothing throws.
 
+The `to` in that row is a **zone's**. The relay's own envelope carries a second `to` —
+the audience an event is addressed to — and the two are told apart by shape rather than
+by spelling: see [The homonym on the wire](#the-homonym-on-the-wire-the-relays-to).
+
+
 ## The zones
 
 | Zone on screen | store / wire | grid area | logger key | diagnostics line |
@@ -63,7 +68,7 @@ refers to it:
   `slotRegex` in `logger.js` and in `opponent.js` — which is why the *shape* of
   that name matters and the `id` in it is a `crypto.randomUUID()`.
 
-## The one homonym: `play`
+## The homonym in the log: `play`
 
 `play` means two unrelated things, and they are one word in two vocabularies:
 
@@ -123,6 +128,35 @@ So the clarity this needs is that the two meanings are written down, which is
 this document. A rename that unifies the spellings is a change to the *log
 vocabulary* and must take every `'play'` call site with it; it is a separate,
 optional job, and not the fix for the homonym.
+
+## The homonym on the wire: the relay's `to`
+
+One more `to` shares the wire and is **not a zone at all**: the audience an event is
+*addressed* to. A Look, a Reveal Hand and the log line that names what a look found are
+sent to some members and not others, and the sender names them as
+`{ to: [ memberId, … ] }`; the relay decides the real audience from membership, stores it
+as a field of the event, and splices the field out before the payload is delivered
+(`audienceOf` / `withoutAudience` in `src/routes/api/relay/events/+server.js`).
+
+So the wire carries `to` twice, one level apart and with two meanings:
+
+| `to` | Where | What it is | Who reads it |
+| --- | --- | --- | --- |
+| a **zone** | inside a move's payload (`data.to` of `cardsMoved` / `slotsMoved`) | a string: `'hand'`, `'table'`, `'discard'`, … | `getPile()` in `opponent.js` |
+| an **audience** | the relay's envelope (`data.to` on the way in, `event.to` on the way out) | a list of member ids | `audienceOf` and the poll's `forMember` |
+
+The two are told apart by **which of them the event is about**, and the two ends ask that
+different ways. On the way *in* the relay asks the **shape** — `Array.isArray(data.to)` —
+because it has to tell "an audience was asked for" from "this event has no audience", and a
+move's zone name is a string that must not be mistaken for one. On the way *out*, where the
+payload is stored and delivered, it asks the **name**: `withoutAudience` drops the field only
+for an event that is addressed at all, because on those three the field is the audience by
+definition and none of them carries a zone.
+
+Asking only whether the field was *there* is what it cost to learn: that deleted the
+destination from every move in the game, so no card moved on the other board in any zone, with
+nothing thrown and nothing logged. The account is in [gotchas.md](gotchas.md);
+`tools/relay-check.mjs` and `tools/zone-sync-check.mjs` are what hold both halves of it now.
 
 ## Conventions that are not names
 

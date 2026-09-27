@@ -134,8 +134,35 @@ function audienceOf (name, data, room, memberId) {
       .filter((id) => named.has(id) || room.members.find((m) => m.id === id)?.role === 'spectator')
 }
 
-/* the payload without the audience field: what travels is the game's own state */
-function withoutAudience (data) {
+/*
+   The payload without the audience field: what travels is the game's own state.
+
+   **`to` is two words on one wire, and which one this is, is decided by the event
+   rather than by the value.** A destination is a *zone* and belongs to the moves -
+   `cardsMoved` and `slotsMoved` each carry `{ cards, from, to }`, where `to` is
+   'hand', 'table', 'discard' and the rest (see docs/terminology.md, which has the
+   vocabulary a zone is named in) - while an audience is a list of member ids and
+   belongs to the three addressed events above.
+
+   Splicing `to` out of every payload that had one therefore deleted the
+   destination from every move in the game. Nothing threw and nothing was logged:
+   the event arrived, `opponent.js` asked its own zones for a pile called
+   `undefined`, found none, and returned - so a card moved on one board never
+   appeared on the other, for every zone. It was reported as *"when a player places
+   a card into the table zone it does not update and show on the opponent's view"*,
+   and the draw that starts a game was in the same class: `deck -> undefined`.
+
+   So the question asked here is the **name**: on an addressed event the field is the
+   audience by definition, and none of those three carries a zone, so `ADDRESSED` is
+   the whole of the answer. It is deliberately not a test of the value's *shape*: a
+   routing field this relay did not put there must not travel whatever it happens to
+   contain. The shape is asked on the way *in*, where the question is the other one -
+   `audienceOf` reads `Array.isArray(data.to)` because it has to tell "an audience was
+   asked for" from "this event has no audience", and a move's zone name is a string
+   that must not be mistaken for one.
+*/
+function withoutAudience (data, name) {
+   if (!ADDRESSED.has(name)) return data
    if (!data || typeof data !== 'object' || !('to' in data)) return data
    const { to, ...rest } = data
    return rest
@@ -283,7 +310,7 @@ export async function POST ({ request }) {
          opponent's events. Without it a player sees their own message twice -
          once when they publish it locally, once relayed back to them.
       */
-      const event = await appendEvent(roomId, name, withoutAudience(payload), {
+      const event = await appendEvent(roomId, name, withoutAudience(payload, name), {
          from: memberId,
          meta: room,
          to

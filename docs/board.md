@@ -59,16 +59,22 @@ Four cells are not one zone to one component:
 
 - **The table, and the Stadium's cell, are shared.** Both players play into the same
   cell, so each half's component is placed in it and the near one is on top (`.play`
-  at `z-index: 11`, `.stadium` at `10`). In solo the near table stands aside while it
-  is empty and nothing is being dragged (`pointer-events: none` on `.play.empty`),
-  which is what lets a click reach the far half's table lying underneath. The near
+  at `z-index: 11`, `.stadium` at `10`). The near table stands aside while it is empty
+  and nothing is being dragged (`pointer-events: none` on `.play.empty`), which is what
+  lets a gesture reach the far half's table lying underneath — and that is for a room
+  as much as for solo, because a card of theirs on the table is read there: a double
+  click on it opens its details and a right click pings it. A drag turns the near table
+  back on (that is what the `$dragging` clause is for), so a card being played still
+  lands on the table being played. The near
   stadium passes clicks through the same way until it has a card in play, and it stays
   the player's own whichever way the board is flipped. Both hold two cards per player
   (see [The Stadium holds two cards](#the-stadium-holds-two-cards-and-a-play-clears-the-other-players) below).
   **A shared zone is still one zone per player**: the cards in it are their owner's,
   and only their owner's are selectable — a card on the other half's table or in the
   other half's Stadium cannot be picked up, online or in solo
-  ([selection.md](selection.md#what-a-selection-is)).
+  ([selection.md](selection.md#what-a-selection-is)). What the near half stands aside
+  for is the *gesture*, not the pile: it is their cards that are under the pointer, so
+  nothing of the player's own is reachable there while their own table is empty.
 - **The Stadium's cell is three bands.** `.stadium-area` is itself a grid of
   `1fr 2fr 1fr`: `power2` in the top quarter, the two stadiums sharing the middle
   half, `power` in the bottom quarter. So each player's Pokemon Power zone is the
@@ -113,6 +119,17 @@ covers), and the whole stack is never selected at once — not by a click, and n
 `Ctrl+A` ([selection.md](selection.md#the-tables-stack-where-a-card-is-picked-up-on-its-own)).
 The `X` key still takes the whole table to hand with nothing selected, which is the
 move that key is for; it leaves nothing selected behind it.
+
+**A double click shows a card, and on the far half's table that is the card rather than
+the stack.** The two tables share a cell, so both are drawn as the same cascade — but a
+card of the other player's is not this player's to pick up or to move, and the near half's
+own double click is *View All*, so the far half's cards carry the gesture themselves and
+stop it there. It is the same rule a card of theirs gets in every other zone: a card drawn
+face up may be read where it lies, and one drawn face down — their hand, their unflipped
+prizes — is refused ([board/Card.svelte and opponent/Card.svelte](#the-zones), one rule
+each side of the table). Reaching it at all depends on the near table standing aside, which
+[the shared cells](#the-zones) above are about: the handler and the hit test are two
+different things, and the card has to be the element the pointer actually meets.
 
 **The stack is a cascade, and the cell holds it by scrolling it.** A card is laid over the
 one above at a step down that is a share of the card (35/105), and every second card takes one
