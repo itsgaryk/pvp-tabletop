@@ -347,6 +347,19 @@ waited for — the deadline is the same shape the relay's own requests have
 (`requestTimeout` in `relay/client.js`), and a browser check uses
 `tools/fake-deck-api.mjs`, which answers at once.
 
+**The real random deck sends no `errors` field, and the stand-in used to lie about
+that.** `/api/dm/import` answers `{ cards, errors }`; `/api/dm/random` answers
+`{ cards }` and nothing else. So `res.errors.length` is a throw on a random deck — and it
+threw *inside the import's own callback*, after `reset()` had already put the deck on the
+board and before the caller was told anything: a deck in the deck zone behind a window
+that never closes and a spinner that never stops, with nothing in the console but the
+error the fetch chain swallowed. `tools/fake-deck-api.mjs` sent `errors: []` on that
+endpoint, so no check could see it; it answers with `{ cards }` now, like the real one.
+The shape is settled once, in `util/fetch-web.js`: every caller is handed an array in
+`cards` and an array in `errors` whatever came back, and a body with no `cards` at all is
+answered as an import failure rather than loaded. `tools/deck-response-check.mjs` reads
+both halves of that.
+
 **That stand-in also cannot set a board up**, which is worth knowing before a check
 that needs a dealt board is written: its 60 cards carry no `stage`, so
 `hasBasic($cards)` is false, `deckValid` is false, and the Setup button is *disabled*

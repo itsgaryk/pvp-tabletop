@@ -72,11 +72,14 @@
       loading = false
       loadingRandom = false
 
-      /* an answer that is not an import's: there is no deck in it to speak of */
-      if (!Array.isArray(res?.cards)) {
-         response = res?.error || 'The deck API sent something that is not a deck.'
-         return
-      }
+      /*
+         `cards` and `errors` are arrays whatever the API sent, because
+         util/fetch-web.js settles the shape before anything reads it - and that is
+         the answer the random endpoint needed: it sends no `errors` key at all, so
+         asking for `res.errors.length` on it threw, after the board had been given
+         the deck and before the window was ever told, which is a deck on the board
+         behind a window that would not close.
+      */
 
       if (random) {
          if (!res.cards.length) {
