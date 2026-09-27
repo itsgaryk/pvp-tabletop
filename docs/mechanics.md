@@ -49,9 +49,10 @@ So "does the app stop me doing X?" is almost always no. The useful question is
 The screen is two boards, one per player, laid out as the far side of a table: each
 half has its own Deck, Prizes, Discard, Lost Zone, Hand, Bench, Active spot and
 Table, and each half has its own Stadium band and Pokémon Power band inside the one
-shared Stadium cell. The two shared cells are the only place the halves meet: **the
-Table and the Stadium are one cell each, and each half plays only its own cards into
-them** ([board.md](board.md#the-zones)).
+Stadium cell. Two of those cells — the Table and the Stadium — are **shared**, with a
+copy of the zone per player in the same place, and they get
+[a section of their own](#the-two-shared-cells) because almost every awkward rule in
+the game comes from them ([board.md](board.md#the-zones)).
 
 A player's own cards are the ones on their half. In a room the far half is drawn
 from the other player's events, so "my card" and "their card" are two boards rather
@@ -81,6 +82,57 @@ Two of these are not piles of the board proper:
   because moves name it.
 - **Slot innards** — the Pokémon, the energy and the tools under one Pokémon in
   play — are three lists inside the slot rather than zones of their own.
+
+### The two shared cells
+
+Two of the zones are **one cell each on the screen with a copy per player in it**, and
+they are the only place the two halves meet:
+
+| Shared cell | The near copy | The far copy |
+| --- | --- | --- |
+| The Table (grid area `play`) | your `table`, drawn over the far one | theirs, lying underneath |
+| The Stadium's middle band | your `stadium`, drawn over the far one | theirs, lying underneath |
+
+The Table is where cards in play that are not Pokémon go, drawn as a face-up stack, and
+the Stadium is the zone a Stadium card is played into — the cell also carries each
+player's Pokémon Power band above and below it, which is a token and not a shared zone
+at all.
+
+**Shared cell, not shared pile.** Each half has its own `table` and its own `stadium`;
+a card in the cell is on the half that played it, and the two piles are drawn in the
+same place with the near one on top. That is the whole reason the rest of these rules
+exist:
+
+- **A card only ever goes into its owner's copy.** Your keys, menus and drags put a card
+  into your own Table or Stadium and never into the far one. In a room the far half is
+  not draggable at all, so this costs nothing; **in solo both halves are one keyboard**,
+  so it is a rule the code has to enforce, and it does — a solo drag of a far-half card
+  lands on the far half's copy, and a card of one half's cannot be taken out of a shared
+  cell by the other.
+- **The near copy stands aside for a drag that belongs to the far half**, or the drop
+  would stop at the wrong one. In solo that is while a far-half card is being carried;
+  for a card out of a Reveal or a Look it is because the card belongs to the other
+  player, so the cell has to let the drop reach *their* zone underneath. The Table also
+  takes no pointer events while it is empty and nothing is being dragged, which is what
+  lets a click through to the far half's Table under it.
+- **A card of the opponent's in a shared cell is never actionable**, even one a window
+  showed you. The Table and the Stadium are deliberately absent from the places a
+  window's card may be sent — from the action menu and from the drop table both —
+  because each half plays only its own cards into them.
+- **A flip does not move them.** The two shared cells are the one thing flipping the
+  board leaves alone: the near copy stays the player's own however the board is turned,
+  because handing the player's own Table or Stadium to the other side of the screen is
+  the one thing a flip must not do. It is a view change, and the cells are where that
+  matters.
+- **Neither draws a count.** The Stadium is read as cards — up to two each, side by
+  side — and the Table is a stack, so neither carries a count badge. The Table also
+  refuses `Ctrl+A`: its cards are picked up one at a time.
+- **What is in them is public.** Both are face up for everybody, and the moves that
+  touch them are logged with the cards named — a card played into the Stadium, and any
+  card moving to or from the Table.
+
+The Stadium's own rules — the two-card limit, the replacement, and the play that clears
+the other player's — are [below](#the-stadium).
 
 ### Slots, and what is attached to a Pokémon
 
@@ -372,10 +424,10 @@ shuffle rule above).
 *View Top X* and *View Bottom X* on the deck, and *Inspect Prizes*, open a different
 panel: the cards are moved into **`pickup`** — a phase, not a zone — and the panel
 offers *Close* (put the remaining cards back where they came from), *Shuffle Back*
-(when they came from a deck), *Discard*, *To Hand* and *To Lost Zone*. While they are
-picked up they are drawn on the Table's cell as *in hand (moving)* in the
-diagnostics panel's vocabulary. *Picked up N cards from Deck* goes in the log when
-the cards are lifted.
+(when they came from a deck), *Discard*, *To Hand* and *To Lost Zone*. They are drawn
+in the panel itself while they wait — the only place a picked-up card is shown, since
+`pickup` has no cell — and the diagnostics panel names them *in hand (moving)*.
+*Picked up N cards from Deck* goes in the log when the cards are lifted.
 
 **Nothing is automatic about a picked-up card.** Closing the panel puts the
 remainder back; leaving them there is not a state the game has an opinion about.
@@ -516,23 +568,35 @@ removes itself, which is the one automatic cleanup in the game.
 
 ## The Stadium
 
-The Stadium is the one zone both players play into, in the cell it shares with each
-player's Pokémon Power band. Two rules make it a table mechanic rather than a zone:
+The Stadium is the one zone both players play into, in the middle band of the cell it
+shares with each player's Pokémon Power band ([the two shared cells](#the-two-shared-cells)).
+It holds up to two cards *per player*, and the rules are these:
 
-- **Each player may have two cards in play there.** They are drawn side by side, and
-  they are reached by playing one card at a time.
-- **A card played while that player already has two is the stadium being replaced**:
-  the whole of that player's own Stadium goes to their discard — both cards, not the
-  oldest — and the card just played is the only one they have left there. Below two,
-  a played card simply joins what is there.
-- **A card one player plays clears the other player's out of it**, all of them, into
-  that player's discard. So the two players' cards are only ever in the Stadium
+- **A player may place up to two of their own cards there**, one at a time. They are
+  drawn side by side, and below two a played card simply joins what is already there —
+  which is the only way the pair is ever reached.
+- **Playing a card while that player already has two replaces the whole of what they
+  had.** Both of their cards go to their discard — not the oldest of the two — and the
+  card just played is the only one of theirs left in the Stadium. So a player can never
+  hold more than two, and the third play always costs them both of the first two.
+- **Playing a card clears the other player's out of it**, all of them — one or two —
+  into *that* player's discard. So the two players' cards are only ever in the Stadium
   together for the moment a play takes to cross the wire.
 
-Nothing is refused: a play that would replace is a play that replaces. In solo, where
-one person plays both halves, the answer is made locally; in a room it is made by the
-client of whoever is being cleared, which is why it is their discard the cards land
-in.
+**Nothing here is refused.** A play that would replace is a play that replaces, rather
+than a drop that quietly does nothing; the app answers a play with the rule instead of
+with a refusal. That behaviour is intended, and it is the one two-player interaction in
+the game that the app performs on its own.
+
+The client that performs it is not always the client that played the card: in a room the
+cards being cleared belong to the other player, so *their* client is the one that knows
+what they had in play and puts it in their discard. In solo both halves are this board,
+so the answer is made locally. Either way the cards land in the discard of the player
+who held them.
+
+A Stadium card gets there by *To Stadium*, the `G` key, or a drag — the zone has no menu
+of its own. `G` with nothing selected writes what is in the Stadium to the log instead
+of playing anything.
 
 ## What you may do to the other player's board
 
