@@ -195,10 +195,8 @@ console.log(`fan check against ${BASE}`)
 
 await page.reset(BASE)
 await page.clickText('Play Solo', { settle: 2500 })
-for (const deck of [ 'Edit Deck', 'Edit Deck 2' ]) {
-   await page.clickText(deck, { settle: 900 })
-   await page.clickText('Import Random Deck', { settle: 2500 })
-   await sleep(400)
+for (const deck of [ 'Import Deck 1', 'Import Deck 2' ]) {
+   await page.importDeck(deck)
 }
 await page.clickText('Setup', { settle: 3000 })
 

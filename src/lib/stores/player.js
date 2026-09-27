@@ -88,13 +88,38 @@ onBoardCleanup(() => {
    resetTimer()
 })
 
-export function importDeck (txt, cb, rd = false) {
+/*
+   A decklist onto this board, from the API's answer to either a typed list (`txt`)
+   or a request for a random one (`rd`).
+
+   `cb` is the answer; `onError` is handed the reason when there was no answer at all
+   - the request ran out of time, or the API could not be reached. Nothing is loaded
+   in that case, because nothing arrived (see util/fetch-web.js).
+*/
+export function importDeck (txt, cb, rd = false, onError = null) {
    if (isSpectator()) return
 
    const callback = (res) => {
       fixOld(res.cards)
       cards.set(res.cards)
       reset()
+
+      /*
+         A decklist is a list, not a shuffled deck. The cards arrive in the order
+         they were written in, which is the order they would be drawn in - so an
+         import shuffles what it has just built, and what came back with the API's
+         own complaints is left in the order it arrived.
+
+         It writes nothing, and that is deliberate: nobody shuffled at the table, so
+         there is no *Shuffled Deck* line to write. `deck.shuffle()` is the pile's own
+         method and is silent; the `shuffle()` below is the player's action, and that
+         is the one that writes the line.
+
+         It happens after `reset()` because that is what builds the deck out of the
+         list: shuffling before it would shuffle the deck that is about to be thrown
+         away.
+      */
+      if (!res.errors.length) deck.shuffle()
 
       cb(res)
       share('deckLoaded', { deck: res.cards })
@@ -106,12 +131,10 @@ export function importDeck (txt, cb, rd = false) {
          (or an opponent reconnecting) would see their deck with an empty board.
       */
       shareBoardstate()
-
-      publishLog(rd ? 'random deck ⚆ _ ⚆' : 'Imported deck')
    }
 
-   if (rd) get('/api/dm/random', callback)
-   else post(`/api/dm/import`, { input: txt }, callback)
+   if (rd) get('/api/dm/random', callback, onError)
+   else post(`/api/dm/import`, { input: txt }, callback, onError)
 }
 
 export function draw (count = 1, setup = false) {

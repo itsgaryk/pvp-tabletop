@@ -119,8 +119,8 @@ console.log('\nsetup')
 await page.clickText('Play Solo', { settle: 2500 })
 console.log('  mode:', (await page.counts()).mode)
 
-await page.importDeck('Edit Deck')
-await page.importDeck('Edit Deck 2')
+await page.importDeck('Import Deck 1')
+await page.importDeck('Import Deck 2')
 await page.clickText('Setup', { settle: 2500 })
 
 const show = (label, snap) => {

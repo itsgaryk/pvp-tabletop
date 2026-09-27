@@ -158,9 +158,9 @@ shut, nobody has been told the time is up, no marks are left — now ask for the
 board as well, so a room that has gone cannot pass them.
 
 Its `lobby` section covers the way in — the **main menu**. The menu is the logo and
-the four buttons and nothing else on the window: the board, the settings cog and
-Edit Deck all stand aside while it is up. The logo sits to the left of the buttons,
-the buttons are a column of equal widths evenly spaced down it, and the pair is
+the four buttons and nothing else on the window: the board, the settings cog and the
+Import Deck window all stand aside while it is up. The logo sits to the left of the
+buttons, the buttons are a column of equal widths evenly spaced down it, and the pair is
 centred in the window. There is no name field and no Room ID field either, so every
 button opens a centred prompt for whatever that button needs — the name, and for
 joining or spectating the room code.

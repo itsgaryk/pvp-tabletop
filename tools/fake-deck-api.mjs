@@ -100,8 +100,17 @@ const server = createServer((req, res) => {
 
    const url = new URL(req.url, `http://${req.headers.host}`)
 
+   /*
+      The random endpoint answers with `cards` and **no `errors` key at all**, which
+      is what the real one does: `/api/dm/import` sends both, `/api/dm/random` sends
+      only the deck. That difference is not cosmetic, and a stand-in that sent
+      `errors: []` here could not tell a check about it - a reader that asks for
+      `res.errors.length` throws on this body, inside the import's own callback, and
+      the symptom is a deck on the board behind a window that never closes. It is how
+      that bug reached a player while every check stayed green (see docs/gotchas.md).
+   */
    if (url.pathname === '/api/dm/random') {
-      send(res, 200, { cards: deck(), errors: [] })
+      send(res, 200, { cards: deck() })
       return
    }
 

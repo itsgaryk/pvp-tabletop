@@ -320,6 +320,46 @@ to answer the `OPTIONS` preflight and send `access-control-allow-origin` or the
 status arrives as 200 and the body is refused. Both failure modes look identical
 from the app's side, and both were met here while writing the deck-order check.
 
+**A room's Import Deck window is already open by the time a check can click.** Creating
+or joining a room puts the window up by itself, in the middle of the board, with no way
+out until a deck imports cleanly — so a check no longer opens it and cannot dismiss it
+either. What it does instead is press *Import Random Deck* on the window that is there
+and answer the confirmation (*OK*), which is the whole of `importDeck()` in
+`tools/browser.mjs`; that helper's `which` argument is solo's alone (*Import Deck 1* /
+*Import Deck 2*, one per half, since neither opens by itself). Two things follow. A
+check that only wants the clock or the log has to import a deck first if it drives the
+board like a player — `tools/clock-check.mjs` does, for exactly this reason. And a
+check that reads the board *under* the window still passes, because `clickText` calls
+`element.click()` directly rather than moving the pointer: the window is modal on
+screen and not in the DOM, so a passing check is not evidence that a player could reach
+the button.
+
+**A deck request that fails is answered, not swallowed.** The import used to end at
+`console.error` with the callback never called at all, and nothing on screen can tell
+that from a request still in flight: the window sat on its spinner for ever, and with a
+room's window unclosable until a deck lands, a player had no way out of it. So
+`util/fetch-web.js` gives a request a 30-second deadline and hands the reason to the
+caller (`onError`), which the window shows where the deck would have been; nothing is
+loaded for it, because nothing arrived. Worth knowing when a check *waits* for an
+import: a request that never returns now ends, with words on screen, in half a minute.
+It also means a real Limitless deck that takes longer than that is abandoned rather than
+waited for — the deadline is the same shape the relay's own requests have
+(`requestTimeout` in `relay/client.js`), and a browser check uses
+`tools/fake-deck-api.mjs`, which answers at once.
+
+**The real random deck sends no `errors` field, and the stand-in used to lie about
+that.** `/api/dm/import` answers `{ cards, errors }`; `/api/dm/random` answers
+`{ cards }` and nothing else. So `res.errors.length` is a throw on a random deck — and it
+threw *inside the import's own callback*, after `reset()` had already put the deck on the
+board and before the caller was told anything: a deck in the deck zone behind a window
+that never closes and a spinner that never stops, with nothing in the console but the
+error the fetch chain swallowed. `tools/fake-deck-api.mjs` sent `errors: []` on that
+endpoint, so no check could see it; it answers with `{ cards }` now, like the real one.
+The shape is settled once, in `util/fetch-web.js`: every caller is handed an array in
+`cards` and an array in `errors` whatever came back, and a body with no `cards` at all is
+answered as an import failure rather than loaded. `tools/deck-response-check.mjs` reads
+both halves of that.
+
 **That stand-in also cannot set a board up**, which is worth knowing before a check
 that needs a dealt board is written: its 60 cards carry no `stage`, so
 `hasBasic($cards)` is false, `deckValid` is false, and the Setup button is *disabled*

@@ -43,17 +43,21 @@
 </svelte:head>
 
 <!--
-   The settings button, the board and the deck panels all stand aside for the main
+   The settings button, the board and the deck windows all stand aside for the main
    menu: it is the logo and the buttons, and nothing else on the window. Each of
-   them belongs to a board, and the menu has no board to act on - Edit Deck with
-   no game behind it opens a panel over a menu that has nothing to import into.
+   them belongs to a board, and the menu has no board to act on - Import Deck with
+   no game behind it opens a window over a menu that has nothing to import into.
 -->
 {#if !onMenu}
    <!-- the settings button (and, for a spectator, the board flip) -->
    <Controls />
 
-   <!-- a spectator has no deck of their own to edit -->
+   <!-- a spectator has no deck of their own to import -->
    {#if !$spectating}
+      <!--
+         The player's own deck. In a room this window opens by itself and stays up
+         until a deck has imported; in solo it is the button *Import Deck 1*.
+      -->
       <DeckInput />
 
       <!-- in solo the opponent's half is yours as well, so it gets its own deck -->

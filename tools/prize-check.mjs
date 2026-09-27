@@ -188,8 +188,8 @@ const closeDetails = async () => {
 console.log(`prize check against ${BASE}`)
 await page.reset(BASE)
 await page.clickText('Play Solo', { settle: 2500 })
-await page.importDeck('Edit Deck')
-await page.importDeck('Edit Deck 2')
+await page.importDeck('Import Deck 1')
+await page.importDeck('Import Deck 2')
 
 /* ------------------------------------------- 1. what a selection looks like --- */
 

@@ -83,7 +83,7 @@ const deckViews = () => page.evaluate(`(document.querySelector('.solo-log') || {
 console.log(`view log check against ${BASE}`)
 await page.reset(BASE)
 await page.clickText('Play Solo', { settle: 2500 })
-await page.importDeck('Edit Deck')
+await page.importDeck('Import Deck 1')
 
 const before = await deckViews()
 check('a fresh board has written nothing about the deck', before === 0, `${before} "Viewed deck" line(s)`)

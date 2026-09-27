@@ -239,12 +239,8 @@ console.log(`zone fit check against ${BASE}`)
 
 await page.reset(BASE)
 await page.clickText('Play Solo', { settle: 2500 })
-await page.clickText('Edit Deck', { settle: 900 })
-await page.clickText('Import Random Deck', { settle: 2500 })
-await sleep(400)
-await page.clickText('Edit Deck 2', { settle: 900 })
-await page.clickText('Import Random Deck', { settle: 2500 })
-await sleep(400)
+await page.importDeck('Import Deck 1')
+await page.importDeck('Import Deck 2')
 await page.clickText('Setup', { settle: 3000 })
 
 if ((await page.counts()).mode !== 'solo') {

@@ -38,6 +38,13 @@ A member id is the only thing identifying a player, so treat the room code plus
 that id as the credential they are: anyone holding both can act as that player.
 That is the same trust model as the room code itself.
 
+**Your own deck is the one thing a reload does not bring back.** The replay skips a
+member's own events — they were applied when they were sent (see `room()` in
+`relay/client.js`) — so a board rebuilt from the room's log holds the opponent's half
+and nothing of yours. That is why the **Import Deck** window is up again for a player
+who reloads into a game, and why importing there is a first import rather than a
+re-import of a deck the board still had ([The deck](mechanics.md#the-deck)).
+
 After ten minutes with nothing happening — no action of your own, no news from
 the other side, no click or key — the board drops to a lazy check (every 30s
 instead of every 2s). Any input, or a message from the other side, puts it

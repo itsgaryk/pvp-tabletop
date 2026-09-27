@@ -342,9 +342,28 @@ class Page {
       return this.evaluate(`[...document.querySelectorAll('span')].map((s) => s.textContent.trim()).find((t) => /^[A-Z0-9]{6}$/.test(t)) || null`)
    }
 
-   async importDeck (which = 'Edit Deck') {
-      await this.clickText(which, { settle: 900 })
-      await this.clickText('Import Random Deck', { settle: 2000 })
+   /*
+      A deck onto the board, through the Import Deck window.
+
+      In a room the window is already open by the time a check gets here: creating
+      or joining one puts it up with no way out until a deck lands, which is why
+      `which` is only for solo. Solo asks for a half by its own button - *Import
+      Deck 1* for the player's side, *Import Deck 2* for the opponent's.
+
+      The random import asks before it acts, so answering the confirmation is part
+      of the flow. What "the deck imported" looks like from outside is the window
+      closing itself, and that is what this waits for.
+   */
+   async importDeck (which = null) {
+      if (which) await this.clickText(which, { settle: 600 })
+
+      /* the window is the app's to open (a room) or the button's (solo): wait for it */
+      await this.waitForText('Import Random Deck')
+      await this.clickText('Import Random Deck', { settle: 400 })
+
+      await this.waitForText('Import a random deck?')
+      await this.clickText('OK', { settle: 400, kinds: 'button' })
+
       for (let i = 0; i < 40; i++) {
          if (!(await this.evaluate(`document.body.innerText.includes('Import Random Deck')`))) break
          await sleep(1000)
