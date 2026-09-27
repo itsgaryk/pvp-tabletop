@@ -155,19 +155,42 @@ and tools and removes itself, which is the one automatic cleanup in the game —
 
 ### The deck
 
-Each player imports a deck with **Edit Deck** (in solo, the far half gets its own
-panel, **Edit Deck 2**). The text in the panel is sent verbatim to the Limitless TCG
-API and the cards that come back are the deck; the app parses nothing itself. Two
-requests are possible: *Import Deck* posts the textarea, and *Import Random Deck*
-asks the same API for a random list.
+Each player imports a deck through the **Import Deck** window: a text box for the
+list, *Import Deck*, and *Import Random Deck* directly under it. In solo the window is
+asked for by a button in the board's corner — **Import Deck 1** for the player's own
+half, **Import Deck 2** for the opponent's, because both halves are one person's there.
 
-Two things are reported back to the player, and neither is a gate:
+In a room the window opens *by itself*, the moment the board appears: creating or
+joining a room puts it up in the middle of the board and leaves no way out until a
+deck has imported cleanly. It has no close button while that is true, and neither the
+backdrop nor `Escape` dismisses it — a player who could close it would be sitting at
+an empty board with nothing to import into. An import that reports nothing closes the
+window, and the board answers **Deck successfully imported** in the middle of itself,
+fading after two seconds. From then on the window is an ordinary one: the **Import
+Deck** button opens it again, and it closes like any other window.
+
+The text in the window is sent verbatim to the Limitless TCG API and the cards that
+come back are the deck; the app parses nothing itself. Two requests are possible:
+*Import Deck* posts the textarea, and *Import Random Deck* asks the same API for a
+random list — behind a confirmation (*OK* / *Cancel*), because it is the one button
+that replaces whatever is in the box.
+
+Two things are reported back to the player, and neither is a gate on the *board*:
 
 - **The API's own errors**, joined into one message.
 - **`Decklist is not 60 cards!`** — the app adds up the `count` of the returned
   cards and complains if the total is not 60. The deck is *already loaded* at this
   point, and it stays loaded: the message is a warning, not a refusal.
-  *Import Random Deck* does not even make that check; it closes the panel.
+
+Both are a gate on the *window* all the same: it closes only on an import that had
+nothing to say about it, so *Import Random Deck* is checked exactly as a typed list is,
+and a deck the API complained about leaves the window up to be corrected.
+
+An import is **shuffled as it lands**, and it writes nothing to the game log — neither
+the import nor the shuffle. That makes the deck a deck from the moment it arrives rather
+than from the first *Setup*: a look through it, or a card drawn out of it by hand, is not
+the list in the order it was typed. And nothing is written because nothing happened at
+the table — *Shuffled Deck* in the log is a player shuffling, which an import is not.
 
 **The one and only deck rule the game knows** is that the list contains at least one
 Basic Pokémon (`card.stage === 'basic'`). It is used in exactly one place:
@@ -863,7 +886,7 @@ expiry collects.
 Everything about the game is the same except the things that only matter with two
 people ([solo.md](solo.md)):
 
-- **Both halves are yours.** *Edit Deck 2* gives the far half its own deck; *Setup*
+- **Both halves are yours.** *Import Deck 2* gives the far half its own deck; *Setup*
   deals both; the far half's cards are draggable, its piles have menus, and its
   Pokémon keep the usual menu plus the moves that take them off the board.
 - **There is no clock and no Hide Pokémon.**
@@ -887,7 +910,7 @@ As a consequence, a spectator sees a great deal:
 - **Both hands and both sets of prizes are face up.**
 - **The clock, without its controls**, and the turn counter without its ends.
 - **No game actions and none of their shortcuts** — no Setup, Hide, Flip Coin, End
-  Turn, and no deck panels.
+  Turn, and no Import Deck window: a spectator has no deck of their own to import.
 - **A window's cards are its to read and not to act on.** A spectator gets the Reveal
   and Reveal Hand windows and may move nothing out of them. A **Look** is the
   exception in the other direction: its window is the looker's board alone, so a

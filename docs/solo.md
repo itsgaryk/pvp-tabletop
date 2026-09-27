@@ -13,9 +13,11 @@ swaps your own board with the other side's.
 Both halves of the board are yours, so the second one is playable the same way
 the first is:
 
-- **Edit Deck 2**, beside **Edit Deck**, gives the opponent's half its own deck
-  through the same panel, the same import. Both panels start closed; the button is
-  how you ask for one.
+- **Import Deck 2**, beside **Import Deck 1**, gives the opponent's half its own deck
+  through the same window, the same import. Both windows start closed; the button is
+  how you ask for one, and either closes again without importing. (A room is the
+  other way round: its window opens itself and stays up until a deck lands — see
+  [The deck](mechanics.md#the-deck).)
 - **Setup** sets up both sides — shuffle, seven cards, six prizes each.
 - The opponent's hand is face up, and its piles have menus: draw from their deck
   (Draw, Draw X, Draw 7, Shuffle), put the top card of their hand into their

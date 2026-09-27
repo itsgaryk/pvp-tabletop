@@ -320,6 +320,20 @@ to answer the `OPTIONS` preflight and send `access-control-allow-origin` or the
 status arrives as 200 and the body is refused. Both failure modes look identical
 from the app's side, and both were met here while writing the deck-order check.
 
+**A room's Import Deck window is already open by the time a check can click.** Creating
+or joining a room puts the window up by itself, in the middle of the board, with no way
+out until a deck imports cleanly — so a check no longer opens it and cannot dismiss it
+either. What it does instead is press *Import Random Deck* on the window that is there
+and answer the confirmation (*OK*), which is the whole of `importDeck()` in
+`tools/browser.mjs`; that helper's `which` argument is solo's alone (*Import Deck 1* /
+*Import Deck 2*, one per half, since neither opens by itself). Two things follow. A
+check that only wants the clock or the log has to import a deck first if it drives the
+board like a player — `tools/clock-check.mjs` does, for exactly this reason. And a
+check that reads the board *under* the window still passes, because `clickText` calls
+`element.click()` directly rather than moving the pointer: the window is modal on
+screen and not in the DOM, so a passing check is not evidence that a player could reach
+the button.
+
 **That stand-in also cannot set a board up**, which is worth knowing before a check
 that needs a dealt board is written: its 60 cards carry no `stage`, so
 `hasBasic($cards)` is false, `deckValid` is false, and the Setup button is *disabled*

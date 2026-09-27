@@ -47,7 +47,7 @@ export function exitSolo () {
 }
 
 /*
-   "Edit Deck 2": the same decklist the player's own panel takes, landed on the
+   "Import Deck 2": the same decklist the player's own window takes, landed on the
    opponent's half instead. Shared events are no-ops here, since there is no room
    to tell.
 */
@@ -57,6 +57,16 @@ export function importOpponentDeck (txt, cb, rd = false) {
       defaultOpponent.cards.set(res.cards)
       /* the board's own reset reloads its deck from that list */
       defaultOpponent.reset()
+
+      /*
+         The same shuffle the player's own import makes, for the same reason: a
+         decklist is a list rather than a shuffled deck, and the far half's deck
+         should not be drawn in the order it was written in. It is silent - there is
+         no *Shuffled Deck* line for an import on either half - and it comes after
+         `reset()`, which is what builds the deck.
+      */
+      if (!res.errors.length) defaultOpponent.deck.shuffle()
+
       cb(res)
    }
 

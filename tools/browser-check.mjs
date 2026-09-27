@@ -312,21 +312,21 @@ if (want('lobby')) {
       JSON.stringify(menuOnly?.children))
 
    /*
-      The rest of the page stands aside too. The settings cog and Edit Deck belong
-      to a board, and there is no board behind the menu - so the window is the
-      logo, the buttons, and nothing else at all.
+      The rest of the page stands aside too. The settings cog and the Import Deck
+      window belong to a board, and there is no board behind the menu - so the window
+      is the logo, the buttons, and nothing else at all.
    */
    const elsewhere = await alice.evaluate(`(() => {
       const text = document.body.innerText
       return {
-         editDeck: /Edit Deck/.test(text),
+         editDeck: /Import Deck/.test(text),
          cog: [...document.querySelectorAll('button[aria-label="Settings"]')].length,
          board: document.querySelector('.gameboard') !== null,
          buttons: [...document.querySelectorAll('button')].map((b) => b.textContent.trim()).filter(Boolean)
       }
    })()`)
 
-   check('with no Edit Deck, no settings cog and no board behind it',
+   check('with no Import Deck, no settings cog and no board behind it',
       elsewhere.editDeck === false && elsewhere.cog === 0 && elsewhere.board === false,
       JSON.stringify(elsewhere))
    check('so the only buttons on the window are the four',

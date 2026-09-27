@@ -206,8 +206,8 @@ console.log(`deck order check against ${BASE}`)
 await page.reset(BASE)
 await page.clickText('Play Solo', { settle: 2500 })
 /* both halves are played from this one browser, and each needs its own deck */
-await page.importDeck('Edit Deck')
-await page.importDeck('Edit Deck 2')
+await page.importDeck('Import Deck 1')
+await page.importDeck('Import Deck 2')
 await page.clickText('Setup', { settle: 2500 })
 
 /* a board with a deck on it, whatever the deck import felt like doing */

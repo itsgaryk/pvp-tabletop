@@ -94,11 +94,19 @@ const secs = (text) => {
       : parts[0] * 60 + parts[1]
 }
 
-/* both boards in a room, which is all this needs: no decks, no setup */
+/* both boards in a room, which is all this needs: a deck each, no setup */
 console.log('\ntwo players in a room')
 await Promise.all([lobby(alice, 'alice'), lobby(bob, 'bob')])
 const room = await alice.createRoom('Alice')
 await bob.joinRoom(room, 'Bob')
+
+/*
+   A room's Import Deck window is up on both boards until a deck lands, and it is
+   the board's own gate rather than this check's: import one each so the buttons
+   under it are a player's to press.
+*/
+await alice.importDeck()
+await bob.importDeck()
 await sleep(2500)
 
 check('the room opened at all', (await alice.counts()).mode === 'room', (await alice.counts()).mode)

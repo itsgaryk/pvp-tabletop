@@ -512,8 +512,8 @@ On screen a spectator gets the whole board and none of the play:
 - **Both hands and both sets of prizes are face up** (`$spectating` reveals them
   outright), which is the deliberate difference from a player, who sees a hidden hand
   and hidden prizes.
-- **The clock, without its controls**, no VSTAR/GX marker of its own, and no deck
-  panels — a spectator has no deck to edit.
+- **The clock, without its controls**, no VSTAR/GX marker of its own, and no Import
+  Deck window — a spectator has no deck to import.
 - **A spectator is not a seat.** A spectator leaving never closes the room, and a
   spectator's presence going stale is only a count change (see [Leaving, and what
   closes a room](rooms.md#leaving-and-what-closes-a-room)).
