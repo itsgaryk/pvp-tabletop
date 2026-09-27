@@ -1,5 +1,5 @@
 <script>
-   import { autoMulligan, zoneBorders } from '$lib/stores/settings.js'
+   import { zoneBorders } from '$lib/stores/settings.js'
    import { powerMarker, setPowerMarker } from '$lib/stores/player.js'
    import { solo } from '$lib/stores/solo.js'
    import Popup from './Popup.svelte'
@@ -52,24 +52,24 @@
       above it reads as a stray line rather than a setting - and the first and
       last are rounded to close the panel. Which blocks there are can differ
       between solo and a room, so the rounding is on the ones that come first and
-      last in both rather than on a count.
+      last in both rather than on a count: `first` is on the marker in solo and on
+      the zones in a room, the two blocks that can open the panel.
 
       The one line explaining what a setting does is only there where the control
       does not already say it. A checkbox that reads "Show borders around the
       board zones" does not need a paragraph naming the zones as well.
+
+      The Mulligans block is gone: auto-mulligan is off and stays off unless
+      somebody reaches into localStorage, so the panel is the settings a player
+      can actually change. The setting, its default and the loop that reads it are
+      kept - see src/lib/stores/settings.js and docs/mechanics.md#mulligans - and
+      with it gone the first block is the marker in solo and the board zones in a
+      room, which is why both carry `first`.
    -->
    <div class="p-4">
-      <div class="setting first">
-         <div class="title">Mulligans</div>
-         <label class="px-1">
-            <input type="checkbox" bind:checked={$autoMulligan}>
-            Automatically re-shuffle mulligans when starting a new game
-         </label>
-      </div>
-
       <!-- solo's own marker setting; a room's format is what decides it there -->
       {#if $solo}
-         <div class="setting">
+         <div class="setting first">
             <div class="title">VSTAR / GX marker</div>
             {#each markers as marker (marker.value)}
                <label class="px-1 block">
@@ -83,7 +83,7 @@
          </div>
       {/if}
 
-      <div class="setting">
+      <div class="setting first">
          <div class="title">Board zones</div>
          <label class="px-1">
             <input type="checkbox" bind:checked={$zoneBorders}>

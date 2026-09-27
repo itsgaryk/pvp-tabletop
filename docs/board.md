@@ -573,7 +573,11 @@ survives a reload:
   a reload lands back in the same game as the same member. Leaving a room, or finding
   it gone, forgets it.
 - **The settings** (`auto_mulligan`, `zone_borders`, `player_name`), through
-  `storable()` in `src/lib/stores/custom/storable.js`.
+  `storable()` in `src/lib/stores/custom/storable.js`. `auto_mulligan` is the odd one:
+  the setting is still there and still read, but it has no control in the menu any
+  more, so its key is deleted on every page load rather than obeyed — a browser that
+  had the checkbox ticked when it existed does not get to keep the behaviour
+  ([mechanics.md](mechanics.md#mulligans)).
 
 The board itself is persisted nowhere. In a room it is rebuilt by replaying the relay's
 event log, which is why a stale `pvp_session` matters and a stale board does not. In

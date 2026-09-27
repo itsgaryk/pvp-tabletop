@@ -1,6 +1,23 @@
+import { browser } from '$app/environment'
 import { storable } from './custom/storable.js'
 
-export let autoMulligan = storable(true, 'auto_mulligan')
+/*
+   Auto-mulligan is off, and there is no control for it: the Mulligans block is
+   gone from the settings menu, so this store is what is left of the feature -
+   the setting, its persisted key and the loop in GameActions.svelte that reads
+   it. Nothing switches it on, which is the point: set it to true from the
+   console (`localStorage.setItem('auto_mulligan', 'true')`) to bring the
+   behaviour and its log line back for a test. See docs/mechanics.md#mulligans.
+
+   A value stored while the checkbox was on the menu is dropped rather than
+   obeyed: the default changed, and a `true` left in a player's browser would
+   have outvoted it and kept redrawing hands with nothing on screen to say why.
+   The cost is that the console write above is undone by the next page load,
+   which is the right way round for a setting that no longer has a control.
+*/
+if (browser) localStorage.removeItem('auto_mulligan')
+
+export let autoMulligan = storable(false, 'auto_mulligan')
 
 /*
    There is no card size any more. A card on the board is the size of the zone it
