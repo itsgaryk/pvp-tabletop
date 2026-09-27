@@ -48,6 +48,7 @@
    import { dragging } from '$lib/dnd/pointer.js'
    import { solo, onOpponentHalf } from '$lib/stores/solo.js'
    import { isWindowPile } from '$lib/stores/reveal.js'
+   import { pinged, pingedCard } from '$lib/stores/ping.js'
 
    /*
       Neither a Pokemon in play nor a card in the Stadium is attached to anything -
@@ -175,10 +176,19 @@
    <StatusMarker status={$status} />
 
    {#if top}
+      <!--
+         `class:pinged` is a ping this Pokemon has received: the entry is offered on the
+         other player's cards, so the card that glows here is one of the player's own,
+         pointed at from across the table (see `OppCardPingMenu.svelte` and `.pinged` in
+         global.css). It is on the Pokemon's own card and not on the slot, so the cards
+         fanned out under it are not lit with it - and each of those wears the same
+         binding below, because one of *them* can be the card that was pinged.
+      -->
       <div class="pokemon-card relative">
          <img src="{cardImage(top, 'xs')}" alt="{top.name}" draggable=false
             class="card pokemon relative z-10"
             class:selected={$selection.includes(slot)}
+            class:pinged={pingedCard($pinged, top, 'near')}
             class:target={$attaching || $evolving}
             class:attach={$attaching} class:evolve={$evolving}>
          <AbilityStripe used={abilityUsed} />
@@ -190,6 +200,7 @@
          style="bottom: var(--slot-lift-energy); left: calc({i + 1} * var(--slot-fan-step-energy)); z-index: {$cardSelection.includes(nrg) ? 12 : 9 - i}"
          data-attached="energy"
          class:card-attached-selected={$cardSelection.includes(nrg)}
+         class:pinged={pingedCard($pinged, nrg, 'near')}
          on:click={(e) => onCardClick(e, nrg, energy)}
          on:contextmenu={(e) => onCardCtx(e, nrg, energy)}
          use:dnd={cardDnd(nrg, energy)}>
@@ -200,6 +211,7 @@
          style="bottom: var(--slot-lift-tool); left: calc({$energy.length} * var(--slot-fan-step-energy) + {i + 1} * var(--slot-fan-step-tool)); z-index: {$cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
          data-attached="trainer"
          class:card-attached-selected={$cardSelection.includes(tool)}
+         class:pinged={pingedCard($pinged, tool, 'near')}
          on:click={(e) => onCardClick(e, tool, trainer)}
          on:contextmenu={(e) => onCardCtx(e, tool, trainer)}
          use:dnd={cardDnd(tool, trainer)}>

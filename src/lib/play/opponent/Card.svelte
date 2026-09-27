@@ -11,8 +11,9 @@
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import { cardSelection as selection, selectCard } from '$lib/stores/player.js'
    import { windows, isActionable } from '$lib/stores/reveal.js'
+   import { pinged, pingedCard } from '$lib/stores/ping.js'
 
-   const { openDetails, openOppCardMenu, openOppCardActionMenu } = getContext('boardActions')
+   const { openDetails, openOppCardMenu, openOppCardActionMenu, openOppCardPingMenu } = getContext('boardActions')
 
    export let card
    export let pile
@@ -109,7 +110,45 @@
    }
 
    function onCtx (e) {
-      if (!actionable || !pile) return
+      if (!pile) return
+
+      /*
+         A card of theirs this player may **not** act on is still a card this player may
+         point at, and that is most of their board: this component draws three zones of it -
+         the hand, the prizes and their Stadium - and every card in them is a card the ping
+         menu is for (see `OppCardPingMenu.svelte`; the fourth is the table, which
+         `opponent/Temp.svelte` draws and offers the same entry on). It is asked for *first*
+         because it is the one menu here that needs nothing else to be true - no window, no
+         permission, no selection.
+
+         **`pile.pingable` is the second half of the question, and it is not decoration.**
+         This component draws a card of theirs in two situations, and only one of them is a
+         zone a ping belongs on: a card lying in a zone, and every card of one of their
+         *piles* opened as a view (`OppInspection.svelte` - the deck, the discard and the
+         lost zone, where the whole pile is on screen and a card's position is the one
+         thing a pile does not show). The marker answers that per zone rather than by a
+         list of names here, and it answers for a spectator's mirror too (see the marking
+         in `opponent.js`).
+
+         **The selection is deliberately left alone on this path, and that is a rule
+         rather than an omission.** Every other branch below picks the card up first,
+         because every other menu speaks for what is picked up. A card of the opponent's
+         in this board's own selection is a card the board's own keys then act on - Space
+         opens the details of the selected card, and *the details of one of their hidden
+         cards* is exactly the read this half must not offer - so a gesture that only
+         points at a card must not put it in a selection. Nothing else on this path needs
+         one: `pingCard` takes the card it is handed.
+      */
+      if (!$solo && !actionable) {
+         if (!pile.pingable) return
+
+         e.preventDefault()
+         e.stopPropagation()
+         openOppCardPingMenu(e.clientX, e.clientY, card, revealed)
+         return
+      }
+
+      if (!actionable) return
       e.preventDefault()
       e.stopPropagation()
       if (!$selection.includes(card)) selectCard(card, pile, false)
@@ -132,13 +171,20 @@
    }
 </script>
 
+<!--
+   `relative` is not decoration here: a pinged card is raised over its neighbours (see
+   `.pinged` in global.css), and a `z-index` on a *static* box is quietly ignored. A card
+   in a hand row is a flex item and would be honoured either way, but the same component
+   draws a card of a pile view and a prize, which are neither.
+-->
 <div
    on:click={onClick}
    on:contextmenu={onCtx}
    on:dblclick={onDetails}
-   class="border-2 border-transparent rounded-md"
+   class="relative border-2 border-transparent rounded-md"
    class:dragged={$dragging && $selection.includes(card) && ($solo || actionable)}
    class:selected={actionable && $selection.includes(card)}
+   class:pinged={pingedCard($pinged, card, 'far')}
    use:dnd={dndConfig}>
    {#if revealed}
       <img class="card" src="{cardImage(card, 'xs')}" alt="{card.name}" draggable=false>
@@ -188,5 +234,17 @@
       mistaken for the selection ring. The windows say what a click does in words instead
       (`Look.svelte`, `HandReveal.svelte`), which is the feedback that does not need a
       loop to be noticed.
+
+      **The pinged card is the other kind of glow and it is not this one back again.**
+      `class:pinged` above is a card this player has *pointed at* - a ping lasts two
+      seconds and is over, it is amber rather than the selection's blue, and it is drawn
+      on the cards this half refuses to act on at all as well as on the ones it allows
+      (see `.pinged` in global.css, and `stores/ping.js`, which is the clock). So it is
+      not an affordance: nothing about the card changes, and there is no state to be
+      mistaken for a selection, because it is gone by the time a player could look twice.
+
+      Which card it lights is `pingedCard`, and `'far'` is this half of the question: ids
+      are handed out per board, so the same id names a card of the player's and a card of
+      the opponent's, and the half is what tells the two apart on one screen.
    */
 </style>

@@ -15,6 +15,15 @@
    --shadow-color: rgb(160, 160, 160);
    --selection-color: #3b82f6;
    --message-color: #ea580c;
+   /*
+      A pinged card's glow, and the same amber the Chat tab glows in when a message
+      arrives (`chat-glow` in Chat.svelte): both mean "somebody is trying to get your
+      attention", and neither is a state of the game. It is deliberately neither
+      `--selection-color` - "you picked this up" - nor `--primary-color`, which was the
+      outline of a card this player may *act* on: a ping is offered on the cards this
+      player may not act on at all (see .pinged below).
+   */
+   --ping-color: rgba(250, 204, 21, 0.95);
    /* the outlines of the board zones and the names drawn in them, when they are
       turned on in settings: both at half strength */
    --zone-border-color: rgba(23, 23, 23, 0.5);
@@ -222,4 +231,72 @@ img:where(.zone-card).card {
 
 .w-fit { /* tailwind class, but isn't included in the used WindiCSS version */
    width: fit-content;
+}
+
+/*
+   A pinged card: the whole card is ringed and haloed in amber, glowing **on and off**
+   twice over the two seconds a ping lasts (see `stores/ping.js`, which is the clock).
+
+   It is written once, here, rather than in the six components that draw a card that
+   can be pinged - the two halves' cards (`board/Card.svelte` and
+   `opponent/Card.svelte`, which between them draw the hands, the prizes and the
+   Stadiums), their slots and their tables. One rule about a card each, and six copies
+   of an animation is six places for it to drift.
+
+   An `outline` rather than the `border` a selected card wears, and that is the same
+   reason a card on the table is ringed that way: a border is drawn *in* the box, so a
+   ring that appears on a card would resize the card under it - and in the table's
+   cascade it would shift every card after it. An outline costs no room.
+
+   The animation is two one-second beats, each one lighting the card and letting it go
+   again, so the glow pulses rather than fading once - a ping is something happening, and
+   one slow fade reads as a state the card is in. Both keyframe stops carry a *full set*
+   of the three properties: the outline keeps its width and its offset while its colour
+   goes transparent, because a stop that dropped the width would move the ring instead of
+   dimming it, and the two shadows are written with the same four parts in the same order
+   so they interpolate rather than swap.
+
+   **The card is raised over the cards around it, and that is what the `z-index` is for.**
+   The glow is painted in the card's own place, and a card is rarely alone: one flex item
+   among a hand's neighbours, one of a table's cascade drawn over the ones before it, and
+   one of the fan under a Pokemon - so a halo left in place is half covered by whichever
+   card is painted after it, which reads as a glow *behind* the cards rather than around
+   the one that was pinged.
+
+   The value is chosen against the rest of the board rather than picked. Fourteen is above
+   every card that could cover this one - the fan's cards, which reach twelve when one of
+   them is selected in solo, and a card's own place in a table's cascade, which is its
+   index in the stack - and below the two kinds of mark that belong *over* a card and must
+   not disappear for two seconds: the damage counter and the status marker at fifteen, and
+   the panels (twenty) and the context menu (twenty-five), which a pinged card rising over
+   them would hide, including the menu the ping was chosen from. What it does cover while
+   it is lit is the small marks drawn *on* a card - the ability stripe at eleven, and the
+   label a nameplate sits at twelve - which is the price of the ring being visible at all.
+   A table longer than fourteen cards is the one case the number cannot reach: its later
+   cards are still drawn over a pinged one, because their place in the cascade is an
+   *inline* `z-index` and the only way past it is the `!important` here, which would take
+   the glow past the menus with it.
+
+   Nothing here names a component's class, so it applies wherever a card carries it:
+   the three components a player's own half draws (`board/Card.svelte`,
+   `board/Slot.svelte`, `board/Temp.svelte` - a card of the player's own is what a ping
+   *receives*) and the three the far half draws, which are what a ping *sends*. Both
+   halves follow the one rule, on a player's board and on a watcher's.
+*/
+.pinged {
+   animation: ping-glow 1s ease-in-out 2;
+   z-index: 14 !important;
+}
+
+@keyframes ping-glow {
+   0%, 100% {
+      outline: 3px solid transparent;
+      outline-offset: 0;
+      box-shadow: 0 0 0 0 transparent;
+   }
+   50% {
+      outline: 3px solid var(--ping-color);
+      outline-offset: 0;
+      box-shadow: 0 0 14px 5px var(--ping-color);
+   }
 }

@@ -396,6 +396,31 @@ export function createOpponent () {
       Object.defineProperty(zone, 'theirPile', { value: true, enumerable: false })
    }
 
+   /*
+      Which zones of the far half a card may be **pinged** from: the hand, the prizes, their
+      Stadium, and the cards they played to the table.
+
+      **The three zones that are a pile are not among them** - the deck, the discard and the
+      lost zone - and that is the rule rather than an omission (see the note at the top of
+      `ping.js`): each of those is one card on screen whatever is in it, so a ping there
+      would point at a position nobody can read, and the card it named would be one of the
+      cards stacked under the front. The Pokemon in play are the fourth case and are not a
+      pile at all: their ping is the slot's own menu (`OppSlotMenu.svelte`).
+
+      It is asked by the *card* component rather than by the zone it is drawn in, because
+      that component draws two very different things: a zone of theirs, and one of those
+      three piles opened as a *view* (`OppInspection.svelte`) - every card of the deck in a
+      dialog, which is a card of theirs that is emphatically not pingable. So the pile is
+      what is marked, and the marker is what the card asks.
+
+      Non-enumerable and marked per mirror, for the reasons the `theirPile` marking above
+      gives: it cannot leak into a spread of a pile, and a spectator's mirror answers for
+      itself rather than through a lookup from names.
+   */
+   for (const zone of [ b.hand, b.prizes, b.stadium, b.table ]) {
+      Object.defineProperty(zone, 'pingable', { value: true, enumerable: false })
+   }
+
    return {
       ...b,
       get clientId () { return clientId },

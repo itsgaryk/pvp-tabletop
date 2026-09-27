@@ -276,6 +276,53 @@ than imported because the board that answers imports `player.js`, and a second
 direction of import is the cycle that took the app down once already (see the note in
 `connection.js`).
 
+## Pinging a card
+
+**Right-clicking a card of the other player's offers *Ping Card***, which points at it: a line in
+the game log, and a two-second glow on the card itself on both players' boards. It is the entry
+that used to be *Declare Target* on a Pokemon in play, and it is the only thing on the board that
+names a card without changing anything — nothing is marked, nothing is moved, and nobody answers
+it (`stores/ping.js`).
+
+- **Where it is offered.** Every zone of theirs a card is read in: the hand, the prizes, the
+  Active spot and the Bench (a Pokemon's own menu, `dialogs/OppSlotMenu.svelte`), their Stadium,
+  and the cards they played to the table. **A card attached under one of their Pokemon is pinged
+  as its own card** — the energy and the tools are cards of theirs lying face up, and pointing at
+  a tool is not the same thing as pointing at the Pokemon holding it. **The three zones that are a
+  pile are not among them** — the deck, the discard and the lost zone — because each of those is
+  one card on the screen whatever is in it, so a ping there would point at a position nobody can
+  read. The pile is what answers that (`pingable`, marked in `opponent.js`), because the component
+  that draws a card of theirs also draws every card of those three piles when one is opened as a
+  view.
+- **What the log says.** `Ping: <card>` for a card this player can read, and `Ping: Hidden card`
+  for one they cannot — the opponent's hand, a face-down prize, a Pokemon whose owner has hidden
+  their board. The name is the *pinger's* knowledge rather than the card's, and that is the whole
+  of the rule: a mirror is handed the names of the opponent's hidden cards as part of the board
+  state, so printing one would name a card this player was never shown, in a log the whole table
+  reads.
+- **The glow is the other player's.** `cardPinged` carries the card's id and is the room's, so the
+  pinger's board lights the card in its mirror and the owner's board lights it in their own zones:
+  that is what makes a ping reach the person it is for. `.pinged` (`global.css`) is the one rule
+  all six components that draw a card wear — an amber ring that **glows on and off** twice over
+  the two seconds, rather than the blue a selection wears, because a ping is something happening
+  and not a state the card is in.
+- **The pinged card is raised over the cards around it.** A card is rarely alone — one flex item
+  in a hand, one of a table's cascade, one of the fan under a Pokemon — and a halo painted in the
+  card's own place is half covered by whichever card is painted after it, which reads as a glow
+  behind the cards rather than around the one that was pinged. So `.pinged` carries a `z-index`
+  above every layer of the board and below the panels and the context menu, since a card rising
+  over the menu it was opened from would hide the thing it is offering.
+- **The glow lights one card, and the id alone does not say which.** Both boards number their
+  cards `1..n` from their own decklist, so the same id names a card of the player's *and* a card
+  of the opponent's, and a ping that carried only the id would light two cards on one screen. So
+  the half travels with it, in the terms of the board holding it, and `pingedCard` is the one
+  place that is asked. A spectator's board draws both halves with the far half's components, so a
+  ping lights nothing there: the log line is the spectator's half of a ping, and the glow is the
+  two players'.
+- **A player's gesture, and a room's.** A spectator is refused and so is solo, at the store rather
+  than at each menu entry; the entry is drawn *disabled* for a spectator, so no menu changes shape
+  under them.
+
 ## Zone borders and names
 
 **Settings → Board zones** (`zoneBorders`, persisted as `zone_borders`, off by

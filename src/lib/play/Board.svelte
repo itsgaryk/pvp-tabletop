@@ -53,6 +53,7 @@ import { isWindowPile } from '$lib/stores/reveal.js'
    import OppSlotMenu from './dialogs/OppSlotMenu.svelte'
    import OppCardMenu from './dialogs/OppCardMenu.svelte'
    import OppCardActionMenu from './dialogs/OppCardActionMenu.svelte'
+   import OppCardPingMenu from './dialogs/OppCardPingMenu.svelte'
 
    import {
       hand, deck, discard, prizes, lz, table, stadium,
@@ -223,6 +224,7 @@ import { isWindowPile } from '$lib/stores/reveal.js'
    let oppSlotMenu
    let oppCardMenu
    let oppCardActionMenu
+   let oppCardPingMenu
 
    function openPile (pile) {
       inspectionModal.open(pile)
@@ -309,7 +311,7 @@ import { isWindowPile } from '$lib/stores/reveal.js'
       player's own menu: the same entries and wording, with a movement landing on
       that half because that is where the selection is (see SlotMenu). Online that
       Pokemon belongs to somebody else, so the menu is the one a player uses on the
-      other side of the table - damage, status effects, a declared target.
+      other side of the table - damage, status effects, and a ping.
    */
    function openOppSlotMenu (x, y, slot, active) {
       if ($solo) slotMenu.open(x, y)
@@ -335,6 +337,23 @@ import { isWindowPile } from '$lib/stores/reveal.js'
       oppCardActionMenu.open(x, y, card, revealed, pile)
    }
 
+   /*
+      A card of the far half's that this player may not act on at all - the ordinary
+      card of theirs on their own board, in a room. There is exactly one thing the menu
+      offers, which is a ping (see `OppCardPingMenu.svelte`, which is why it is not an
+      entry on the action menu above).
+
+      It is the third menu a card of the far half's can open, and the three are three
+      situations rather than three tastes: in solo the card is the player's own to move
+      (`OppCardMenu`), a window hands over a card this player *may* act on
+      (`OppCardActionMenu`), and a card of theirs lying on the board is one this player
+      may only point at. `opponent/Card.svelte` and `opponent/Temp.svelte` are what pick
+      between them.
+   */
+   function openOppCardPingMenu (x, y, card, revealed = true) {
+      oppCardPingMenu.open(x, y, card, revealed)
+   }
+
    function startAE (evo = false) { // attach / evolve
       // close any open Deck or Discard pile, so that you can select the pokemon on board
       inspectionModal.close()
@@ -349,6 +368,7 @@ import { isWindowPile } from '$lib/stores/reveal.js'
       openSlotDetails, openOppSlotDetails,
       openDetails, showMessage,
       openCardMenu, openSlotMenu, openOppSlotMenu, openOppCardMenu, openOppCardActionMenu,
+      openOppCardPingMenu,
       startAE
    })
 
@@ -531,6 +551,7 @@ import { isWindowPile } from '$lib/stores/reveal.js'
       <OppSlotMenu bind:this={oppSlotMenu} />
       <OppCardMenu bind:this={oppCardMenu} />
       <OppCardActionMenu bind:this={oppCardActionMenu} />
+      <OppCardPingMenu bind:this={oppCardPingMenu} />
 
       <!--
          Whose board is on each half. The top player's label sits on the right,

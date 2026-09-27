@@ -608,7 +608,7 @@ and they are the whole of the interaction:
 | --- | --- |
 | Set Damage | a prompt for a number of damage counters, applied to their Pokémon |
 | Set Status Effect | the five effects, on their **Active** Pokémon only, toggling as they do on your own |
-| Declare Target | writes `Target: Pikachu` to the game log |
+| Ping Card | points at the card: `Ping: Pikachu` in the game log, and the card glows on both boards for two seconds |
 | Show All | opens their slot's details: the Pokémon, the energy, the tools, the damage, the status |
 
 *Show Details* on the card's own name opens the card image. That is the lot: **you
@@ -619,13 +619,24 @@ Top Card* and *Discard Top X*, and their **hand**, which offers *Reveal Hand*.
 Everything else of theirs is read-only — clicking their discard, lost zone or Table
 opens it — and their counts are not buttons.
 
+**A ping is the one entry offered on their other cards as well.** Right-clicking a card of
+theirs in their hand, in their prizes, in their Stadium, on the table, or **attached under one
+of their Pokémon** opens a menu whose only entry is *Ping Card*: the same line in the log and
+the same glow — and on an attached card it is that card that is pointed at, not the Pokémon
+holding it. A card this player was not shown — one in their hand, a face-down prize — is pinged
+as `Ping: Hidden card` rather than by name, because the name is the *pinger's* knowledge and the
+log is the whole table's. The three zones that are a pile — their deck, their discard and their
+lost zone — offer nothing: each is one card on screen whatever is in it, so a ping there would
+point at a position nobody can read. See [board.md](board.md#pinging-a-card).
+
 **A left click on their Pokémon does nothing** — it is not yours to select — so their
 menu is reached by right-clicking, and it is the only way in.
 
-**None of the four is available on a Pokémon they have hidden.** A hidden Pokémon is
-a card back that refuses the click that would open its menu, so damage, status and a
-declared target are all recorded only while the Pokémon is face up — see
-[Hiding your board](#hiding-your-board).
+**Damage and status are not available on a Pokémon they have hidden.** A hidden Pokémon
+is a card back that refuses the click that would open its menu, so damage and a status
+effect are recorded only while the Pokémon is face up — see
+[Hiding your board](#hiding-your-board). The **ping is the exception**, because it reads
+nothing: a hidden Pokémon's menu is the ping alone, and it writes `Ping: Hidden card`.
 
 Two things travel the other way — the *effects* of your play on their board:
 
@@ -673,10 +684,11 @@ like:
 - **The card is hidden, not the slot.** The damage counter, the status markers and
   the energy and tools attached under the Pokémon are still drawn on the other
   player's half. What is a card back is the Pokémon itself.
-- **A hidden Pokémon cannot be clicked by the other player.** That takes away the
-  four things their menu offers — *Set Damage*, *Set Status Effect*, *Declare Target*
-  and *Show All* — so hiding is also how a player stops damage and status effects
-  being recorded on their board at all.
+- **A hidden Pokémon cannot be clicked by the other player.** That takes away every
+  entry of theirs except the ping — *Set Damage*, *Set Status Effect* and *Show All* are
+  all gone — so hiding is also how a player stops damage and status effects being
+  recorded on their board at all. *Ping Card* is the one that stays, and it names
+  nothing.
 - **It changes how the log reads.** While your Pokémon are hidden, your bench and
   active moves are *counted* rather than named, which is the visibility rule below
   doing its work.

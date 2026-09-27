@@ -5,7 +5,8 @@
    import { STATUSES, statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
    import { logStatus, logStatusCleared } from '$lib/stores/logger.js'
 
-   import { share, publishLog, spectating } from '$lib/stores/connection.js'
+   import { share, spectating } from '$lib/stores/connection.js'
+   import { pingCard } from '$lib/stores/ping.js'
    import { solo, soloSlotToDiscard, soloSlotToActive, soloSlotToBench } from '$lib/stores/solo.js'
    const { openOppSlotDetails, openDetails } = getContext('boardActions')
 
@@ -68,8 +69,23 @@
       menu.close()
    }
 
-   function target () {
-      publishLog(`Target: ${slot.name}`)
+   /*
+      Pinging the Pokemon - the entry that used to be *Declare Target*.
+
+      It is the one entry on this menu that does not change the game: nothing is marked,
+      no state is shared and nobody answers it. What it does is point at the card, in the
+      log and with a two-second glow on both boards (see `pingCard`), which is what a
+      player wants when they say *this one* across the table - and the log line is
+      `Ping:` rather than `Target:`, because there is no target to declare: the entry
+      records that a card was pointed at, not that anything is aimed at it.
+
+      The name it is pinged under is the Pokemon's, and it is true here: this menu is only
+      opened on a Pokemon this player can see. A board its owner has hidden is the other
+      case, and it takes the card menu instead - a ping names a hidden card as a hidden
+      card (see opponent/Slot.svelte).
+   */
+   function ping () {
+      pingCard(slot?.pokemon.get().at(-1))
       menu.close()
    }
 
@@ -94,7 +110,7 @@
 </script>
 
 <ContextMenu bind:this={menu} heading={slot?.name} headingClick={slot ? showDetails : null}>
-   <!-- setting damage, a status or a target all change the game -->
+   <!-- setting damage and a status change the game; a ping only points at the card -->
    <ContextMenuOption click={setDamage} text="Set Damage" disabled={$spectating} />
 
    {#if isActive}
@@ -123,7 +139,7 @@
       {/if}
    {/if}
 
-   <ContextMenuOption click={target} text="Declare Target" disabled={$spectating} />
+   <ContextMenuOption click={ping} text="Ping Card" disabled={$spectating} />
 
    {#if $solo}
       {#if isActive}
