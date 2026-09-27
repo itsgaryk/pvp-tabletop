@@ -48,6 +48,13 @@ anyone else.
   is holding this block's app port.** Until that is sorted I ran my checks against
   3007 (block C's app port, which was free) with my own store/browsers on 6392/6393 and
   9230-9232; I have not left anything running on 3006.
+- **A stolen app port also breaks `-Stop` for the block that lost it.** The script starts
+  vite as `npm run dev -- --port 3006`, and the matcher identifies the dev server by the
+  repository name plus *that* port in its command line. When 3006 is busy Vite binds 3007,
+  but the command line still says 3006 — so `-Stop -BasePort 9230` matches my vite (which
+  is on 3007) *and* whatever else claims 3006, and it cannot tell the two apart. I have
+  deliberately not run it. `-DryRun` only previews a *start*, so there is no way to ask
+  "what would a stop close?" — worth having one before the next session loses its port.
 - **My worktree and branch**: `.worktrees/far-half` holds `fix/far-half-follows-a-move`
   (PR #174). I created it because this session's workspace is the **root checkout**,
   which is session A's — see below. Do not take that worktree or branch.
