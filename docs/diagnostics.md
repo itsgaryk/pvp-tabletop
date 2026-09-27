@@ -377,6 +377,41 @@ which is what makes an order assertable at all. Point the dev server at it with
 deliberately *not* what this stand-in serves, because a check about order cannot say
 where a card went while four cards answer to the same name.)
 
+## Are the board's number prompts asked one way?
+
+```sh
+node tools/prompt-check.mjs
+```
+
+A dozen gestures need a count before they can happen — how many cards to draw, to look
+at, to reveal, to reorder, to discard — and each used to carry its own copy of the
+question's words, the parse and the bounds. Eleven call sites across six files, and the
+copies had drifted: the same gesture was asked two different ways *View Top X* on the
+two decks), `parseInt` was used for the deck questions and `Number` for the damage one,
+and the bounds were written four different ways with one call site having none.
+
+`src/lib/util/prompts.js` is now the one place a question is stated and the one place it
+is put to the player. This check holds two things that both fail quietly:
+
+- **a misspelt id throws**, at the player, because `numberPrompt` refuses to ask a
+  dialog that says `undefined`. The throw is right; a typo is still a crash, so the
+  scan proves every id a component names exists and that every id in the table is
+  named by something.
+- **a new call site can bypass the table.** `parseInt(prompt(…))` still compiles and
+  still looks reasonable, and it is exactly the copy the table replaced, so the scan
+  refuses one. It is comment-aware on purpose: the word "prompt" is all over these
+  files in prose, and a plain regex reported two comments as calls.
+
+The **ceiling** is the other half of it, and it is a reading of the game rather than a
+rule: every count of cards is bounded by the deck the gesture is about, read live off
+the board, so a reveal cannot ask for more cards than the deck holds. `damage` is the
+one row with no deck to bound it and carries a written-down ceiling instead. Getting
+this wrong is invisible until somebody types a large number, which is why the unit
+cases cover it: **the count a log line reports is a count that happened**, where
+before, asking to draw 999 of a 60-card deck drew 60 and said 999.
+
+It runs with nothing but the tree, so it is in CI with the other check scripts.
+
 ## Do the pile windows say what the table says?
 
 ```sh

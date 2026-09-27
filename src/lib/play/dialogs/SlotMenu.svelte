@@ -5,6 +5,7 @@
    import { share } from '$lib/stores/connection.js'
    import { logMove } from '$lib/stores/logger.js'
    import { STATUSES, statusesOn } from '$lib/util/status.js'
+   import { numberPrompt } from '$lib/util/prompts.js'
    import { active as opponentActive } from '$lib/stores/opponent.js'
    import {
       solo, onOpponentSlot, soloSelectedTo, soloSlotReturn, soloSlotDiscardEnergy
@@ -119,7 +120,9 @@
    }
 
    function setDamage () {
-      let x = Number(prompt('How much damage is on the Pokémon?'))
+      const x = numberPrompt('damage')
+      if (x === null) return
+
       for (const slot of $selection) {
          slot.damage.set(x)
          share('damageUpdated', { slotId: slot.id, damage: x })

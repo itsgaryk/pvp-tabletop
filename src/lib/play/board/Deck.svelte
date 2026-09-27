@@ -9,12 +9,13 @@
    import { lostZoneShown } from '$lib/stores/zones.js'
 
    import { deck, discard, lz, prizes, draw, shuffle } from '$lib/stores/player.js'
+   import { numberPrompt } from '$lib/util/prompts.js'
    const { openPile, openDeckOrder, openSelection } = getContext('boardActions')
 
    let menu
 
    function drawX () {
-      let x = parseInt(prompt('Draw how many cards?'))
+      const x = numberPrompt('draw', { own: deck.get().length })
       if (x) draw(x)
    }
 
@@ -51,14 +52,12 @@
       answered.
    */
    function discardTopX () {
-      const asked = parseInt(prompt('Discard how many cards from the top of your deck?'))
-      if (!asked || asked < 1) return
-
-      moveTop(discard, asked)
+      const asked = numberPrompt('discardTop', { own: deck.get().length })
+      if (asked) moveTop(discard, asked)
    }
 
    function pickX (bottom = false) {
-      let x = parseInt(prompt('Look at how many cards?'))
+      const x = numberPrompt('viewTop', { own: deck.get().length })
       if (x) openSelection(deck, x, { bottom })
    }
 
@@ -83,8 +82,8 @@
       earlier search survives it.
    */
    function orderTopX () {
-      let x = parseInt(prompt('Reorder how many cards from the top?'))
-      if (!x || x < 1) return
+      const x = numberPrompt('reorderTop', { own: deck.get().length })
+      if (!x) return
 
       logDeckView()
 
@@ -108,11 +107,11 @@
       It is the opponent's deck's own entry with this deck behind it, and the whole
       of it is `revealTop` in the store: which cards "the top" means, which half
       owns the deck, and the event that shows the other player. What is here is the
-      question, which every "X" on this board asks with the browser's own prompt
+      question, which every "X" on this board asks through `util/prompts.js`
       (Draw X, View Top X, Order Top X).
    */
    function revealTopX () {
-      revealTop(deck, parseInt(prompt('Reveal how many cards from the top?')))
+      revealTop(deck, numberPrompt('revealTop', { own: deck.get().length }))
    }
 
    /* the click that opens the deck needs to stop propagation,

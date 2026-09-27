@@ -3,6 +3,7 @@
    import ContextMenu from '$lib/components/ContextMenu.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import { STATUSES, statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
+   import { numberPrompt } from '$lib/util/prompts.js'
    import { logStatus, logStatusCleared } from '$lib/stores/logger.js'
 
    import { share, spectating } from '$lib/stores/connection.js'
@@ -30,7 +31,9 @@
    }
 
    function setDamage () {
-      let x = Number(prompt('How much damage is on the Pokémon?'))
+      const x = numberPrompt('damage')
+      if (x === null) return
+
       slot.damage.set(x)
       share('oppDamageUpdated', { slotId: slot.id, damage: x })
    }

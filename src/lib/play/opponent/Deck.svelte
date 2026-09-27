@@ -8,6 +8,7 @@
    import { solo, soloDraw, soloShuffleDeck } from '$lib/stores/solo.js'
    import { canReveal, revealTop, lookTop } from '$lib/stores/reveal.js'
    import { discardTopOfTheirDeck } from '$lib/stores/oppAction.js'
+   import { numberPrompt } from '$lib/util/prompts.js'
 
    const { openOppPile } = getContext('boardActions')
 
@@ -43,7 +44,7 @@
 
    /* in solo the other half is yours, so its deck can be drawn from as well */
    function drawX () {
-      const x = parseInt(prompt('Draw how many cards?'))
+      const x = numberPrompt('draw', { theirs: deck.get().length })
       if (x) soloDraw(x)
    }
 
@@ -52,11 +53,11 @@
 
       The whole of the gesture is `revealTop` in the store: which cards "the top"
       means, which half owns the deck, and the event that tells the other player.
-      What is here is the question - the browser's own prompt, which is how every
-      "X" on this board is asked for (Draw X, View Top X, Order Top X).
+      What is here is the question, which every "X" on this board asks through
+      `util/prompts.js` (Draw X, View Top X, Order Top X).
    */
    function revealTopX () {
-      revealTop(deck, parseInt(prompt('Reveal how many cards from the top?')))
+      revealTop(deck, numberPrompt('revealTop', { theirs: deck.get().length }))
    }
 
    /*
@@ -67,7 +68,7 @@
       two entries, and the reason they are separate functions in one module.
    */
    function lookAtTopX () {
-      lookTop(parseInt(prompt('Look at how many cards from the top?')))
+      lookTop(numberPrompt('lookTop', { theirs: deck.get().length }))
    }
 
    /*
@@ -79,20 +80,21 @@
       `discardTopOfTheirDeck` in the store: this board cannot read the top of somebody
       else's deck, so what travels is the *count* and the owner reads its own deck. It is
       the one entry here with no card behind it, which is why the two are one function -
-      and why the first does not need to ask, while the second does. The question is the
-      same one the player's own deck asks (see `board/Deck.svelte`), so the two menus ask
-      for X in the same words.
+      and why the first does not need to ask, while the second does.
+
+      The question is the player's own deck's question seen from the other side of the
+      table: both rows are in `util/prompts.js`, one asked "from the top of your deck"
+      and this one "from the top of the opponent's deck", because each is asked by the
+      player whose reading of the deck it is.
 
       Nothing is revealed by either: the cards go from the top of the deck to the discard,
       and the discard is face up, so the *owner* sees what they lost, which is what a
       discard is. The player who asked sees the deck get shorter.
    */
    function discardTopX (ask = true) {
-      const count = ask
-         ? parseInt(prompt('Discard how many cards from the top of the opponent\'s deck?'))
-         : 1
+      const count = ask ? numberPrompt('discardTheirTop', { theirs: deck.get().length }) : 1
 
-      if (!count || count < 1) return
+      if (!count) return
 
       discardTopOfTheirDeck(count)
    }
