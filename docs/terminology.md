@@ -188,13 +188,24 @@ thing you have to know to read the code, and none of them is enforced:
 
 ## What is enforced, and what is not
 
-`tools/zone-vocabulary-check.mjs` derives all five places a zone name is written
-down — `custom/board.js` (which mints it), `exportBoard()`'s keys, `logger.js`'s
-two maps, `diagnostics.js`'s lists, and `opponent.js`'s `getPile()` — and asserts
-they agree. It also holds the two slot-name regexes against each other and against
-what `slot()` actually mints, and it pins the two deliberate exceptions by name:
-Pokémon-in-play (`play`) and the slot zones, so a third one has to be looked at
+`tools/zone-vocabulary-check.mjs` derives every place a zone name is written down —
+`custom/board.js` (which mints it), `exportBoard()`'s keys, `logger.js`'s two maps,
+`diagnostics.js`'s lists, `opponent.js`'s `getPile()`, and `util/piles.js` — and
+asserts they agree. It also holds the two slot-name regexes against each other and
+against what `slot()` actually mints, and it pins the two deliberate exceptions by
+name: Pokémon-in-play (`play`) and the slot zones, so a third one has to be looked at
 rather than waved through.
+
+`util/piles.js` is the one of those that is a **window's** vocabulary rather than the
+log's or the layout's: it is keyed by the same store names as everything else here,
+and holds what a *pile view* reads — the name a window says out loud, the colour it
+wears, and where its move buttons send the cards picked out of it. It covers the seven
+piles a view can be opened on, which is not the board's whole set: `pickup` is a phase
+with no view, and the Bench and the Active spot are slots rather than piles. Both
+inspection windows read it, so the near half's view and the far half's cannot disagree
+about what a zone is called — and its labels are held against `logger.js`'s, because a
+window that says something different from the line the same move writes is two names
+for one zone on one screen.
 
 It runs in CI with the other tree checks. What it cannot check is prose: the table
 above is compared against the code only for the *board's* zones, so a claim about

@@ -5,6 +5,7 @@
 
    import { spectating } from '$lib/stores/connection.js'
    import { s } from '$lib/util/strings.js'
+   import { pileWindow } from '$lib/util/piles.js'
    import {
       deck, discard, hand, table,
       shuffle, shuffleAfterLeavingDeck, selectPile, cardSelection, cardPile, keepInPile,
@@ -61,28 +62,23 @@
       wire all agree on (see docs/terminology.md) - so a pile cannot be given a
       label that does not belong to it.
 
-      A pile with no entry is a pile nobody has a view for: `pickup` is a phase
-      rather than a zone, and it is shown by the multi-card dialog instead.
+      It is looked up in `util/piles.js` rather than written out here, because this is
+      not the only window on a pile: `OppInspection.svelte` is the same panel over the
+      other half, and the two have to agree about what a zone is called and what it
+      looks like. A pile the table does not know draws under its own store name with
+      no moves - `pickup` is a phase rather than a zone, and it is shown by the
+      multi-card dialog instead.
    */
-   const ZONES = {
-      deck: { label: 'Deck', accent: '#4f7fd4' },
-      hand: { label: 'Hand', accent: '#1ca492' },
-      discard: { label: 'Discard', accent: '#b4544a' },
-      lz: { label: 'Lost Zone', accent: '#8b5cf6' },
-      prizes: { label: 'Prizes', accent: '#d9a521' },
-      table: { label: 'Table', accent: '#94a3b8' },
-      stadium: { label: 'Stadium', accent: '#3f9e63' }
-   }
-
-   $: zone = ZONES[pile?.name] || { label: pile?.name || 'Pile', accent: 'var(--primary-color)' }
+   $: zone = pileWindow(pile)
    /*
-      The deck is the pile the four moving buttons belong to: they are the four
-      places a *search* takes a card out of a deck to, which is the move this panel
-      was built around. A discard and a lost zone are public and ordered, so their
-      view is a read - the cards, and the one button that closes it (see
+      The moves a pile's view offers, out of the same table: the four places a
+      *search* takes a card out of a deck to, which is the move a pile view exists
+      for. A discard and a lost zone are public and ordered, so their `movedTo` is
+      empty and their view is a read - the cards, and the button that closes it (see
       docs/selection.md).
    */
    $: isDeck = pile === deck
+   $: movesFor = zone.movedTo
 
    export function open (_pile) {
       pile = _pile
@@ -105,6 +101,10 @@
       the Bench is the other kind of move, since a card put into play is a slot with
       a card under it rather than a card in a list (see `toBench`). Both clear the
       selection and share the move, so the opponent and any spectator follow it.
+
+      Which of them this panel offers, and what each one is called, is the pile's own
+      row in `util/piles.js`; this is only what a destination *is*, since a store is
+      what has to be handed to `moveSelection` and a table of data cannot hold one.
    */
    const movesTo = {
       table: () => moveSelection(table),
@@ -167,7 +167,7 @@
 
    <!--
       Which pile this is: its name, how many cards are in it, and the one colour that
-      is that zone's own (see ZONES). A pile view is one dialog for every pile, so
+      is that zone's own (see util/piles.js). A pile view is one dialog for every pile, so
       without a heading of its own a deck, a discard and a lost zone are the same
       screen with different cards in it - and the colour is what says which one it is
       from across the table, without reading anything.
@@ -233,22 +233,22 @@
 
          <!--
             The cards the player picked out of the pile, to a zone at the table: two
-            by two, beside the buttons that close the panel - and only in the deck's
-            view, because they are the four places a *search* takes a card out of a
-            deck to, which is the move this panel exists for. A discard and a lost
-            zone are read and closed: nothing comes out of them into play.
+            by two, beside the buttons that close the panel - and only where the pile's
+            own row says there is somewhere to send them, which is the deck's view
+            alone: they are the four places a *search* takes a card out of a deck to,
+            which is the move this panel exists for. A discard and a lost zone are read
+            and closed: nothing comes out of them into play.
 
             Disabled rather than hidden when nothing is selected, so the panel's foot
             does not change shape under a click, and a spectator sees the actions it
             cannot take. Each one is the whole decision - the cards go, and the panel
             closes and the deck is shuffled (see moveCards).
          -->
-         {#if isDeck}
+         {#if movesFor.length}
             <div class="grid grid-cols-2 gap-2">
-               <button class="action" disabled={!moves} on:click={() => moveCards('table')}>Add to table</button>
-               <button class="action" disabled={!moves} on:click={() => moveCards('hand')}>Add to hand</button>
-               <button class="action" disabled={!moves} on:click={() => moveCards('bench')}>Add to bench</button>
-               <button class="action" disabled={!moves} on:click={() => moveCards('discard')}>Add to discard pile</button>
+               {#each movesFor as move (move.pile)}
+                  <button class="action" disabled={!moves} on:click={() => moveCards(move.pile)}>{move.moveLabel}</button>
+               {/each}
             </div>
          {/if}
       </div>
@@ -264,8 +264,8 @@
       view is one dialog for every pile, so two of them open side by side - which is
       how a player reads a deck against a discard - are the same panel with different
       cards in it: the bar is what tells them apart at a glance, and the name is what
-      settles it. The colour arrives as `--zone-accent` from `ZONES`, so there is one
-      place a zone's colour is decided rather than one per zone.
+      settles it. The colour arrives as `--zone-accent` from `util/piles.js`, so there
+      is one place a pile's colour is decided rather than one per pile or per window.
    */
    .zone {
       @apply flex items-center gap-2 border-b border-black;

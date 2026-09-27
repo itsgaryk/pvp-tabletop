@@ -5,6 +5,15 @@
   `logger.js`, read **[terminology.md](terminology.md)** — the store name *is*
   the wire name, so a rename that looks like tidying is a protocol change and the
   receiver fails silently. `docs/board.md` has the layout side of the same zones.
+- A pile's **view** is one dialog for two windows (`Inspection.svelte` and
+  `OppInspection.svelte`) over seven piles, so what makes one of those windows
+  *this* pile rather than another is data in `src/lib/util/piles.js` and not
+  markup: the name it says, the colour it wears, and where its move buttons send
+  the cards. A pile added or renamed there has to keep its label equal to
+  `logger.js`'s name for the same zone, which `tools/zone-vocabulary-check.mjs`
+  asserts. `src/lib/util/` is where a table like this belongs when more than one
+  store or component needs it — it imports nothing, so it cannot add a direction
+  to a cycle (the same reason `status.js` and `markers.js` are there).
 - `src/routes/+page.svelte` opts into `prerender = true`; the root layout sets
   `prerender = false` so the `api/relay` routes stay dynamic.
 - `vercel.json` holds the framework preset only — the output directory comes

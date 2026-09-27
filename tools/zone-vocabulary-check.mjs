@@ -234,6 +234,96 @@ const emptyLabels = labelsBlock
    : []
 check('and every label has words in it', emptyLabels.length === 0, emptyLabels.join(', '))
 
+/* ------------------------------------------------------- the pile windows -- */
+
+/*
+   The one table a *window* reads: `util/piles.js`, which names and colours the
+   piles `Inspection.svelte` and `OppInspection.svelte` can be opened on. It is the
+   fifth vocabulary in this file's list and the newest, and it is checked for the
+   same reason as the rest - a pile whose window does not know it draws under its
+   store name with no moves, which is a panel that is quietly wrong rather than one
+   that fails.
+
+   The set is not the board's piles: it is the piles that have a view - the six a
+   zone draws with a count badge and a *View All* entry, plus the Stadium. `pickup`
+   is a phase and has no view, and `bench`/`active` are slots rather than piles.
+*/
+const pilesSrc = read('src/lib/util/piles.js')
+
+const windowNames = /export const PILE_NAMES = \[([^\]]+)\]/.exec(pilesSrc)
+const windowPiles = new Set(
+   windowNames ? [ ...windowNames[1].matchAll(/'(\w+)'/g) ].map((m) => m[1]) : []
+)
+
+const WINDOW_SKIPS = new Set(['pickup']) // a phase, not a zone: shown by the selection dialog
+const SLOT_PILES = new Set([ 'bench', 'active' ]) // slots, and neither is a pile
+
+check('the window table names some piles', windowPiles.size > 0, list(windowPiles))
+check('and every one of them is a pile of the board',
+   isSubset(windowPiles, boardPiles),
+   `not a pile: ${list(new Set([ ...windowPiles ].filter((n) => !boardPiles.has(n))))}`)
+check('and it leaves out only what has no view to open',
+   same(windowPiles, new Set([ ...boardPiles ].filter(
+      (n) => !WINDOW_SKIPS.has(n) && !SLOT_PILES.has(n)))),
+   `missing: ${list(new Set([ ...boardPiles ].filter(
+      (n) => !WINDOW_SKIPS.has(n) && !SLOT_PILES.has(n) && !windowPiles.has(n))))}`)
+
+/* every named pile has a row, and no row is spare */
+const windowRows = /export const PILE_WINDOWS = \{([\s\S]*?)\n\}/.exec(pilesSrc)
+
+/*
+   Each row's body, read by matching braces rather than by a non-greedy regex: a row
+   holds a nested array (`movedTo`), so `deck: {[\s\S]*?label:` would run past the end
+   of its own row and into the next one that has a label. And the row *names* come
+   from the same parse rather than from `keysIn`, which is any-indent by design and
+   would also collect the nested `label`/`accent`/`movedTo` keys.
+*/
+function rowBodies (block) {
+   const bodies = {}
+   const key = /^\s*(\w+):\s*\{/gm
+   let m
+
+   while ((m = key.exec(block))) {
+      let depth = 1
+      let i = key.lastIndex
+      while (i < block.length && depth > 0) {
+         if (block[i] === '{') depth++
+         else if (block[i] === '}') depth--
+         i++
+      }
+      bodies[m[1]] = block.slice(key.lastIndex, i - 1)
+   }
+
+   return bodies
+}
+
+const rows = rowBodies(windowRows?.[1] || '')
+const rowNames = new Set(Object.keys(rows))
+const labelOf = (name) => /label:\s*'([^']+)'/.exec(rows[name] || '')?.[1] || null
+
+check('and every pile it names has a row', same(windowPiles, rowNames),
+   `named: ${list(windowPiles)} | rows: ${list(rowNames)}`)
+
+/* the log's own word for a zone, out of the `piles` map read above */
+const logNameOf = (key) => {
+   const m = new RegExp(`^\\s*${key}:\\s*'([^']+)'`, 'm').exec(pilesBlock?.[1] || '')
+   return m ? m[1] : null
+}
+
+/*
+   The label has to be the log's word for the same zone: a window that says something
+   different from the line the same move writes is two names for one zone on one
+   screen, which is the drift this whole file exists to catch.
+*/
+const labelMismatch = [ ...windowPiles ].filter((name) =>
+   loggerPiles.has(name) && logNameOf(name) && labelOf(name) && labelOf(name) !== logNameOf(name))
+
+check('and every window label is the log\'s name for that zone', labelMismatch.length === 0,
+   labelMismatch.map((n) => `${n}: window "${labelOf(n)}" vs log "${logNameOf(n)}"`).join('; '))
+check('and every row carries a label and a colour',
+   [ ...rowNames ].every((n) => labelOf(n) && /accent:\s*'/.test(rows[n] || '')),
+   list(new Set([ ...rowNames ].filter((n) => !labelOf(n) || !/accent:\s*'/.test(rows[n] || '')))))
+
 /* ------------------------------------------------------------- the docs -- */
 
 const doc = read('docs/terminology.md')
