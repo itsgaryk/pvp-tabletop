@@ -1,4 +1,21 @@
-.DS_Storenode_modules/build/.svelte-kit/package.vercel.env.env.*!.env.example# local npm cache (used when the default cache is not writable)/.npm-cachebuild-log.txt# scratch files.tmp-*/.dsh-project-memory_*.log
+.DS_Store
+node_modules
+/build
+/.svelte-kit
+/package
+.vercel
+.env
+.env.*
+!.env.example
+
+# local npm cache (used when the default cache is not writable)
+/.npm-cache
+build-log.txt
+
+# scratch files
+.tmp-*
+/.dsh-project-memory
+_*.log
+
 # one worktree per session - see the parallel-sessions skill
 .worktrees/
-
