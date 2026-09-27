@@ -193,11 +193,17 @@ function pileOf (card, lists) {
 
 /*
    Whether a card may be acted on as the other player's, which is the whole of the
-   rule: it is one of the cards a Reveal or a Look is showing. `reveal.js` owns
-   that answer, and this is the one place a board gesture asks for it.
+   rule: it is one of the cards a window is showing, **carried by that window's pile**.
+   `reveal.js` owns that answer, and this is the one place a board gesture asks for it.
+
+   The pile is not optional and it is not a detail: a window hands its cards the *batch*
+   and every zone of the board hands over the zone, so "the pile this gesture is carrying
+   the card with" is the difference between a card in a window and the same card object
+   lying in the opponent's hand zone behind it. See the note over `isActionable` in
+   reveal.js for the report that made it an argument.
 */
-export function canActOn (card) {
-   return isActionable(card)
+export function canActOn (card, pile) {
+   return isActionable(card, pile)
 }
 
 /*
@@ -267,15 +273,8 @@ export function actionForPile (pile) {
 }
 
 /*
-   Whether a drag of a card out of a Reveal or a Look window is what is being dropped.
-
-   `$source` for one of those cards is the *batch* it was picked up from - the window
-   hands its cards a batch rather than a pile (see reveal.js) - and a batch is not one of
-   the board's own lists, which is the same test `board/Card.svelte` uses to tell a card
-   in a window from a card on the board.
-*/
-/*
-   Whether a drag of a card out of a Reveal or a Look window is what is being dropped.
+   Whether a drag of a card out of a Reveal, a Look or a Reveal Hand window is what is being
+   dropped.
 
    **The drag stores are what this reads, and the arguments are only a hint.** Every zone
    that asks is handed the drag as `$draggedCard`/`$source` in its own `allowDrop`, and a
@@ -287,6 +286,11 @@ export function actionForPile (pile) {
    solo. Reading the stores here is the same data by another route, and there is exactly one
    drag in flight, so a caller cannot get this wrong by choosing the wrong shape of config.
 
+   `$source` is the whole of the test, because it is the pile the card is being carried
+   *with*: a window's card carries the window's batch, a card of the far half's own carries
+   one of the far half's piles (solo, where that half is played from this keyboard), and a
+   batch is never one of those - so the question is `canActOn`, which asks exactly that.
+
    The old signature is kept so every existing call site still reads the same way.
 */
 export function isDraggingRevealed () {
@@ -294,8 +298,7 @@ export function isDraggingRevealed () {
    const from = get(dragSource)
 
    if (!card || !from || typeof from !== 'object') return false
-   if (defaultOpponent.piles().includes(from)) return false
-   return canActOn(card)
+   return canActOn(card, from)
 }
 
 /*
@@ -361,7 +364,14 @@ export function dropRevealedCard (target, dragged, source) {
    */
    const moving = Array.isArray(source) && source.includes(dragged) ? source.slice() : [ dragged ]
 
-   opponentCardAction(moving, action, { pile: source })
+   /*
+      The pile the request is made with is the **drag's own source** - the batch a window
+      handed the card - and not the `source` argument above, which is the selection. The two
+      were one argument until the permission learned to ask about the pile: a request grouped
+      by an array has no pile *name*, so it fell back to looking the card up among the far
+      half's own zones and the batch was never named at all.
+   */
+   opponentCardAction(moving, action, { pile: get(dragSource) })
    return true
 }
 
@@ -506,13 +516,14 @@ export function opponentCardAction (cards, action, options = {}) {
    if (!Object.values(OPP_ACTIONS).includes(action)) return false
 
    const list = (Array.isArray(cards) ? cards : [ cards ]).filter(Boolean)
-   if (!list.length || !list.every(canActOn)) return false
+   if (!list.length || !list.every((card) => canActOn(card, options.pile))) return false
 
    /*
-      Where the cards are *said* to be. The batch's own pile name is preferred when a
-      window handed one over, because that is the deck the player was shown - so the
-      request names the pile the owner's board will recognise even if this board's mirror
-      has drifted. The list is grouped by that name, because each request carries one.
+      Where the cards are *said* to be. `options.pile` is the pile the gesture carried the
+      cards with - the window's batch, for every caller there is - and its own pile *name* is
+      what this prefers: that is the deck the player was shown, so the request names the pile
+      the owner's board will recognise even if this board's mirror has drifted. The list is
+      grouped by that name, because each request carries one.
    */
    const named = options.pile?.name || null
    const groups = new Map()
@@ -546,8 +557,8 @@ export function opponentCardAction (cards, action, options = {}) {
          is what puts them where they are going, and the moment they land the window is a
          live view of a pile that still holds them (a hand, a discard) - so a card that is
          not marked here is actionable for as long as the batch lives. See `spendCards` in
-         reveal.js: the permission is the batch, and this is the one line that says the batch
-         has been used for this card.
+         reveal.js: the permission is the batch as the window hands it over, and this is the
+         one line that says that batch has been used for this card.
       */
       spendCards(held)
 

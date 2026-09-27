@@ -5,16 +5,17 @@
    This is the half of the feature that `tools/render-check.mjs` cannot reach: a
    render to a string can hold the permission rule and draw the windows, and it
    cannot click a menu entry, answer a prompt, or see what appears on the *other*
-   browser. Six things are asserted here, and each needs two pages:
+   browser. Seven things are asserted here, and each needs two pages:
 
      1. Reveal opens a window on the board that revealed, and on **nobody else's** -
         the rest of the table is told by the game log, which names the cards
      2. Reveal Hand opens a window with the whole of the opponent's hand on the board
-        that asked, and on a watcher's, and NOT on the opponent's - whose hand it is.
-        The owner is told by the log line and by their own hand turning face up
-     3. Look on the opponent's deck opens a window on the acting board, and on a
-        watcher's, and NOT on the opponent's - the deck's owner is never sent the
-        ids of cards out of its own face-down deck
+        that asked, and NOT on the opponent's - whose hand it is. The owner is told by
+        the log line. **And the cards in the Hand Zone are not actionable**, with the
+        window open or closed: only the cards the window itself is carrying are
+     3. Look on the opponent's deck opens a window on the acting board, and on
+        **nobody else's** - not the deck's owner (never sent the ids) and not a watcher
+        (whose report is the named log line)
      4. a revealed card can be acted on, and the action lands on the OWNER's board:
         a card sent to discard turns up in that deck's discard
      5. the endings: Close & Shuffle for the two deck windows, and the shuffle
@@ -22,6 +23,8 @@
      6. a card out of any of the windows cannot be dropped on the player's own side,
         the table or the Stadium of their own half - and can still be dropped on
         the owner's zones
+     7. a card of the opponent's that is *on the board* - in a hand zone, whatever
+        the window over it is doing - answers no gesture at all
 
    The cards are not asserted by name: the deck the app is dealt is the stand-in
    deck API's, and what matters here is that the two boards agree about *which*
@@ -142,7 +145,7 @@ function windows (page) {
             kind: kindOf(p),
             cards: p.querySelectorAll('img.card').length,
             text: p.innerText.replace(/\\s+/g, ' ').trim(),
-            /* the panel's own heading, which is where a watcher's window names the seat */
+            /* the panel's own heading: the window that says which kind it is */
             heading: (p.querySelector('.font-bold') || {}).textContent?.trim() || null,
             buttons: [...p.querySelectorAll('button')].map((b) => b.textContent.trim())
          }))
@@ -396,11 +399,11 @@ try {
    await bob.setup()
 
    /*
-      A watcher, when a third browser was started. A Look is shown to the room's
-      watchers and not to the deck's owner, and only a third page can tell those two
-      apart - the opponent's board is the one that must stay empty, and a check with
-      two pages cannot see the difference between "sent to nobody" and "not sent
-      here".
+      A watcher, when a third browser was started. A Look is *reported* to the room's
+      watchers - the named log line, and no window - and it is never sent to the deck's
+      owner at all, and only a third page can tell those two apart: the owner's board is
+      the one that must have neither, and a check with two pages cannot see the difference
+      between "sent to nobody" and "not sent here".
    */
    if (watcher) {
       await watcher.spectate(room, 'Watcher')
@@ -513,9 +516,12 @@ try {
       *the reveal window is still showing for the owner* - and a spectator has always read
       it that way.
 
-      The **batch** still travels, and that is a different question: it is the permission, so
-      the opponent can act on a card they can see on the board (section 3 asserts exactly
-      that, and it is what `To Discard` on this board's card menu needs).
+      The **batch** still travels, and that is a different question from the window: it is the
+      record of the gesture, and the two boards' copies of one act are meant to be the same
+      one. It is deliberately *not* a permission on that board any more - the cards it names
+      sit in a pile that half draws as one image, and the permission is asked of a card a
+      *window* is carrying (see `isActionable`). So this asserts the record arriving, and
+      nothing about acting on it.
    */
    const bobReveal = await waitForWindow(bob, 3, { kind: 'reveal', timeout: 4000 })
    check('and it does NOT open on the other player\'s board', !bobReveal,
@@ -526,12 +532,12 @@ try {
       (await bob.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.trim())`)).filter((l) => /Revealed/.test(l)).join(' | ') || 'no reveal line')
 
    /*
-      And the *batch* did arrive there, which is the half that must not change: it is what
-      makes a card on that board's screen actionable.
+      And the batch arrived there as well, which is the half that must not change: it is the
+      record of what the table was shown.
    */
    if (await bob.evaluate(`Boolean(globalThis.__pvp)`)) {
       const theirBatch = await bob.evaluate(`JSON.stringify(globalThis.__pvp.batches().reveal)`)
-      check('and the batch still reaches it, so a card on the board can still be acted on',
+      check('and the batch still reaches it, as the record of the gesture',
          JSON.parse(theirBatch)?.cards?.length === 3, theirBatch)
    }
 
@@ -775,12 +781,139 @@ try {
          flags.theirHandHere === false && flags.ownHand === false, JSON.stringify(flags))
    }
 
+   /*
+      **And the cards in the Hand Zone answer nothing - with the window open, and after it is
+      closed.** This is the report these assertions exist for, in its own words: *the "Reveal
+      Hand" window allows the owner's (opponent) cards in the Hand Zone to be selected
+      (actionable) ... cards should only be actionable in the Reveal Hand window. After the
+      "Reveal Hand" window closes the cards in the opponent's hand are still actionable.*
+
+      It is the same card objects on both sides, and that is the whole difficulty: a batch is
+      a *live view* of a pile the mirror holds (`viewOf`), so the cards the window draws and
+      the cards the zone draws are one set of objects. So the question is asked twice, and the
+      two halves test different things:
+
+        - **what the player sees**, which is what a deployment can be checked for: a click on
+          a Hand Zone card picks nothing up, and a right click opens no card menu
+        - **what the rule says**, which needs the development handle and is the half that can
+          be asked deterministically: the *same* card object answers for the pile the window
+          hands over and is refused for the pile the zone hands over. The component's own
+          answer is only re-asked when something it subscribes to changes, which is exactly
+          how a fault of this shape comes and goes, so the rule is asked at the source.
+   */
+   /*
+      What the rule says about that hand, asked of the store: the **same card object** the
+      window is drawing, carried by the zone instead of by the window. Only a development
+      handle can ask this, and it is the half a DOM check cannot see - a component's own
+      answer is a snapshot of the moment it was built, which is how a fault of this shape
+      comes and goes.
+   */
+   const handZoneRule = () => alice.evaluate(`(() => {
+      const pvp = globalThis.__pvp
+      if (!pvp) return null
+      const hand = pvp.opponent.defaultOpponent.hand
+      const batch = pvp.reveal.handReveal.get()
+      const shown = pvp.reveal.handRevealView.get()[0]
+      return {
+         sameObject: Boolean(shown) && hand.get().includes(shown),
+         inZone: pvp.reveal.isActionable(hand.get()[0], hand),
+         inWindow: batch ? pvp.reveal.isActionable(shown, batch.pile) : null,
+         open: pvp.batches().handRevealOpen
+      }
+   })()`)
+
+   /* what a left click on a Hand Zone card does: what the board picked up, if anything */
+   const handZoneClick = () => alice.evaluate(`(() => {
+      const zone = document.querySelector('.gameboard > .hand2')
+      const wrapper = zone ? zone.querySelector('div.border-2') : null
+      if (!wrapper) return null
+
+      const pvp = globalThis.__pvp
+      if (pvp) pvp.player.resetSelection()
+      wrapper.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+      return {
+         rings: document.querySelectorAll('.gameboard > .hand2 .selected').length,
+         picked: pvp ? pvp.player.cardSelection.get().length : null
+      }
+   })()`)
+
+   /* a right click on the first card of the far half's hand zone */
+   const rightClickHandZone = () => alice.evaluate(`(() => {
+      const zone = document.querySelector('.gameboard > .hand2')
+      const wrapper = zone ? zone.querySelector('div.border-2') : null
+      if (!wrapper) return false
+      const r = wrapper.getBoundingClientRect()
+      wrapper.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: Math.round(r.left + 5), clientY: Math.round(r.top + 5) }))
+      return true
+   })()`)
+
+   /* the entries of whatever menu a right click opened */
+   const zoneCardMenu = async () => {
+      await rightClickHandZone()
+      await sleep(700)
+      const items = await menuText(alice)
+      /* put the zone's own menu away with a `mousedown`, which is what a menu closes on -
+         a *click* outside would take the Reveal Hand window with it */
+      await alice.evaluate(`(() => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); return true })()`)
+      await sleep(400)
+      return items
+   }
+
+   /*
+      While the window is up: the zone's cards answer nothing, and the window's do. The
+      right click is taken first, because the click below is what closes the window.
+   */
+   const openRule = await handZoneRule()
+   const openZoneMenu = await zoneCardMenu()
+   check('with the window open, a right-click on a Hand Zone card offers no card entries',
+      !openZoneMenu.some((t) => t.startsWith('To Discard') || t.startsWith('Attach to Their Active')),
+      openZoneMenu.join(' | ') || 'no menu')
+
+   const openClick = await handZoneClick()
+   check('and a click on one picks nothing up',
+      Boolean(openClick) && openClick.rings === 0 && (openClick.picked === null || openClick.picked === 0),
+      JSON.stringify(openClick))
+
+   if (openRule === null) {
+      console.log('  skip  the rule asked of the store - no development handle to ask it through')
+   } else {
+      check('and the window\'s cards are the very objects the zone draws',
+         openRule.sameObject === true,
+         'a batch is a live view of the pile the mirror holds')
+      check('so the window answers for them while the zone does not',
+         openRule.open === true && openRule.inWindow === true && openRule.inZone === false,
+         JSON.stringify(openRule))
+   }
+
    await closeWindow(alice)
    await sleep(600)
 
+   /*
+      And the same with the window gone - the report's second sentence. The batch is still in
+      the store (a Look's is kept on purpose and this is the same machinery), so "the window
+      is closed" has to be part of the rule rather than a thing nothing draws.
+   */
+   const closedRule = await handZoneRule()
+   const closedZoneMenu = await zoneCardMenu()
+   check('after the window closes, a right-click on one still offers no card entries',
+      !closedZoneMenu.some((t) => t.startsWith('To Discard') || t.startsWith('Attach to Their Active')),
+      closedZoneMenu.join(' | ') || 'no menu')
+
+   const closedClick = await handZoneClick()
+   check('and a click on one still picks nothing up',
+      Boolean(closedClick) && closedClick.rings === 0 && (closedClick.picked === null || closedClick.picked === 0),
+      JSON.stringify(closedClick))
+
+   if (closedRule !== null) {
+      check('and with the window closed nothing about that hand answers at all',
+         closedRule.open === false && closedRule.inZone === false && closedRule.inWindow === false,
+         JSON.stringify(closedRule))
+   }
+
    /* ---------------------------------------------------------------- 3. look -- */
 
-   console.log('\nlook: the opponent\'s deck, shown to the looker and the watchers\n')
+   console.log('\nlook: the opponent\'s deck, shown to the looker and reported to the watchers\n')
 
    /*
       Close both reveal windows so nothing else is on screen - with **Escape**, which is
@@ -940,16 +1073,15 @@ try {
       `${beforeBulk.theirDiscard} -> ${bulkLanded} in bob's discard`)
 
    /*
-      The look reaches the watcher and never the deck's owner, and this is the pair of
-      assertions the whole of that rule comes down to. The owner is the one player the
-      face-down deck withholds, so the *ids* may not be sent there at all - which is why
-      the check reads the owner's own batch store rather than looking for a window: "no
-      window" would pass on a board that had been handed the cards and declined to draw
-      them.
+      The look never reaches the deck's owner, and that is an assertion about the **ids**
+      rather than about a window: the owner is the one player a face-down deck withholds, so
+      the cards may not be sent there at all - which is why the check reads the owner's own
+      batch store. "No window" would pass on a board that had been handed the cards and
+      declined to draw them.
 
       The assertion about the other board is about the *kind* of window rather than about
-      whether one is on screen: a reveal's window is the one that board is looking at when
-      a look is taken, and "no window at all" would be a claim about that one instead.
+      whether one is on screen: a reveal's window may be up on that board when a look is
+      taken, and "no window at all" would be a claim about that one instead.
    */
    await sleep(1500)
    const bobWindows = await windows(bob)
@@ -963,45 +1095,33 @@ try {
    }
 
    /*
-      A watcher's window: the same cards, read-only.
+      **And the WATCHER gets no window either.** A Look's window is the looker's reading of
+      somebody else's deck; a watcher is told what was seen by the named log line, which is
+      the report ("a table where a look happens" is shown that something is happening), and
+      the panel used to come up over the watcher's board as well. Reported, in as many words:
+      *when a player looks at the X cards on the opponent's deck it should not bring up the
+      Look window for the spectator*.
 
-      The audience is the reason this window exists - a table where a look happens should
-      show that something is happening - and the limit on it is the reason the cards are
-      still the looker's. Both are asserted off the watcher's own board, and the *name* in
-      the heading is asserted too: a watcher's board mirrors both players, so "your
-      opponent's deck" names no half of its screen and the window has to be told which
-      seat the look was of.
+      Asserted as *no window* rather than as "a read-only one", because that is the change:
+      the read-only half was a window a watcher had to put up with. What a watcher still has
+      is asserted below - the log line naming the cards - and the batch itself, which is the
+      record of the gesture on every board that was told about it.
    */
    if (watcher) {
       const watchWindows = await windows(watcher)
-      const watchLook = watchWindows.find((w) => w.kind === 'look')
-      check('and the look window opens on the WATCHER', Boolean(watchLook), JSON.stringify(watchWindows.map((w) => w.kind)))
-      check('and it shows the same number of cards as the looker\'s window',
-         Boolean(watchLook) && watchLook.cards === aliceLook.cards.length,
-         `${watchLook?.cards} on the watcher's board, ${aliceLook.cards.length} on the looker's`)
-      check('and it is read-only: Close and nothing else',
-         Boolean(watchLook) && JSON.stringify(watchLook.buttons) === JSON.stringify([ 'Close' ]),
-         watchLook?.buttons.join(' | ') || 'no window')
-      check('and it names whose deck is being read, by the seat the look is of',
-         Boolean(watchLook?.heading?.includes("Alice's deck")), String(watchLook?.heading))
+      check('and NO look window opens on the WATCHER\'s board',
+         !watchWindows.some((w) => w.kind === 'look'),
+         watchWindows.map((w) => w.kind).join(', ') || 'no window')
 
-      const watchInert = await watcher.evaluate(`(() => {
-         const pop = [...document.querySelectorAll('.popup')].find((p) => /Look /.test(p.innerText))
-         if (!pop) return null
-         const ws = [...pop.querySelectorAll('div.border-2')]
-         return {
-            n: ws.length,
-            pulsing: ws.filter((w) => getComputedStyle(w).animationName !== 'none').length,
-            selected: (() => {
-               const img = pop.querySelector('img.card')
-               if (img) img.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-               return [...pop.querySelectorAll('div.border-2')].filter((w) => w.className.includes('selected')).length
-            })()
-         }
+      const watchSawCards = await watcher.evaluate(`(() => {
+         const pvp = globalThis.__pvp
+         return pvp ? JSON.stringify(pvp.batches().look) : null
       })()`)
-      check('and its cards are inert: no animation, and a click selects nothing',
-         Boolean(watchInert) && watchInert.pulsing === 0 && watchInert.selected === 0,
-         JSON.stringify(watchInert))
+      if (watchSawCards !== null) {
+         check('and the watcher is still handed the batch, as the record of the look',
+            JSON.parse(watchSawCards)?.cards?.length === aliceLook.cards.length,
+            watchSawCards)
+      }
    }
 
    const bobLookLine = await bob.evaluate(`[...document.querySelectorAll('.chat p')].filter((p) => /^Looked at the top/.test(p.innerText)).length`)
@@ -1762,4 +1882,4 @@ if (failures) {
    console.log(`verdict: ${failures} failed - see the lines above`)
    process.exit(1)
 }
-console.log('verdict: ok - a reveal window is the revealer\'s alone, a look window reaches the looker and the watcher, a window\'s card goes only to its owner\'s zones, and the log names what was shown')
+console.log('verdict: ok - a reveal window is the revealer\'s alone, a look window is the looker\'s alone while the watchers read the log, a window\'s card goes only to its owner\'s zones, and no card of the opponent\'s on the board answers')

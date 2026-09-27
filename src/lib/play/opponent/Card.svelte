@@ -10,7 +10,7 @@
    import { dragging } from '$lib/dnd/pointer.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import { cardSelection as selection, selectCard } from '$lib/stores/player.js'
-   import { isActionable } from '$lib/stores/reveal.js'
+   import { windows, isActionable } from '$lib/stores/reveal.js'
 
    const { openDetails, openOppCardMenu, openOppCardActionMenu } = getContext('boardActions')
 
@@ -31,13 +31,25 @@
            take action on this opponent card" property (see docs/reveal.md)
 
       Nothing else does. A card of the other half's that is merely visible - a
-      Stadium in play, a Pokemon on the Bench - is not this player's to touch, and
-      the check is the batch rather than the card: a flag written onto the card
-      would follow it onto its owner's own board, where it would offer the
-      opponent's menu for their own card. That is why the answer lives in a store
-      (`reveal.js`) rather than on the card object.
+      Stadium in play, a Pokemon on the Bench, the cards of a hand whose window is
+      open over it - is not this player's to touch, and the check is the batch
+      *and the pile the card is being carried by*: a window hands its cards the
+      batch, every zone of this board hands the zone, and the rule refuses one
+      carrying the other. That is what keeps the permission inside the window, and
+      it needs no flag written onto the card - a flag would follow the card onto
+      its owner's own board, where it would offer the opponent's menu for their own
+      card. The answer lives in a store (`reveal.js`) rather than on the card
+      object.
+
+      **`$windows` is not decoration, and it is the second half of the same
+      lesson.** `isActionable` reads the batches, their views and the record of
+      what has been spent itself, so a statement that only called it would have no
+      inputs a compiler can see: it would compile to one about `card` and `pile`,
+      run once when the card was created, and keep that answer for the card's whole
+      life. Read the store, so a window opening, closing, or changing what it shows
+      re-asks the question (the note over `windows` in reveal.js has the report).
    */
-   $: actionable = $solo || isActionable(card)
+   $: actionable = $solo || isActionable(card, pile, $windows)
 
    /*
       A player may look at the far half's cards where they are on show - a Pokemon

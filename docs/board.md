@@ -146,8 +146,9 @@ the same is true of the multi-card selection dialog, which is the same grid.
 **Reveal, Look and Reveal Hand** are the other three ways cards come out of a deck or a hand,
 and they are about *who is shown them* rather than about moving them: a **Reveal** shows the top
 X cards to both players in a window on the revealer's board, a **Look** shows the top X of the
-opponent's deck to the one player who asked (and to the room's watchers), and a **Reveal Hand**
-shows the whole of the opponent's hand to the player who asked (and to the watchers). Reveal and
+opponent's deck to the one player who asked (and reports them to the room's watchers, in the log
+rather than in a window), and a **Reveal Hand** shows the whole of the opponent's hand to the
+player who asked (and to the watchers, in a window of its own). Reveal and
 Look are entries on a deck's own menu — *Reveal Top X* on either deck, *View Top X* on the
 opponent's — and Reveal Hand is the **opponent's hand** menu's entry; a player's own hand menu
 has none, so a hand is hidden unless the other player reveals it. None of them ever moves a
@@ -157,7 +158,9 @@ until *Close & Shuffle* says otherwise.
 A card any of the three is showing may be acted on **as the other player's**, which is
 the "allowed to take action on this opponent card" property: it can be clicked and
 right-clicked like a card of the player's own, and its menu's entries land on the
-owner's half. That is one whole subject of its own — the property, the split between
+owner's half. It is the card *as the window carries it* and nothing else — a card of the
+opponent's lying on the board, in a hand zone or under a window, is never actionable. That is one
+whole subject of its own — the property, the split between
 the player who asks and the board that owns the card, and the two names a half is
 called by — and it is written up in **[reveal.md](reveal.md)**. What belongs here is
 where the entries are: all three are refused outside a room, and a spectator is not given
