@@ -645,12 +645,26 @@ import { isWindowPile } from '$lib/stores/reveal.js'
             pointer events, which is what lets a click reach the other half's table
             lying underneath it.
 
+            **That stand-aside is for a room as much as for solo, and it is what makes
+            their cards readable at all.** Their table is drawn in the same cell, under
+            this one, and every element of this half's table fills the cell - so with
+            the player's own table empty there is nothing of theirs to click *except*
+            through this box, and a double click meant for a card of theirs landed on
+            this half's `.table-zone` instead. Measured with real input (not a
+            dispatched event on the element): `document.elementFromPoint` at the centre
+            of their card answered `div.table-zone`, and no details opened. The cell
+            only fills with a card when one is played, so the room case costs this half
+            nothing: nothing here is clickable while it is empty, and a drag turns it
+            back on (below).
+
             In solo it also stands aside while a card of the far half's is being
             carried: the table is shared, but each half plays onto *its own* table
             in it, so the far half's cards belong on the far table underneath. The
-            same class does it for the Stadium's cell, in the Stadium itself.
+            same class does it for the Stadium's cell, in the Stadium itself - and the
+            Stadium has stood aside in a room all along, which is why a card of theirs
+            in the Stadium was readable while the same card on the table was not.
          -->
-         <div class="play" class:empty={$solo && !$table.length && !$dragging} class:far-drag={farDrag}>
+         <div class="play" class:empty={!$table.length && !$dragging} class:far-drag={farDrag}>
             {#if $spectating}
             <OppTable store={bottomStore} />
          {:else}
@@ -1220,12 +1234,24 @@ import { isWindowPile } from '$lib/stores/reveal.js'
       half's belongs, and where the rule that a play clears the *other* player's
       Stadium is applied the right way round.
 
-      The Stadium's cell is the other half of this, and it is handled at the cell:
+      **It is the only way a card of theirs in that cell is reachable, and it is what
+      the double click needs.** Both halves' tables fill the cell, so a gesture meant
+      for one of their cards meets this half's box first unless this half is standing
+      aside - and unlike the Stadium's cell, which has stood aside this way since it was
+      written (`board/Stadium.svelte`'s `pointer-events-auto`), this one used to stand
+      aside in solo only. A card of theirs played to the table could not be double
+      clicked, right-clicked or pinged in a room. What keeps a drop working is
+      `$dragging`: a card being carried turns this half back on, so the drop still lands
+      on the table being played (see `pointer.js` - `dragging` needs 5px of movement, so
+      a click or a double click never wakes it).
+
+      The Stadium's cell is the other half of this, and it is handled at both ends:
       `.stadium.card-drag` stands the player's own Stadium aside while a window's card
       is carried, so the drop reaches the other player's - which is the one that should
-      take it. The table needs no such rule: a card out of a window is refused by the
-      table it lands on, and the far table is not reachable through this cell (see
-      `tools/reveal-check.mjs`, which says so where the shared cells are listed).
+      take it - and `.stadium-cards` turns that half back on when it has a card in play
+      or a drag is in flight. The table needs no `card-drag` rule: a card out of a window
+      is refused by the table it lands on, and the far table is not reachable during a
+      drag (see `tools/reveal-check.mjs`, which says so where the shared cells are listed).
    */
    .play.empty,
    .play.far-drag,

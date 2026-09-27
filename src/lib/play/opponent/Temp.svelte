@@ -16,7 +16,7 @@
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { dragging } from '$lib/dnd/pointer.js'
 
-   const { openOppPile, openOppCardMenu, openOppCardPingMenu } = getContext('boardActions')
+   const { openOppPile, openOppCardMenu, openOppCardPingMenu, openDetails } = getContext('boardActions')
 
    /* which player's board this component shows */
    export let store = defaultOpponent
@@ -84,6 +84,29 @@
    function onCtxStack (e) {
       if (!$table.length) e.stopPropagation()
    }
+
+   /*
+      Double clicking one of their cards shows it, which is the gesture that card has
+      everywhere else on the board: a Pokemon in play opens the same card
+      (`opponent/Slot.svelte`), and so does any card of the far half's this component
+      does not draw (`opponent/Card.svelte`, which reads the card's own `revealed`).
+      A card played to the table is public - both players read it across the table - so
+      there is nothing here for a double click to refuse.
+
+      It has to be on the **card** rather than on the stack, and it stops there: the
+      stack's own double click is *View All* (the whole table in a panel), which is the
+      zone's gesture on the part of it no card covers - the same split the player's own
+      table makes between a card's menu and the zone's (`board/Temp.svelte`). The two
+      halves differ in what else a card there offers, and they are meant to: the near
+      half's cards are the player's own, so a double click on one is the stack's *View
+      All* and their details are on the menu and on Space, while a card of theirs has no
+      menu of moves at all - it is not this player's to touch - so a double click is how
+      it is read where it lies.
+   */
+   function onDetails (e, card) {
+      e.stopPropagation()
+      openDetails(card)
+   }
 </script>
 
 <Pile pile={table} name="Table" displayCount={false} showMenu={$solo} selectAll={false}>
@@ -103,6 +126,7 @@
                   style="bottom: calc({-i} * var(--table-step)); left: {i % 2 !== 0 ? 'var(--table-offset)' : '0px'}; z-index: {$solo && $cardSelection.includes(card) ? 12 : i + 1}"
                   on:click={(e) => onClick(e, card)}
                   on:contextmenu={(e) => onCtx(e, card)}
+                  on:dblclick={(e) => onDetails(e, card)}
                   use:dnd={cardDnd(card)}>
             {/each}
          </div>

@@ -1418,6 +1418,43 @@ window's card may not land on the player's own Stadium or table), and that is as
 general point: when a check cannot drive a path, **say which path and why**, because a silently
 skipped assertion and a passing one look identical in a report.
 
+**A check that dispatches the event *on the element* answers "is the handler wired" and never
+"can the player reach it" — and the shared cells are where those two come apart.** A card of the
+other player's on the table was given a double click that opens its details, and the assertion
+for it dispatched `dblclick` at the card:
+
+```js
+el.dispatchEvent(new MouseEvent('dblclick', { … }))
+```
+
+which is delivered straight to `el` and passed, twice, while **no player could do it at all**. The
+two tables are one grid cell with the player's own drawn over the other half's, so a real double
+click met this half's `.table-zone` and opened nothing: measured with `Input.dispatchMouseEvent`,
+`document.elementFromPoint` at the centre of their card answered `div.table-zone`, and
+`topIsTheCard` was false. The handler was correct the whole time; what was missing was the *other*
+half of the rule two notes above — the near table stood aside for the far one in **solo** only
+(`class:empty={$solo && !$table.length && !$dragging}`), while the Stadium's cell had stood aside
+in a room all along, which is why a card of theirs in the Stadium was readable and the same card
+on the table was not.
+
+Three things generalise:
+
+- **A gesture in a shared cell is a hit-test claim, so assert the hit test.** `elementFromPoint`
+  at the point the gesture is aimed at, compared with the element the gesture is about, is one
+  line and it is the assertion that was missing. Drive the gesture with `Input.dispatchMouseEvent`
+  too: on the fixed tree the same check reports `{ w: 88, h: 121, top: 'img.card', onTop: true }`,
+  and on the broken one `{ w: 88, h: 121, top: 'div.table-zone', onTop: false }`.
+- **A card with no picture is a card with no height, so the point you test must be inside a real
+  box.** Every card's image comes from somebody else's host (`limitlesstcg…`, `images.pokemontcg.io`)
+  and a stand-in deck's card names are ones no image host serves, so the first attempt measured the
+  far table's card as **88x0 px** and hit-tested its own top edge — a true statement about a board
+  with no pictures on it. `tools/zone-fit-check.mjs` answers those requests with a canvas-drawn PNG
+  for exactly this reason, and `tools/zone-sync-check.mjs` does the same now.
+- **When a stand-aside is widened, the drag is what pays for it.** The near table is
+  `pointer-events: none` while it is empty *and nothing is being dragged*, so the drop still lands
+  on the table being played; `dragging` needs 5px of movement (`pointer.js`), so a click or a
+  double click never wakes it. Anything that stands a cell aside has to say what turns it back on.
+
 **An event that is only for some members needs the relay to know that, and the audience is a
 *seat*, not a role.** A Look is reported to the player who took it and to the room's watchers, and
 never to the owner of the deck that was read — the ids are cards out of a face-down deck, which
@@ -1482,3 +1519,54 @@ already spent. The fix is one line in `setBatch` — the record is emptied when 
 because the batch **is** the gesture — and the tell is a set that outlives the object it is a set
 *of*, so **ask what else is keyed by that id and how long it lives** before trusting an id across
 a reload.
+
+**`to` is two words on one wire, and the relay deleted the game's one — so every move in the
+game stopped crossing, silently.** A zone's wire name is the `from`/`to` of a move: `cardsMoved`
+and `slotsMoved` are both `{ cards, from, to }`, where `to` is `'hand'`, `'table'`, `'discard'`
+and the rest. The relay's own envelope grew a field with the same spelling when a Look needed an
+audience: `share('cardsLooked', { …, to: [ memberId ] })`, and the relay splices that field back
+out before storing the payload, because a member may be told what happened and never who else was
+told. It was written as one line:
+
+```js
+function withoutAudience (data) {
+   if (!data || typeof data !== 'object' || !('to' in data)) return data
+   …
+}
+```
+
+That is a claim about **every event in the allow-list**, and it was wrong for the two that carry a
+destination. The consequence is the shape of fault this file is about — nothing threw, nothing was
+logged, and the receiving half did the only sensible thing with a pile called `undefined`:
+
+```
+mirror.hand stays 7 while the owner's hand goes to 8
+relay log: 18:cardsMoved<96788b>(deck->undefined)
+```
+
+`opponent.js`'s handler opens with `if (!pile2) return`, so the card was dropped on arrival. It was
+reported as the one zone somebody happened to be watching — *"when a player places a card into the
+table zone it does not update and show on the opponent's view"* — with the reporter's own good
+guess attached (*"could potentially be happening with other zones"*): it was **every** move of a
+card between two zones and every draw, and the only moves that crossed were the ones announced by
+an event of their own (`cardsBenched`, `cardPromoted`, `stadiumPlayed`, `cardsAttached`), which is
+why a board could look half alive.
+
+The fix asks the question by **name**, which is the only thing that can answer it here: on an
+addressed event the field is the audience by definition, and none of the three carries a zone,
+so `ADDRESSED.has(name)` is the whole of the rule. It is deliberately *not* a test of the
+value's shape — a routing field this relay did not put there must not travel whatever it
+contains. The shape is what the **incoming** side asks, and that is a different question:
+`audienceOf` reads `Array.isArray(data.to)` because it has to tell "an audience was asked for"
+from "this event has no audience", and a move's zone name is a string that must not be mistaken
+for one. What made this expensive to find is that all the evidence was one layer away from the
+symptom: the relay's own log prints the payload it stored (`room-log.mjs`, or one
+`poll?since=0`), and `deck->undefined` says everything in nine characters. The general rule is
+the one a payload-and-envelope design always needs: **a field stripped or read by name is a
+claim about every event type that shares the object**, so before touching one, grep the
+vocabulary for the word — the audience's `to` and the wire's `to` are the second homonym in
+[terminology.md](terminology.md), and the two ends tell them apart by name and by shape
+respectively. Two checks hold it now: `tools/relay-check.mjs` asserts a move keeps its
+destination *and* that an audience is still spliced out, and `tools/zone-sync-check.mjs` does
+the same end-to-end, in two browsers, where the card has to appear on the other board.
+

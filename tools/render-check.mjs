@@ -898,6 +898,57 @@ check('and a Look\'s window is opened for the looker and for nobody else',
    'the addressed event still reaches the watchers for the log line, and opens no window')
 
 /*
+   **A card of the far half's is *readable* wherever it is on show, which is not the
+   question the permission answers.** The double click was gated on `actionable`, and
+   once the permission became "the card as the window carries it" (see `isActionable`)
+   a card lying in a zone of the far half is not actionable in a room at all - so the
+   gesture was refused for every card that half draws. Reported as *"a player should be
+   able to double click on an opponent's card in both the Stadium Zone and Table Zone
+   for the Show Details function"*; the `hidden` test below it was dead code even
+   before that, because a card that answers `actionable` is one a window is carrying
+   and a window's pile is never the hand.
+
+   What says whether a card may be read is `revealed`: the same value the card's own
+   `img` is drawn from (`$prizesFlipped`, `$handRevealed`, or `true` for a window), so
+   a card drawn face down - the hand, an unflipped prize - is the one a double click
+   refuses. It is a source assertion because the gesture itself needs a browser; the
+   browser half of it is `tools/zone-sync-check.mjs`, which double clicks a card on the
+   far table, a card in the far Stadium and a card in the far hand.
+
+   Both assertions are asked of the **function's own body**, cut at the next `function`
+   in the file: asking the file as a whole answers the wrong question, because the very
+   next function down (`onDragStart`) opens with `if (!actionable) return` and a
+   whole-file test finds it, which is a check that fails on the fixed tree.
+*/
+function functionBody (source, name) {
+   const start = source.indexOf(`function ${name}`)
+   if (start === -1) return null
+   const next = source.indexOf('\n   function ', start)
+   return source.slice(start, next === -1 ? undefined : next)
+}
+
+const detailsBody = functionBody(farCardSource, 'onDetails')
+
+check('and a double click on a card of the far half\'s refuses only a card drawn face down',
+   Boolean(detailsBody) && /if \(!revealed\) return/.test(detailsBody),
+   'the details rule reads `revealed`, which is what the card\'s own image is drawn from')
+check('and no longer asks a permission no card in a zone of that half has',
+   Boolean(detailsBody) && !/actionable/.test(detailsBody),
+   'a zone hands over the zone and a zone is never a batch, so the permission is false there for ever')
+
+/*
+   The far half's table draws its cards as `img`s rather than through that component,
+   so the same gesture has to be on the card itself there - and it has to stop, because
+   the stack's own double click is *View All*. Their table has no card menu in a room
+   (a card of theirs on the board is not the player's to act on), which is why this
+   half has the gesture and the near half does not.
+*/
+const farTableSource = readFileSync(join(src, 'lib', 'play', 'opponent', 'Temp.svelte'), 'utf8')
+check('and a card on the far half\'s table shows itself on a double click',
+   /on:dblclick=\{\(e\) => onDetails\(e, card\)\}/.test(farTableSource) && /openDetails\(card\)/.test(farTableSource),
+   'the card stops the stack\'s own double click and opens its details')
+
+/*
    And the view is the deck's, not a copy of it, which is the difference between a
    window that keeps offering a card that has been sent somewhere and one that does
    not. A copy is the obvious implementation and it has no visible symptom until a
