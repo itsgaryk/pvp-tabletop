@@ -11,6 +11,16 @@
  *   node tools/fake-deck-api.mjs                          # terminal 1
  *   VITE_LIMITLESS_WEB=http://127.0.0.1:6391 npm run dev   # terminal 2
  *
+ * With more than one session on this repository, give each its own copy:
+ *
+ *   node tools/fake-deck-api.mjs --port 6483
+ *
+ * `--port` beats `FAKE_DECK_API_PORT` when both are given. The flag is not just a
+ * convenience - a session's copy is closed again by its *command line* (see
+ * `isOurStandIn` in tools/dev-servers.lib.mjs), because Windows does not put the
+ * environment in the process list, so a copy started without `--port` cannot be
+ * told from another session's and cannot be stopped on its own.
+ *
  * Then:  node tools/deck-order-check.mjs
  *
  * The deck is deterministic and its **60 card names are all distinct** - `Card01`
@@ -28,7 +38,8 @@
  */
 import { createServer } from 'node:http'
 
-const PORT = Number(process.env.FAKE_DECK_API_PORT || 6391)
+const flag = /--port[=\s]+(\d+)/.exec(process.argv.slice(2).join(' '))
+const PORT = Number(flag ? flag[1] : process.env.FAKE_DECK_API_PORT || 6391)
 const HOST = '127.0.0.1'
 
 const CARDS = []

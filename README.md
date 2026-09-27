@@ -53,6 +53,8 @@ where the rest are about the code:
 | [diagnostics.md](docs/diagnostics.md) | The command-line checks, the diagnostics panel, and the failures that used to be silent |
 | [gotchas.md](docs/gotchas.md) | Things that cost somebody an afternoon |
 | [development.md](docs/development.md) | Project layout notes, and which module is allowed to import which |
+| [parallel-work.md](docs/parallel-work.md) | Running several sessions on this repository at once: what does and does not pass between them, one worktree and one port block each, and who owns a shared file |
+| [session-notes.md](docs/session-notes.md) | The append-only note two sessions can both write: ports claimed, files taken over, decisions the other session has to know |
 
 `node tools/docs-check.mjs` checks that every link between these files resolves.
 
