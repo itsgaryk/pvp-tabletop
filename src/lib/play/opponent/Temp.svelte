@@ -8,6 +8,7 @@
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import { solo } from '$lib/stores/solo.js'
    import { cardSelection, selectCard } from '$lib/stores/player.js'
+   import { pinged, pingedCard } from '$lib/stores/ping.js'
 
    /* DnD */
 
@@ -15,7 +16,7 @@
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { dragging } from '$lib/dnd/pointer.js'
 
-   const { openOppPile, openOppCardMenu } = getContext('boardActions')
+   const { openOppPile, openOppCardMenu, openOppCardPingMenu } = getContext('boardActions')
 
    /* which player's board this component shows */
    export let store = defaultOpponent
@@ -41,8 +42,25 @@
       selectCard(card, table, holdingCtrlOrCmd(e))
    }
 
+   /*
+      A card of theirs played to the table is public - both players read it across the
+      table - so it is one of the cards this player may ping, and the ping is the whole of
+      the menu a room puts on it: nothing of theirs on the board is this player's to move
+      (see `OppCardPingMenu.svelte`). It is the same menu `opponent/Card.svelte` opens for
+      the cards of theirs that are not in a slot, and the same rule picks it: solo is the
+      player's own menu, a room is the ping.
+
+      The selection is left alone, for the reason written out in `opponent/Card.svelte`:
+      a card of theirs picked up in this board's own selection is a card the board's own
+      keys then act on, and a ping acts on nothing.
+   */
    function onCtx (e, card) {
-      if (!$solo) return
+      if (!$solo) {
+         e.preventDefault()
+         e.stopPropagation()
+         openOppCardPingMenu(e.clientX, e.clientY, card)
+         return
+      }
 
       e.preventDefault()
       e.stopPropagation()
@@ -80,6 +98,7 @@
                   class:stacked={i > 0}
                   class:selected={$solo && $cardSelection.includes(card)}
                   class:dragged={$solo && $dragging && $cardSelection.includes(card)}
+                  class:pinged={pingedCard($pinged, card, 'far')}
                   src="{cardImage(card, 'xs')}" alt={card.name} draggable="false"
                   style="bottom: calc({-i} * var(--table-step)); left: {i % 2 !== 0 ? 'var(--table-offset)' : '0px'}; z-index: {$solo && $cardSelection.includes(card) ? 12 : i + 1}"
                   on:click={(e) => onClick(e, card)}

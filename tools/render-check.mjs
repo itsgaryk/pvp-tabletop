@@ -86,6 +86,7 @@ writeFileSync(entry, `
    import { slot } from '${p('lib/stores/custom/cards.js')}'
    import { reveal, revealView, revealOpen, look, lookView, lookOpen, handReveal, handRevealView, handRevealOpen, isActionable, canReveal, topCount, revealTop, lookTop, spendCards, resetRevealState } from '${p('lib/stores/reveal.js')}'
    import { OPP_ACTIONS, opponentCardAction, respondToOpponentCardAction } from '${p('lib/stores/oppAction.js')}'
+   import { pingCard, pingLine, pinged, pingedCard } from '${p('lib/stores/ping.js')}'
    import { spectating } from '${p('lib/stores/connection.js')}'
    import InspectionView from '${join(root, 'tools', 'pile-dialog.svelte').split(sep).join('/')}'
    import RevealDialog from '${p('lib/play/dialogs/Reveal.svelte')}'
@@ -93,7 +94,7 @@ writeFileSync(entry, `
    import HandRevealDialog from '${p('lib/play/dialogs/HandReveal.svelte')}'
    /* what a decklist import does: the list of cards, then the board built from it */
    const setDeck = (cards_) => { cards.set(cards_); resetBoard() }
-   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, handReveal, handRevealOpen, handRevealView, HandRevealDialog, isActionable, look, lookOpen, LookDialog, lookTop, lookView, lz, moveSelection, OPP_ACTIONS, opponentCardAction, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, revealOpen, RevealDialog, revealTop, revealView, selectCard, setDeck, shuffleAfterLeavingDeck, slot, spendCards, spectating, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
+   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, handReveal, handRevealOpen, handRevealView, HandRevealDialog, isActionable, look, lookOpen, LookDialog, lookTop, lookView, lz, moveSelection, OPP_ACTIONS, opponentCardAction, pingCard, pingLine, pinged, pingedCard, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, revealOpen, RevealDialog, revealTop, revealView, selectCard, setDeck, shuffleAfterLeavingDeck, slot, spendCards, spectating, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
 `)
 
 const svelte = {
@@ -1017,6 +1018,144 @@ check('and no action is taken on a card that does not answer',
    'a selection with one card that does not answer is refused whole, and the pile it came with is part of the question')
 check('and the owner is the one who performs the move',
    /react\('oppCardAction'/.test(oppActionSource) && /respondToOpponentCardAction/.test(oppActionSource))
+
+/*
+   **A ping, which is the entry that used to be *Declare Target*.** It moves nothing and
+   nobody answers it, so the two things worth asking are both rules rather than renderings:
+
+      - **what the line says.** A card this player was *shown* is named, and one they were
+        not is not: a mirror is handed the names of the other player's hidden cards as part
+        of the board state, so every card on the far half has a name here and printing the
+        wrong one is a leak rather than a typo. It is what makes the entry exist on the
+        opponent's hand and prizes at all.
+      - **who may ping.** A spectator is refused, and so is solo, where both halves are one
+        person's and there is nobody to point at. The refusal is at the store, so every menu
+        entry that offers a ping inherits it rather than repeating it.
+      - **which card the glow is on.** The one that was pinged, and *not* the card of the
+        player's own that shares its id: both boards number their cards from 1, so an id on
+        its own names two cards on one screen, one on each half. That is the rule
+        `pingedCard` states, and it is asked here with one id and two halves because it is
+        the half of this that no rendering would have shown anyone as wrong.
+
+   The naming rule is asked of `pingLine` rather than read off the source because it can be:
+   it is a function of the card and the flag and nothing else. The rest is asserted where it
+   has to be - the source of the entries and of the relay's allow-list, and the six
+   components that draw a card, since a class binding on a card is not something a render to
+   a string can see.
+*/
+check('and a ping names the card the player was shown',
+   mod.pingLine({ name: 'Pikachu' }, true) === 'Ping: Pikachu')
+check('and a card they were not shown is pinged as a hidden card, never named',
+   mod.pingLine({ name: 'Pikachu' }, false) === 'Ping: Hidden card',
+   'the mirror holds the name of every hidden card and must not print one')
+
+mod.spectating.set(true)
+check('and a spectator cannot ping',
+   mod.pingCard({ _id: 4242, name: 'Their Card' }, true) === false)
+mod.spectating.set(false)
+
+mod.solo.set(true)
+check('and neither can solo, where both halves are one person\'s',
+   mod.pingCard({ _id: 4242, name: 'Their Card' }, true) === false)
+mod.solo.set(false)
+
+const theirCard = { _id: 4242, name: 'Their Card' }
+check('and a player\'s ping goes out', mod.pingCard(theirCard, true) === true)
+/*
+   The glow is a store holding the card and the half it is on, and it is set on the next
+   task rather than at once - that is what makes a second ping of the same card restart the
+   animation instead of leaving the one already running to finish. So it is empty in the
+   same turn and the card one task later, which is what is measured here.
+
+   `'far'` is the half a *sent* ping is on: the entry is offered on the other player's cards
+   and never on the player's own, so the card a player pings is one this board draws as its
+   far half.
+*/
+check('and it is not on the card until the next task, so a repeat restarts it',
+   get(mod.pinged) === null, `pinged = ${JSON.stringify(get(mod.pinged))}`)
+await new Promise((resolve) => setTimeout(resolve, 0))
+check('and the card the glow is drawn on is the one that was pinged, on the far half',
+   get(mod.pinged)?.id === theirCard._id && get(mod.pinged)?.half === 'far',
+   `pinged = ${JSON.stringify(get(mod.pinged))}`)
+
+const shared = 7
+check('and a ping lights one card, not the same id on the other half',
+   mod.pingedCard({ id: shared, half: 'far' }, { _id: shared }, 'far') === true &&
+   mod.pingedCard({ id: shared, half: 'far' }, { _id: shared }, 'near') === false &&
+   mod.pingedCard({ id: shared, half: 'near' }, { _id: shared }, 'near') === true &&
+   mod.pingedCard({ id: shared, half: 'near' }, { _id: shared }, 'far') === false,
+   'both boards number their cards from 1, so the same id names a card of each half')
+
+const pingSource = readFileSync(join(src, 'lib', 'stores', 'ping.js'), 'utf8')
+const oppSlotMenuSource = readFileSync(join(src, 'lib', 'play', 'dialogs', 'OppSlotMenu.svelte'), 'utf8')
+const oppTempSource = readFileSync(join(src, 'lib', 'play', 'opponent', 'Temp.svelte'), 'utf8')
+const relayEventSource = readFileSync(join(src, 'routes', 'api', 'relay', 'events', '+server.js'), 'utf8')
+
+check('and the slot menu offers Ping Card rather than a declared target',
+   /text="Ping Card"/.test(oppSlotMenuSource) && !/text="Declare Target"/.test(oppSlotMenuSource),
+   'the entry was repurposed, so the words it used to wear are gone from the menu')
+check('and the relay carries a ping, which is what the other board\'s glow arrives on',
+   /'cardPinged'/.test(relayEventSource) && /react\('cardPinged'/.test(pingSource),
+   'a glow is about which card, so it cannot ride the log line')
+/*
+   **Which zones a ping is offered on, and the half of that rule which is easy to lose.**
+   The component that draws a card of theirs draws two things: a card lying in one of their
+   zones, and every card of one of their *piles* opened as a view (`OppInspection.svelte`) -
+   the deck, the discard and the lost zone, which are exactly the three a ping is not for.
+   So the pile is asked, and the marker is on the four zones that take one.
+*/
+check('and only a zone a ping belongs on may be pinged',
+   /Object\.defineProperty\(zone, 'pingable'/.test(opponentForShared) &&
+   /for \(const zone of \[ b\.hand, b\.prizes, b\.stadium, b\.table \]\)/.test(opponentForShared) &&
+   /if \(!pile\.pingable\) return/.test(oppCardSource),
+   'the deck, the discard and the lost zone are piles, and a view of one draws every card of it')
+check('and a card of theirs on the board opens the ping menu in a room',
+   /if \(!\$solo && !actionable\) \{/.test(oppCardSource) &&
+   /openOppCardPingMenu\(e\.clientX, e\.clientY, card, revealed\)/.test(oppCardSource))
+check('and so does a card of theirs on the table',
+   /openOppCardPingMenu\(e\.clientX, e\.clientY, card\)/.test(oppTempSource))
+
+/*
+   The six components that draw a card, and each one's half of `pingedCard`: a player's own
+   card is what a ping *receives* (the far half's components send it). A component that
+   asked for the wrong half is the fault this list exists for, and it has no symptom a
+   render could show - the class binding is markup.
+*/
+/* the binding a card of that half has to wear, `pingedCard`'s own two arguments and all */
+const glowIn = (half) => new RegExp(`class:pinged=\\{pingedCard\\(\\$pinged, [^,]+, '${half}'\\)\\}`)
+
+const glowless = [
+   [ 'the player\'s cards', join(src, 'lib', 'play', 'board', 'Card.svelte'), 'near' ],
+   [ 'the player\'s Pokemon', join(src, 'lib', 'play', 'board', 'Slot.svelte'), 'near' ],
+   [ 'the player\'s table', join(src, 'lib', 'play', 'board', 'Temp.svelte'), 'near' ],
+   [ 'the far half\'s cards', join(src, 'lib', 'play', 'opponent', 'Card.svelte'), 'far' ],
+   [ 'the far half\'s Pokemon', join(src, 'lib', 'play', 'opponent', 'Slot.svelte'), 'far' ],
+   [ 'the far half\'s table', join(src, 'lib', 'play', 'opponent', 'Temp.svelte'), 'far' ]
+].filter(([ , file, half ]) => !glowIn(half).test(readFileSync(file, 'utf8')))
+
+check('and every component that draws a card of a pingable zone wears the glow, on its own half',
+   glowless.length === 0,
+   glowless.length ? `missing: ${glowless.map(([ what ]) => what).join(', ')}` : 'all six')
+
+/*
+   **And the cards under a Pokemon in play, which are cards of theirs too.** An energy or a
+   tool attached to a Pokemon is drawn by the same component as the Pokemon, so each one
+   needs a binding of its own - three per half, the Pokemon and the two fans - and a right
+   click on one of them has to stop at that card rather than letting the slot's menu open
+   over it (which would make the ping about the Pokemon again).
+*/
+const oppSlotSource = readFileSync(join(src, 'lib', 'play', 'opponent', 'Slot.svelte'), 'utf8')
+const glowCount = (file, half) => (readFileSync(file, 'utf8')
+   .match(new RegExp(`class:pinged=\\{pingedCard\\(\\$pinged, (?:top|nrg|tool), '${half}'\\)\\}`, 'g')) || []).length
+
+check('and the cards attached under a Pokemon wear it on both halves',
+   glowCount(join(src, 'lib', 'play', 'board', 'Slot.svelte'), 'near') === 3 &&
+   glowCount(join(src, 'lib', 'play', 'opponent', 'Slot.svelte'), 'far') === 3,
+   'the Pokemon, its energy and its tools are four cards that can be pinged, and each has its own binding')
+check('and a card attached under their Pokemon is pinged as its own card',
+   bodyOf(oppSlotSource, 'onCardCtx').includes('openOppCardPingMenu(e.clientX, e.clientY, card)') &&
+   /function onCardCtx[\s\S]{0,400}?e\.stopPropagation\(\)/.test(oppSlotSource),
+   'the click stops at that card, or the slot menu opens over it and the ping is about the Pokemon')
 
 try { mod.exitSolo() } catch {}
 

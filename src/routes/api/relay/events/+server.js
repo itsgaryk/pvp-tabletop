@@ -70,7 +70,16 @@ const EVENTS = new Set([
    */
    'handRevealed',
    'backToDeck',
-   'oppCardAction'
+   'oppCardAction',
+   /*
+      One player pointing at one of the other's cards - a *ping*, which is what the
+      *Declare Target* entry became. It is the room's: it carries the card's id and
+      nothing else, so every board lights the card where it draws it, and the log line
+      that goes with it is an ordinary room-wide `chatMessage`. Nothing is moved and
+      nobody answers it, which is why it is not an `oppCardAction` - that one names a
+      pile and a destination and is performed by the card's owner.
+   */
+   'cardPinged'
 ])
 
 /*

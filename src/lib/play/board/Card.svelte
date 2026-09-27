@@ -9,6 +9,7 @@
 
    import { cardSelection as selection, selectCard, piles } from '$lib/stores/player.js'
    import { logPrizeLook } from '$lib/stores/logger.js'
+   import { pinged, pingedCard } from '$lib/stores/ping.js'
    const { openDetails, openCardMenu, openOppCardActionMenu } = getContext('boardActions')
 
    export let card
@@ -121,6 +122,16 @@
 
 </script>
 
+<!--
+   `class:pinged` is a ping this card has **received**. Pointing at a card is a gesture
+   made on the other player's half - a ping is offered on their cards and never on this
+   player's own (see `OppCardPingMenu.svelte`) - so a card on this half glows because
+   somebody pointed at it from across the table, and the glow is what tells its owner which
+   card was meant. `pingedCard` is the whole of the question, and `'near'` is this half of
+   it: ids are handed out per board, so the same id names a card of the player's *and* a
+   card of the opponent's, and asking only the id would light both. `.pinged` itself is one
+   rule for both halves, in global.css.
+-->
 <div
    on:click={onMark ? onMarkClick : onClick}
    on:contextmenu={onCtx}
@@ -129,6 +140,7 @@
    class:dragged={$dragging && $selection.includes(card)}
    class:selected={$selection.includes(card)}
    class:marked
+   class:pinged={pingedCard($pinged, card, 'near')}
    use:dnd={dndConfig}>
 
    {#if revealed}

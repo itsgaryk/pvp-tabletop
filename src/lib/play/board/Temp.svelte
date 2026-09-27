@@ -7,6 +7,7 @@
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
 
    import { table, cardSelection, selectCard } from '$lib/stores/player.js'
+   import { pinged, pingedCard } from '$lib/stores/ping.js'
    const { openPile, openCardMenu } = getContext('boardActions')
 
    /*
@@ -114,6 +115,7 @@
                   class:stacked={i > 0}
                   class:selected={$cardSelection.includes(card)}
                   class:dragged={$dragging && $cardSelection.includes(card)}
+                  class:pinged={pingedCard($pinged, card, 'near')}
                   src="{cardImage(card, 'xs')}" alt={card.name} draggable="false"
                   style="bottom: calc({-i} * var(--table-step)); left: {i % 2 !== 0 ? 'var(--table-offset)' : '0px'}; z-index: {$cardSelection.includes(card) ? 12 : i + 1}"
                   on:click={(e) => onClick(e, card)}

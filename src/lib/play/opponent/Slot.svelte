@@ -17,8 +17,9 @@
    import { dnd } from '$lib/dnd/actions.js'
    import { draggedCard, source } from '$lib/dnd/store.js'
    import { dragging } from '$lib/dnd/pointer.js'
+   import { pinged, pingedCard } from '$lib/stores/ping.js'
 
-   const { openOppSlotDetails, openOppSlotMenu, openSlotDetails, openDetails, openOppCardMenu } = getContext('boardActions')
+   const { openOppSlotDetails, openOppSlotMenu, openSlotDetails, openDetails, openOppCardMenu, openOppCardPingMenu } = getContext('boardActions')
 
    /* which player's board this component shows */
    export let store = defaultOpponent
@@ -119,6 +120,25 @@
    }
 
    function onCtx (e) {
+      /*
+         A Pokemon its owner has hidden is still a card this player may **point at**, and
+         the ping is the one thing left to offer on it: the log line calls it a hidden card
+         and its owner sees which of their Pokemon was meant (see `pingCard`). Everything
+         else a menu on this slot offers is a way of *reading* the Pokemon - its damage,
+         its status, its details, the cards under it - and that is exactly what hiding it
+         withholds, so a veiled Pokemon opens the ping and nothing else.
+
+         It is the ping *card* menu rather than the slot menu, because the slot menu's
+         entry is named with the Pokemon's name and this one must not be: the card and the
+         flag are what the two differ by.
+      */
+      if ($pokemonHidden && !$solo && top) {
+         e.preventDefault()
+         e.stopPropagation()
+         openOppCardPingMenu(e.clientX, e.clientY, top, false)
+         return
+      }
+
       if ($pokemonHidden) return
       /* the menu belongs to the Pokemon, so the click selects it first */
       if ($solo && !$slotSelection.includes(slot)) selectSlot(slot, false)
@@ -140,8 +160,26 @@
       else selectCard(card, pile, holdingCtrlOrCmd(e))
    }
 
+   /*
+      Right-clicking a card attached under one of their Pokémon.
+
+      It is its own *card* rather than part of the Pokémon, and that is true of the gesture
+      as well: the energy and the tools under a Pokémon in play are cards of theirs lying
+      face up on the board, so each of them may be pinged on its own - "this one" about a
+      tool is not the same thing as "this one" about the Pokémon holding it. The click has
+      to stop here for that reason, or the slot's own menu opens over it and the ping is
+      about the Pokémon again (which is what the menu's *Ping Card* entry is for).
+
+      In solo the far half is the player's own, so the same click keeps meaning what it
+      means on the near half: that card's menu, with the far half's own zones in it.
+   */
    function onCardCtx (e, card, pile) {
-      if (!$solo) return
+      if (!$solo) {
+         e.preventDefault()
+         e.stopPropagation() // the slot's own menu must not open as well
+         openOppCardPingMenu(e.clientX, e.clientY, card)
+         return
+      }
 
       e.stopPropagation() // the slot's own menu must not open as well
       selectCard(card, pile, false)
@@ -186,6 +224,7 @@
             alt="{$pokemonHidden ? 'Hidden Pokémon' : top.name}"
             class="card pokemon relative z-10" draggable=false
             class:selected={$solo && $slotSelection.includes(slot)}
+            class:pinged={pingedCard($pinged, top, 'far')}
             class:target={$solo && ($attaching || $evolving)}
             class:attach={$solo && $attaching} class:evolve={$solo && $evolving}>
          <AbilityStripe used={abilityUsed} />
@@ -197,6 +236,7 @@
          style="bottom: var(--slot-lift-energy); left: calc({i + 1} * var(--slot-fan-step-energy)); z-index: {$solo && $cardSelection.includes(nrg) ? 12 : 9 - i}"
          data-attached="energy"
          class:card-attached-selected={$solo && $cardSelection.includes(nrg)}
+         class:pinged={pingedCard($pinged, nrg, 'far')}
          on:click={(e) => onCardClick(e, nrg, energy)}
          on:contextmenu={(e) => onCardCtx(e, nrg, energy)}
          use:dnd={cardDnd(nrg, energy)}>
@@ -207,6 +247,7 @@
          style="bottom: var(--slot-lift-tool); left: calc({$energy.length} * var(--slot-fan-step-energy) + {i + 1} * var(--slot-fan-step-tool)); z-index: {$solo && $cardSelection.includes(tool) ? 12 : 9 - i - $energy.length}"
          data-attached="trainer"
          class:card-attached-selected={$solo && $cardSelection.includes(tool)}
+         class:pinged={pingedCard($pinged, tool, 'far')}
          on:click={(e) => onCardClick(e, tool, trainer)}
          on:contextmenu={(e) => onCardCtx(e, tool, trainer)}
          use:dnd={cardDnd(tool, trainer)}>
