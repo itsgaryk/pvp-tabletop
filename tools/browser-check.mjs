@@ -286,7 +286,7 @@ if (want('lobby')) {
 
    check('the menu is there', menuOnly !== null)
    check('with the logo on it, and the logo actually loaded',
-      menuOnly?.logo === '/logo.png' && menuOnly?.logoLoaded === true, JSON.stringify({ src: menuOnly?.logo, loaded: menuOnly?.logoLoaded }))
+      menuOnly?.logo === '/logo.webp' && menuOnly?.logoLoaded === true, JSON.stringify({ src: menuOnly?.logo, loaded: menuOnly?.logoLoaded }))
    check('and the four buttons', JSON.stringify(menuOnly?.buttons) === JSON.stringify(['Play Solo', 'Create Room', 'Join Room', 'Spectate Game']), JSON.stringify(menuOnly?.buttons))
    /*
       And nothing else: no relay health, no "checking relay", no status line, no
