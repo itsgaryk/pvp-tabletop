@@ -9,6 +9,7 @@
    } from '$lib/stores/player.js'
    import { logPrizeLook } from '$lib/stores/logger.js'
    import { spectating } from '$lib/stores/connection.js'
+   import { lostZoneShown } from '$lib/stores/zones.js'
 
    const { openDetails, startAE } = getContext('boardActions')
 
@@ -124,7 +125,13 @@
       <ContextMenuOption click={() => moveTo(deck, { bottom: true })} text="To Bottom of Deck" shortcut="m" disabled={$spectating} />
    {/if}
 
-   {#if !everyIn(lz)}
+   <!--
+      To Lost Zone is offered only where the board has one: in a Standard room the
+      zone is not drawn, and an entry that put a card into a zone nothing draws
+      would be a card nobody could see or get back (see $lib/stores/zones.js). The
+      L shortcut goes with it, in Board.svelte.
+   -->
+   {#if $lostZoneShown && !everyIn(lz)}
       <ContextMenuOption click={() => moveTo(lz)} text="To Lost Zone" shortcut="l" disabled={$spectating} />
    {/if}
    {#if !everyIn(prizes)}

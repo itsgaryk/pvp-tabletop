@@ -1,7 +1,7 @@
 <script>
    /*
-      The lobby's one prompt: who you are, and (for joining or watching) which
-      room.
+      The lobby's one prompt: who you are, and what the action needs besides - the
+      room to join or watch, and the format to play for a room being made.
 
       It asks for what the action actually needs rather than having the lobby hold
       it in a box. A name is typed once and remembered, so it opens prefilled on
@@ -14,10 +14,14 @@
       send the lobby looking for a room with no name.
 
       The name field is first, and it is the one that is always there: create,
-      join and spectate all need it, and only the last two need a code.
+      join and spectate all need it, and only the last two need a code. The format
+      is the other way round - only the room being *made* has one to choose, since
+      a room's format is the room's and a joiner is told what it is rather than
+      asked to agree with it (see $lib/util/format.js).
    */
    import { tick, createEventDispatcher } from 'svelte'
    import { playerName } from '$lib/stores/settings.js'
+   import { DEFAULT_FORMAT, FORMATS } from '$lib/util/format.js'
 
    const dispatch = createEventDispatcher()
 
@@ -32,6 +36,7 @@
    let kind = 'join'
    let name = ''
    let code = ''
+   let format = DEFAULT_FORMAT
    let nameField
    let codeField
 
@@ -52,6 +57,13 @@
       kind = TITLES[what] ? what : 'join'
       name = playerName.get() || ''
       code = ''
+      /*
+         Reset on every visit rather than remembered. A name is worth keeping
+         because it is the same person every time; a format is a choice about one
+         game, and a prompt that quietly reopened on the last one played would make
+         this room the previous room's format rather than the one being asked for.
+      */
+      format = DEFAULT_FORMAT
       error = null
       busy = false
       open = true
@@ -60,6 +72,7 @@
    }
 
    $: needsCode = kind === 'join' || kind === 'spectate'
+   $: needsFormat = kind === 'create'
    $: ready = Boolean(name.trim()) && (!needsCode || Boolean(code.trim()))
 
    async function confirm () {
@@ -75,7 +88,13 @@
 
       let done
       try {
-         done = await run({ name: who, roomId, what: kind })
+         /*
+            The format goes with every action rather than only the create: it is
+            the prompt's own state, and the caller reads it only for the action
+            that has one. Handing it over unconditionally keeps the one call site
+            from having to know which actions carry which fields.
+         */
+         done = await run({ name: who, roomId, what: kind, format })
       } catch (err) {
          /*
             An action that throws must not take the prompt with it. `busy` is what
@@ -159,6 +178,26 @@
                </label>
             {/if}
 
+            <!--
+               The format the room will be played in. A select rather than a row of
+               radios: one of the three names is long enough to wrap in a dialog
+               this narrow, and the choice is one of a fixed few.
+
+               Nothing here is required beyond leaving it alone - it opens on
+               Standard, which is the format a room is played in when nobody says
+               otherwise (see $lib/util/format.js).
+            -->
+            {#if needsFormat}
+               <label class="prompt-field">
+                  <span>Game Format</span>
+                  <select name="gameFormat" bind:value={format}>
+                     {#each FORMATS as option (option.value)}
+                        <option value={option.value}>{option.label}</option>
+                     {/each}
+                  </select>
+               </label>
+            {/if}
+
             <div class="prompt-buttons">
                <button type="submit" class="prompt-ok" disabled={!ready || busy}>
                   {busy ? 'Working…' : 'OK'}
@@ -211,7 +250,16 @@
       color: var(--text-color-two);
    }
 
-   .prompt-field input {
+   /*
+      A field's control, which is an input or the format select - the same box
+      either way, so the one field on this form that is a list does not look like a
+      different kind of thing.
+
+      The select carries its arrow where the browser puts it, so its text is
+      centred like the inputs' rather than padded away from it.
+   */
+   .prompt-field input,
+   .prompt-field select {
       @apply w-full p-2 text-center rounded-lg;
       border: 1px solid var(--bg-color-three);
       background: var(--input-color);

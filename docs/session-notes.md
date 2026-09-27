@@ -104,3 +104,15 @@ anyone else.
   ran `powershell -File tools\dev-servers.ps1 -BasePort 9230` from its own worktree.
   Nothing on block 9222 or 9238 was touched; `docs/parallel-work.md` is right that a
   bare `npm run dev` would have taken 3005, which is why the script was used.
+## 2026-09-27 — block D claimed by the game-format session
+
+- Block B (9230 / app 3006 / store 6392-6393 / browsers 9230-9232) was already
+  serving the `chat-composer` worktree when this session came to start, so this
+  session was given **block D: `-BasePort 9246`**, app 3008, store 6396/6397,
+  browsers 9246-9248. It is now in `parallel-work.md`'s table. Sessions started
+  before this line was written should re-read the table rather than assume the
+  list stops at C.
+- Nothing else was taken over: this session edits `docs/board.md`,
+  `docs/mechanics.md`, `docs/rooms.md` and `tools/browser-check.mjs` for the game
+  format change, and touches `tools/browser.mjs` only to add a field to the
+  create-room helper. If you are in any of those, say so in your own entry here.

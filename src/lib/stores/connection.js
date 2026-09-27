@@ -12,6 +12,7 @@
 */
 
 import { PVP_SERVER, APP_ENV } from '$lib/util/env.js'
+import { DEFAULT_FORMAT, normalizeFormat } from '$lib/util/format.js'
 import { HttpSocket } from '$lib/relay/client.js'
 import { writable } from './custom/writable.js'
 import { playerName } from './settings.js'
@@ -33,6 +34,18 @@ export let spectators = writable(0)
 export let seatedPlayers = writable([])
 /* our own member id, so a player can tell which seat is theirs */
 export let myId = writable(null)
+
+/*
+   The format this room is played in: 'standard', 'glc' or 'expanded'.
+
+   It is the room's, chosen when the room was made, so it is not a preference and
+   not per-player - a joiner is told which one it is rather than asked what they
+   would like. What it decides is which parts of the board exist at all: the Lost
+   Zone, and the Pokemon Power zone with the VSTAR / GX markers it holds (see
+   $lib/util/format.js). The lobby holds the default, and solo deliberately draws
+   every zone whatever this says, because solo has no room and so no format.
+*/
+export let roomFormat = writable(DEFAULT_FORMAT)
 
 /*
    The prompt's fallback window when the relay does not say. The relay always
@@ -99,9 +112,14 @@ function connect () {
 */
 export let roomError = writable(null)
 
-export function createRoom () {
+/*
+   The format is the creator's choice, made in the prompt that asks for their name,
+   and it is the room's from the moment it exists - so it is sent with the create
+   rather than told to the room afterwards. A joiner is told what it is.
+*/
+export function createRoom (format) {
    connect()
-   return socket.createRoom(playerName.get()).catch((err) => {
+   return socket.createRoom(playerName.get(), format).catch((err) => {
       console.error('[pvp-tabletop] could not create a room', err)
       roomError.set(err.message)
       return null
@@ -322,6 +340,16 @@ socket.on('seated', ({ players }) => {
    seatedPlayers.set(players || [])
 })
 
+/*
+   Which format the room is played in. It arrives with the room rather than in its
+   log - the format is fixed when the room is made - so this is raised on the
+   create, the join and a reconnect, and read through the normalizer because it is
+   a value from the relay.
+*/
+socket.on('roomFormat', ({ format }) => {
+   roomFormat.set(normalizeFormat(format))
+})
+
 socket.on('leftRoom', () => {
    room.set(null)
    spectating.set(false)
@@ -330,6 +358,12 @@ socket.on('leftRoom', () => {
    myId.set(null)
    hostWait.set(null)
    waiting.set(null)
+   /*
+      A format belongs to the room, so the lobby is back to the default and the
+      board it draws is the full one. Solo is unaffected either way: it draws every
+      zone because it is solo, not because of what this says.
+   */
+   roomFormat.set(DEFAULT_FORMAT)
    /*
       An idle prompt belongs to the room, so it goes with it - and so does the
       ability to answer one: the relay will not take an event from a member who

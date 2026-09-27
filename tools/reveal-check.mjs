@@ -385,7 +385,13 @@ try {
    await reset(bob)
    if (watcher) await reset(watcher)
 
-   const room = await alice.createRoom('Alice')
+   /*
+      Expanded, because this check reads and drags into the Lost Zone on both
+      halves (`.gameboard > .lz` and `.lz2`), and a room made in Standard does not
+      draw one at all - see the game format in $lib/util/format.js. The format is
+      the room's, so it is chosen here once and both players get it.
+   */
+   const room = await alice.createRoom('Alice', { format: 'expanded' })
    check('a room was created', Boolean(room), room || 'no room code')
 
    const answering = keepAlive(watcher ? [ alice, bob, watcher ] : [ alice, bob ])

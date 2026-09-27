@@ -71,6 +71,7 @@ the whole block and `-BasePort` moves it:
 | A (the root checkout) | 9222 | 3005 | 6390 / 6391 | 9222, 9223, 9224 |
 | B | 9230 | 3006 | 6392 / 6393 | 9230, 9231, 9232 |
 | C | 9238 | 3007 | 6394 / 6395 | 9238, 9239, 9240 |
+| D | 9246 | 3008 | 6396 / 6397 | 9246, 9247, 9248 |
 
 ```powershell
 # session B, from its own worktree, in a plain terminal (not inside the sandbox)

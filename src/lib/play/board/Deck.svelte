@@ -6,6 +6,7 @@
    import { share, spectating } from '$lib/stores/connection.js'
    import { logDeckView, logMove } from '$lib/stores/logger.js'
    import { canReveal, revealTop } from '$lib/stores/reveal.js'
+   import { lostZoneShown } from '$lib/stores/zones.js'
 
    import { deck, discard, lz, prizes, draw, shuffle } from '$lib/stores/player.js'
    const { openPile, openDeckOrder, openSelection } = getContext('boardActions')
@@ -142,7 +143,10 @@
       <ContextMenuOption click={arrangeDeck} text="Search & Order Deck" disabled={$spectating} />
       <ContextMenuOption click={() => moveTop(discard)} text="Discard Top Card" disabled={$spectating} />
       <ContextMenuOption click={discardTopX} text="Discard Top X" disabled={$spectating} />
-      <ContextMenuOption click={() => moveTop(lz)} text="Lost Zone Top Card" disabled={$spectating} />
+      <!-- the deck's own way into the Lost Zone, offered where there is one -->
+      {#if $lostZoneShown}
+         <ContextMenuOption click={() => moveTop(lz)} text="Lost Zone Top Card" disabled={$spectating} />
+      {/if}
       <ContextMenuOption click={() => moveTop(prizes)} text="Prize Top Card" disabled={$spectating} />
    </svelte:fragment>
 </Pile>

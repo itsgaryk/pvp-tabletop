@@ -53,7 +53,9 @@ cards and reads no board store, so what it shows is handed to it. It is also why
 marker is no longer a token floating in the free space past the opponent's deck: a
 token belongs to a zone, and this is the zone for it. The marks are sized by the band
 they are in, so a short window takes them with it instead of letting them spill over
-the Stadium.
+the Stadium. **The zone is not on every board**: a format with no Rule Box powers to
+mark has no Power zone either, and the Stadium takes the cell — see
+[The format, and the zones it can take away](#the-format-and-the-zones-it-can-take-away).
 
 Four cells are not one zone to one component:
 
@@ -244,6 +246,56 @@ Placements travel as the `cardsMoved` event with two optional fields — `positi
 per-card loop it used before pushed the top card in first and left it at the wrong end of
 the array, and no list of ids can carry an order unless the whole list is put back at once.
 
+## The format, and the zones it can take away
+
+A room is played in one of three **game formats** — **Standard**, **Gym Leader
+Challenge** or **Expanded** — chosen by whoever makes the room, in the prompt that also
+asks for their name. The format belongs to the room: the joiner, and anyone watching,
+are told which one it is rather than asked, so the two halves of the table can never
+disagree about what is on the board. `$lib/util/format.js` is the whole of what a
+format means here.
+
+| Format | Lost Zone | Pokemon Power zone |
+| --- | --- | --- |
+| Standard | no | no |
+| Gym Leader Challenge | yes | no |
+| Expanded | yes | yes |
+
+- **The Lost Zone is missing from Standard alone.** The zone came in with the Sword &
+  Shield sets and rotated out of Standard with them, so a Standard board has neither a
+  zone to send a card to nor one to draw.
+- **The Pokemon Power zone — and the VSTAR / GX markers it holds — is there only in
+  Expanded.** Expanded is the one card pool carrying both Rule Box powers: GX cards
+  rotated out of Standard, and Gym Leader Challenge allows no Pokemon with a Rule Box at
+  all.
+
+That Gym Leader Challenge has one and not the other is the reason the two are two
+questions rather than one flag, and why `format.js` answers them with a function each
+(`showsLostZone`, `showsPowerZone`) instead of a single "is this Expanded".
+
+**A zone a format does not have is not drawn at all**, on either half and for a
+spectator watching both. `$lib/stores/zones.js` derives that from the room's format —
+and from solo, which has no room and keeps every zone — and `Board.svelte` reads it.
+Two details are what make the difference between hidden and broken:
+
+- **The grid keeps its tracks.** A missing Lost Zone leaves its cell empty, which is
+  what the board's own corners already do, so the zones beside it neither move nor
+  resize.
+- **The Stadium takes its whole cell.** With the Power bands gone `.stadium-area` is one
+  row rather than three, and the Stadium's own name moves to that row with it. Left as
+  three rows, the board would keep a quarter of itself empty above and below the
+  Stadium, which reads as a board that failed to load rather than one played in a
+  format.
+
+**A zone's name goes with the zone**, and so do the menu entries that feed it: *To Lost
+Zone*, the deck's *Lost Zone Top Card* and the `L` shortcut are offered only where the
+board has a Lost Zone. A destination the board does not draw is a card sent somewhere
+nobody can see it or get it back, which is worse than the entry being absent.
+
+Solo is the exception to all of it: no room, so no format, so every zone — and its
+Settings keeps the marker control a room does not have (see
+[mechanics.md](mechanics.md#the-vstar-and-gx-markers)).
+
 ## Selecting a card, and what a selection looks like
 
 A click on a card selects it, Ctrl/Cmd-click adds to the selection rather than replacing it,
@@ -377,6 +429,12 @@ The active area is the one cell holding a zone per player, so it carries the nam
 three, one per band, so **Pokemon Power** is written twice — once for each player's
 zone — with the **Stadium** between them. Eighteen names for fourteen cells, for that
 reason, is the number the browser check asserts.
+
+**That eighteen is the Expanded count.** A format that takes a zone away takes its name
+with it, so a Gym Leader Challenge board names sixteen and a Standard board fourteen —
+and the Stadium's cell, down to one band, names one rather than three. The browser check
+reads a board of each format and asserts the tally, because a name left behind in an
+emptied cell looks like a zone that is still there.
 
 ## Flipping the board
 
