@@ -250,6 +250,21 @@ class Page {
       })()`)
    }
 
+   /*
+      A select rather than an input, so `setInput` cannot reach it: Svelte binds a
+      select's value on `change`, not `input`, and a select has no `.value` setter
+      that fires anything by itself. Only the create-room format is one today.
+   */
+   async setSelect (name, value) {
+      return this.evaluate(`(() => {
+         const el = document.querySelector('select[name="${name}"]')
+         if (!el) return false
+         el.value = ${JSON.stringify(value)}
+         el.dispatchEvent(new Event('change', { bubbles: true }))
+         return true
+      })()`)
+   }
+
    async rightClick (selector, { settle = 700 } = {}) {
       const found = await this.evaluate(`(() => {
          const el = document.querySelector(${JSON.stringify(selector)})
@@ -283,10 +298,15 @@ class Page {
       The lobby's one prompt asks for the player's name, and for a room code when
       the action needs one - so all three of these are the same three steps:
       press the button, fill in what it asks for, confirm.
+
+      `format` is only for the create: it is the room's format, chosen by whoever
+      makes the room, and left alone it is Standard (see $lib/util/format.js).
+      A join or a spectate has no format field to set, so passing one there is a
+      no-op rather than an error.
    */
-   async createRoom (name = 'Player') {
+   async createRoom (name = 'Player', { format = null } = {}) {
       await this.clickText('Create Room', { settle: 800 })
-      await this.answerPrompt({ name })
+      await this.answerPrompt({ name, format })
       return this.roomCode()
    }
 
@@ -301,9 +321,10 @@ class Page {
    }
 
    /* fill in what the prompt is asking for, then confirm it */
-   async answerPrompt ({ name = null, room = null } = {}) {
+   async answerPrompt ({ name = null, room = null, format = null } = {}) {
       if (name !== null) await this.setInput('playerName', name)
       if (room !== null) await this.setInput('roomId', room)
+      if (format !== null) await this.setSelect('gameFormat', format)
       await this.clickText('OK', { settle: 4000, kinds: 'button' })
    }
 

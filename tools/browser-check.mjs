@@ -27,8 +27,15 @@
  *              at once - each with its own click, its own used state and its own
  *              log line, in the Pokemon Power zone that is the top and bottom
  *              quarter of the Stadium's cell
+ *   format     the room's game format: chosen when the room is made, taken by the
+ *              joiner rather than chosen again, and the thing that decides which
+ *              of the board's zones exist at all - the Lost Zone in Gym Leader
+ *              Challenge and Expanded, the Pokemon Power zone and its VSTAR / GX
+ *              markers in Expanded alone - for both halves and for a spectator.
+ *              Solo keeps every zone and the marker setting that goes with it
  *
  *   node tools/browser-check.mjs --only panel      # just that section
+ *   node tools/browser-check.mjs --only format     # just the formats
  *
  * It does **not** launch browsers. That is deliberate, and it is the lesson from
  * two failed attempts: a helper that spawned its own Edge instances made Edge
@@ -223,12 +230,19 @@ async function canOpenJoin (page) {
 }
 
 /* a game with two seated players who have both set up */
-async function seatGame (label, { withWatcher = false } = {}) {
+/*
+   `format` defaults to Expanded, and that is deliberate: everything below that
+   measures the board by its zones was written against the full board - the Lost
+   Zone, the Pokemon Power bands and the two Stadium bands inside them - so the
+   fixture these sections need is the one format that has all of them. The formats
+   and what each does to the board are their own section (see `format`).
+*/
+async function seatGame (label, { withWatcher = false, format = 'expanded' } = {}) {
    console.log(`\n${label}`)
    await Promise.all([lobby(alice, 'alice'), lobby(bob, 'bob')])
    if (withWatcher) await lobby(watcher, 'watcher')
 
-   const room = await alice.createRoom('Alice')
+   const room = await alice.createRoom('Alice', { format })
    await bob.joinRoom(room, 'Bob')
    if (withWatcher) await watcher.spectate(room, 'Watcher')
 
@@ -404,10 +418,20 @@ if (want('lobby')) {
             if (!box) return null
             const r = box.getBoundingClientRect()
             const labels = [...box.querySelectorAll('input[name]')].map((i) => i.name)
+            const select = box.querySelector('select[name="gameFormat"]')
             return {
                text: box.innerText.replace(/\\s+/g, ' ').trim(),
                fields: labels,
                nameFirst: labels[0] === 'playerName',
+               /*
+                  The format is a select rather than a radio row, so it is not one
+                  of the named inputs above - and it is worth reading separately
+                  rather than inferring, since a prompt that stopped offering one
+                  would otherwise look exactly like this one.
+               */
+               format: select ? select.value : null,
+               formatOptions: select ? [...select.options].map((o) => o.value) : [],
+               formatLabels: select ? [...select.options].map((o) => o.textContent.trim()) : [],
                ok: box.querySelector('.prompt-ok') ? box.querySelector('.prompt-ok').textContent.trim() : null,
                cancel: box.querySelector('.prompt-cancel') ? box.querySelector('.prompt-cancel').textContent.trim() : null,
                okDisabled: box.querySelector('.prompt-ok') ? box.querySelector('.prompt-ok').disabled : null,
@@ -423,7 +447,7 @@ if (want('lobby')) {
    }
 
    /*
-      Create Room asks for a name and nothing else. `lobby()` clears the
+      Create Room asks for a name and a game format. `lobby()` clears the
       remembered name with the session, so this is a browser that has not typed
       one yet - which is what makes the disabled OK below meaningful.
    */
@@ -432,6 +456,17 @@ if (want('lobby')) {
    check('Create Room opens a prompt for the name', /create a room/i.test(createPrompt?.text || ''), createPrompt?.text)
    check('with only a name field', JSON.stringify(createPrompt?.fields) === JSON.stringify(['playerName']), JSON.stringify(createPrompt?.fields))
    check('which is required', createPrompt?.required === true, JSON.stringify(createPrompt))
+   /*
+      And the format, which only a create has: it is the room's, chosen by whoever
+      makes the room, and a joiner or a watcher is told what it is rather than
+      asked to agree with it. The three are in the order the module declares them,
+      so the one it opens on is the first - Standard, which is what a room is
+      played in when nobody says otherwise.
+   */
+   check('and a game format to choose',
+      JSON.stringify(createPrompt?.formatLabels) === JSON.stringify(['Standard', 'Gym Leader Challenge', 'Expanded']),
+      JSON.stringify(createPrompt?.formatLabels))
+   check('which opens on Standard', createPrompt?.format === 'standard', String(createPrompt?.format))
    check('and OK is disabled until it has something in it', createPrompt?.okDisabled === true, JSON.stringify(createPrompt))
    await alice.clickText('Cancel', { settle: 800, kinds: 'button' })
    check('Cancel closes it', (await alice.evaluate(`document.querySelector('.prompt-dialog') === null`)) === true)
@@ -448,6 +483,9 @@ if (want('lobby')) {
    check('both are required', prompt?.required === true, JSON.stringify(prompt))
    check('an OK and a Cancel', prompt?.ok === 'OK' && prompt?.cancel === 'Cancel', JSON.stringify(prompt))
    check('and OK is disabled until both have something in them', prompt?.okDisabled === true, JSON.stringify(prompt))
+   /* a room has one format, and it is the one it was made in */
+   check('and no game format to choose, because the room already has one',
+      prompt?.format === null, String(prompt?.format))
 
    /* a name alone is not enough for a join */
    await alice.setInput('playerName', 'Alice')
@@ -477,6 +515,8 @@ if (want('lobby')) {
    check('Spectate Game asks for a name and a code too',
       JSON.stringify(spectatePrompt?.fields) === JSON.stringify(['playerName', 'roomId']),
       JSON.stringify(spectatePrompt))
+   check('and no format either - a watcher takes the room as it is',
+      spectatePrompt?.format === null, String(spectatePrompt?.format))
    check('and the name it remembers is filled in, not typed again',
       (await bob.evaluate(`document.querySelector('input[name="playerName"]').value.length > 0`)) === true)
    await bob.answerPrompt({ name: 'Bob', room })
@@ -1203,9 +1243,14 @@ if (want('panel')) {
       that only restated what the control already says are gone with it. So is
       "Card Size": a card on the board is the size of the zone it is in now, which
       is not a thing a slider can improve on.
+
+      "VSTAR / GX marker" is the newest to go, and it went for the opposite
+      reason to the others: it is still a real setting, but only in solo. In a room
+      the format decides the markers (see the `format` section), so a control here
+      could only disagree with the room it is in.
    */
    check('and only settings that can be set are there',
-      JSON.stringify(shape.map((s) => s.title)) === JSON.stringify(['Mulligans', 'VSTAR / GX marker', 'Board zones', 'Diagnostics']),
+      JSON.stringify(shape.map((s) => s.title)) === JSON.stringify(['Mulligans', 'Board zones', 'Diagnostics']),
       JSON.stringify(shape.map((s) => s.title)))
 
    const described = await alice.evaluate(`[...document.querySelectorAll('.setting')].map((b) => b.innerText.replace(/\\s+/g, ' ').trim())`)
@@ -1324,6 +1369,36 @@ if (want('panel')) {
    await sleep(500)
    await cog()
    await sleep(900)
+
+   /*
+      Nothing may be over the board when its names are read.
+
+      `answering` clicks the idle prompt's button, but that click is a relay round
+      trip and a Svelte update, so the dialog stands for a moment after it - and
+      this section reads the *stack* at a name's centre to ask whether a card
+      covers it. A full-screen backdrop over the board turns that question into
+      "is the dialog on top", which is not a fact about the board: the run that
+      found this reported the idle prompt's own backdrop as the topmost element at
+      every name, with each card sitting correctly underneath it.
+
+      So the read is what waits rather than the clock, and it waits by dismissing
+      the prompt the way `answering` does. This is the only measurement here that
+      asks what is on top of what; the geometry below is unaffected by an overlay,
+      which is why it does not need this.
+   */
+   async function noOverlay ({ timeout = 20000 } = {}) {
+      const deadline = Date.now() + timeout
+      for (;;) {
+         const up = await alice.evaluate(`Boolean(document.querySelector('.idle-backdrop'))`)
+         if (!up) return true
+         await stillPlaying(alice)
+         if (Date.now() > deadline) return false
+         await sleep(250)
+      }
+   }
+
+   const clear = await noOverlay()
+   check('nothing is over the board when its names are measured', clear, `the board is unobstructed: ${clear}`)
 
    const named = await zoneLabels()
    /* sorted, so the check is about which names are there and not where they land */
@@ -1464,15 +1539,27 @@ if (want('panel')) {
    check('neither table zone carries a number', badges.tables.length === 0, JSON.stringify(badges))
    check('while every pile that is counted still shows its own', badges.missing.length === 0, JSON.stringify(badges))
 
-   check('the marker list ends with Both', (await alice.evaluate(`[...document.querySelectorAll('input[name="powerMarker"]')].map((i) => i.parentElement.textContent.trim()).join(',')`)) === 'Off,VStar,GX,Both')
+   /*
+      The marks are the room's rather than this panel's, and that is the change
+      this is now written against. The room was made Expanded, so both marks are
+      on both halves from the moment it existed and there is nothing here to put
+      them there - the entry a player would reach for to change them is gone in a
+      room, because a room has one format and it is not a per-player preference.
+      Solo still has it (see the `format` section).
 
-   await alice.clickText('Both', { settle: 1500, kinds: 'label' })
-   await sleep(2500)
+      This is read after `seatGame` has imported a deck and pressed Setup, which is
+      worth knowing: a board reset puts the marker back to 'none', so this is also
+      the check that Setup does not take the room's marks off the board.
+   */
+   check('the panel offers no marker list in a room',
+      (await alice.evaluate(`[...document.querySelectorAll('input[name="powerMarker"]')].length`)) === 0)
+
    /* the whole list is what a missing marker is reported as, so a board with no
       marks on it reads as [] rather than as nothing at all */
    const shown = await markers(alice)
    const mine = shown.find((m) => m.mine)
-   check('Both shows the two marks together', JSON.stringify(mine?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(mine ?? shown))
+   check('and the room\'s format already has both marks on the board',
+      JSON.stringify(mine?.marks) === JSON.stringify(['VSTAR', 'GX']), JSON.stringify(mine ?? shown))
    check('paired, not one instead of the other', mine?.paired === true, JSON.stringify(mine ?? shown))
    /*
       The pair shares the dimension its zone has to give. The band it sits in is
@@ -1537,14 +1624,185 @@ if (want('panel')) {
    /* and on their board it is the far Power zone, the one above the Stadium */
    check('and in the far Power zone, above their Stadium', far?.zone === 'power2', JSON.stringify(farShown.map((m) => m.zone)))
 
-   const turnedOff = await alice.clickText('Off', { settle: 1500, kinds: 'label' })
-   await sleep(2000)
-   const cleared = await controls(alice)
-   const left = await markers(alice)
-   check('turning it off clears them', turnedOff && cleared.board && left.length === 0,
-      JSON.stringify({ turnedOff, board: cleared.board, marks: left }))
+   /*
+      And nothing in the panel can clear them. The entry that used to is gone in a
+      room, so the marks survive a player going back into this panel - which is
+      what "the room decides" has to mean in practice, and is the half of it a
+      check can see. (That the control still exists, and still works, in solo is
+      the `format` section's business.)
+   */
+   const stillThere = await controls(alice)
+   const kept = await markers(alice)
+   check('and nothing in the panel can clear a room\'s marks',
+      stillThere.board && kept.length === 2,
+      JSON.stringify({ board: stillThere.board, marks: kept.length }))
 
    clearInterval(answering)
+}
+
+/* ------------------------------------------------------------ 6. format --- */
+
+/*
+   The room's game format.
+
+   It is chosen by whoever makes the room and belongs to the room from then on:
+   the joiner and the watcher are told which one it is rather than asked, because
+   the format is what decides which of the board's zones exist at all. Reading the
+   format's own name would prove nothing, so what this measures is the board.
+
+   The three are not one question asked three times. The Lost Zone is missing from
+   Standard alone - it came in with the Sword & Shield sets and rotated out with
+   them - while the Pokemon Power zone, and the VSTAR / GX markers it holds, is
+   there only in Expanded, which is the one card pool with both Rule Box powers in
+   it. So Gym Leader Challenge is a board with a Lost Zone and no Power zone, and
+   Standard is a board with neither.
+*/
+if (want('format')) {
+   console.log('\nthe game format: which zones each one puts on the board')
+
+   const cog = () => alice.evaluate(`(() => {
+      const b = [...document.querySelectorAll('button')].find((el) => (el.getAttribute('aria-label') || el.title) === 'Settings')
+      if (b) b.click()
+      return Boolean(b)
+   })()`)
+
+   /*
+      The zone outlines go on for this section, because a zone's *name* is half of
+      what hiding it means: an unrendered zone leaves its cell empty, and a name
+      left behind would be a caption in the middle of nothing. The setting is
+      persisted, so turning it on once carries across the reloads below - which is
+      also what every name assertion in the loop is quietly relying on.
+   */
+   const setBorders = (on) => alice.evaluate(`(() => {
+      const block = [...document.querySelectorAll('.setting')].find((s) => s.querySelector('.title')?.textContent.trim() === 'Board zones')
+      const input = block ? block.querySelector('input[type="checkbox"]') : null
+      if (!input) return null
+      if (input.checked !== ${on}) input.click()
+      return input.checked
+   })()`)
+
+   /*
+      What a board has. The zones are counted rather than asked about by name: a
+      Power zone is a band of the Stadium's cell and there is one per half, and the
+      Lost Zone is a cell per half, so nought, one or two of each is the whole
+      answer about which format this board is.
+
+      `share` is the Stadium's height as a fraction of the cell it sits in, and it
+      is here because hiding the Power zones is not only "do not draw them": with
+      them gone the Stadium takes the cell, or the board keeps a quarter of itself
+      empty above and below the Stadium - which reads as a board that failed to
+      load rather than as one played in a format.
+   */
+   const shape = (page) => page.evaluate(`(() => {
+      const board = document.querySelector('.gameboard')
+      if (!board) return null
+      const area = board.querySelector('.stadium-area')
+      const cell = area ? area.getBoundingClientRect().height : 0
+      const stadium = area ? area.querySelector('.stadium') : null
+      const groups = [...board.querySelectorAll('.power-marker')]
+      const names = [...board.querySelectorAll('.zone-label')].map((el) => el.innerText.replace(/\\s+/g, ' ').trim())
+      const tally = (name) => names.filter((n) => n === name).length
+      return {
+         power: board.querySelectorAll('.stadium-area > .power, .stadium-area > .power2').length,
+         lost: board.querySelectorAll('.lz, .lz2').length,
+         marks: groups.map((el) => [...el.querySelectorAll('img.mark')].map((i) => i.getAttribute('alt'))),
+         mine: groups.filter((el) => el.querySelector('img.mark.mine')).length,
+         powerNames: tally('Pokemon Power'),
+         lostNames: tally('Lost Zone'),
+         share: cell && stadium ? stadium.getBoundingClientRect().height / cell : 0
+      }
+   })()`)
+
+   const diff = (want, got) => `want ${JSON.stringify(want)}, got ${JSON.stringify(got)}`
+
+   for (const one of [
+      { format: 'standard', power: 0, lost: 0, marks: [], share: 1 },
+      { format: 'glc', power: 0, lost: 2, marks: [], share: 1 },
+      { format: 'expanded', power: 2, lost: 2, marks: [['VSTAR', 'GX'], ['VSTAR', 'GX']], share: 0.5 }
+   ]) {
+      console.log(`  a room made as ${one.format}`)
+      await Promise.all([lobby(alice, 'alice'), lobby(bob, 'bob'), lobby(watcher, 'watcher')])
+
+      const room = await alice.createRoom('Alice', { format: one.format })
+      await bob.joinRoom(room, 'Bob')
+      await watcher.spectate(room, 'Watcher')
+      await sleep(3500)
+
+      /*
+         The outlines go on from inside the room rather than from the lobby: the
+         cog belongs to a board, and the main menu has no board behind it. They are
+         a persisted setting, so the first pass leaves them on for the two after
+         it - and the standard pass below, which expects no names at all, is only
+         meaningful because of that.
+      */
+      await cog()
+      await sleep(1200)
+      await setBorders(true)
+      await cog()
+      await sleep(800)
+
+      const host = await shape(alice)
+      const guest = await shape(bob)
+      const watching = await shape(watcher)
+      const want = { power: one.power, lost: one.lost }
+
+      check(`${one.format}: the creator's own board has ${one.power} Power and ${one.lost} Lost Zone`,
+         host?.power === one.power && host?.lost === one.lost, diff(want, { power: host?.power, lost: host?.lost }))
+      /*
+         The player who joins is not asked what format they want: the room has one
+         already, and their half is drawn from it. This is the half of the feature
+         that cannot be tested by reading the creator's screen, and it is the half a
+         joiner would notice immediately if it were wrong.
+      */
+      check(`${one.format}: so does the board of the player who joins`,
+         guest?.power === one.power && guest?.lost === one.lost, diff(want, { power: guest?.power, lost: guest?.lost }))
+      check(`${one.format}: and the board of a spectator watching both`,
+         watching?.power === one.power && watching?.lost === one.lost, diff(want, { power: watching?.power, lost: watching?.lost }))
+
+      /* a zone and its name leave together, or a caption is left in an empty cell */
+      check(`${one.format}: a hidden zone takes its name with it`,
+         host?.powerNames === one.power && host?.lostNames === one.lost,
+         diff({ power: one.power, lost: one.lost }, { power: host?.powerNames, lost: host?.lostNames }))
+
+      check(`${one.format}: the Stadium takes the whole cell when there are no Power bands`,
+         Math.abs((host?.share || 0) - one.share) < 0.05, `want about ${one.share}, got ${host?.share}`)
+
+      check(`${one.format}: the marks on a half are ${JSON.stringify(one.marks)}`,
+         JSON.stringify(host?.marks) === JSON.stringify(one.marks), JSON.stringify(host?.marks))
+      check(`${one.format}: and the same on the other player's half`,
+         JSON.stringify(guest?.marks) === JSON.stringify(one.marks), JSON.stringify(guest?.marks))
+   }
+
+   /*
+      Solo is the exception, and deliberately so: it has no room and therefore no
+      format. Its board is the full one whatever this browser last played online,
+      and its Settings keeps the marker control a room takes away - which is the
+      other half of "remove the option in a game room".
+   */
+   await lobby(alice, 'alice')
+   await alice.clickText('Play Solo', { settle: 2500 })
+
+   const solo = await shape(alice)
+   check('solo draws every zone, whatever the last room was played in',
+      solo?.power === 2 && solo?.lost === 2, JSON.stringify({ power: solo?.power, lost: solo?.lost }))
+
+   await cog()
+   await sleep(1200)
+   const soloSettings = await alice.evaluate(`[...document.querySelectorAll('.setting .title')].map((el) => el.textContent.trim())`)
+   check('and keeps the marker setting a room does not have',
+      JSON.stringify(soloSettings) === JSON.stringify(['Mulligans', 'VSTAR / GX marker', 'Board zones', 'Diagnostics']),
+      JSON.stringify(soloSettings))
+
+   const markerList = await alice.evaluate(`[...document.querySelectorAll('input[name="powerMarker"]')].map((i) => i.parentElement.textContent.trim()).join(',')`)
+   check('with the whole list, Off first', markerList === 'Off,VStar,GX,Both', markerList)
+
+   await alice.clickText('Both', { settle: 1500, kinds: 'label' })
+   await sleep(2000)
+   const soloMarks = await shape(alice)
+   check('and choosing Both puts both marks on the solo board',
+      JSON.stringify(soloMarks?.marks) === JSON.stringify([['VSTAR', 'GX']]), JSON.stringify(soloMarks?.marks))
+
+   await cog()
 }
 
 await browser.detach()

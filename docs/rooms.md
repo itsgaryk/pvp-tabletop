@@ -1,5 +1,29 @@
 # A room's life
 
+## What a room is played in
+
+A room is made in one of three **game formats** — **Standard**, **Gym Leader
+Challenge** or **Expanded** — asked for in the same prompt that asks the creator for
+their name. The format belongs to the room from the moment it exists: it is stamped
+into the room's metadata when the room is made, and read back out of the reply that
+seats everybody else, so the joiner and any spectator are *told* which one it is rather
+than asked. It is deliberately not an event in the room's log, because nothing about the
+room happened when it was chosen — and a board that learned its format from the log
+would draw the wrong board first and correct itself.
+
+What a format decides here is which zones the board has at all: the Lost Zone, and the
+Pokemon Power zone with the VSTAR / GX markers in it. Only Expanded has both, Standard
+has neither, and Gym Leader Challenge has the Lost Zone without the Power zone. The
+whole of it — including why the two zones are two questions rather than one — is in
+[board.md](board.md#the-format-and-the-zones-it-can-take-away). It is repeated here for
+one reason: a format is a fact about a **room**, not about a player, which is the
+distinction this document is about from end to end.
+
+**The format cannot be changed after the room is made.** Nothing in the app offers it and
+no event carries it, so the two players cannot end up in a room that is half one format
+and half another. Changing it would also raise a question the app has no answer for:
+what becomes of the cards already sitting in a zone the new format does not have.
+
 ## Reconnecting, and idle boards
 
 The browser remembers the room and its seat in `localStorage` (`pvp_session`), so

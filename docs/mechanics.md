@@ -188,11 +188,14 @@ the mulligan loop**, and nothing else at all.
 this order:
 
 1. **The board is reset.** Deck rebuilt from the imported list, and hand, prizes,
-   discard, lost zone, bench, active spot, stadium, table and pickup cleared. The
-   VSTAR / GX marker goes back to *Off* and both its used flags to unused, the turn
-   counter goes back to 0, prizes go back face down, Pokémon come back visible.
-   **The clock is not touched**: it is the table's, not the board's
-   ([timer.md](timer.md)).
+   discard, lost zone, bench, active spot, stadium, table and pickup cleared. Both the
+   VSTAR / GX marker's used flags go back to unused, the turn counter goes back to 0,
+   prizes go back face down, Pokémon come back visible. **The clock is not touched**: it
+   is the table's, not the board's ([timer.md](timer.md)).
+   The marker itself goes back to *Off* in solo, and to whatever the room's format says
+   in a room — Expanded stamps both marks back on, because there the marker is the
+   room's rather than the player's (see
+   [The VSTAR and GX markers](#the-vstar-and-gx-markers)).
 2. **The deck is shuffled.** Setup's shuffle writes nothing to the log on its own —
    the deal is one line, below.
 3. **Seven cards are drawn** into the hand. This draw is silent: no log line and no
@@ -520,9 +523,19 @@ Each change is logged: `[Pikachu] ability used` and `[Pikachu] ability reset`.
 
 ### The VSTAR and GX markers
 
-**Settings → VSTAR / GX marker** puts a marker on your side of the board: *Off*,
-*VStar*, *GX*, or *Both* for a deck that runs one of each. It is a token, not a card
-— the Pokémon Power band holds no cards at all.
+The markers are the **room's format**, not a preference. A room made as **Expanded**
+puts both marks on both players' halves; **Standard** and **Gym Leader Challenge** put
+neither on either, because neither has a Pokemon Power zone to put them in (see
+[board.md](board.md#the-format-and-the-zones-it-can-take-away)). A player joining, and
+anyone watching, is told which format the room is rather than asked — so the two halves
+of the table cannot disagree about what is shown, and there is no per-player marker
+control in a room to disagree with. It is a token, not a card — the Pokemon Power band
+holds no cards at all.
+
+**In solo** there is no room and so no format, and *Settings → VSTAR / GX marker* is
+there instead: *Off*, *VStar*, *GX*, or *Both* for a deck that runs one of each. The
+control is deliberately kept for solo alone: it is the only mode where the marker is the
+player's own choice rather than the room's.
 
 Clicking your own marker says that power has been used: it dims to half opacity, loses
 its glow, and writes `Used VStar` or `Used GX` to the log. Clicking it again takes
@@ -530,8 +543,10 @@ that back. The two marks on a *Both* board are independent: using one must not d
 log, or otherwise speak for the other.
 
 **Nothing enforces once per game.** The marker is a reminder the players keep honest,
-and changing the marker to a different one resets both of its used flags. Choosing a
-marker is a setting, so it writes nothing to the log; only using one does.
+and picking a different marker in solo resets both of its used flags. Adopting the
+room's format does *not* reset them: a player joining an Expanded game already under way
+announces the markers, not that the opponent's VSTAR is unused. Choosing a marker is not
+an action on the game, so it writes nothing to the log; only using one does.
 
 ### The Active spot, the Bench and switching
 
