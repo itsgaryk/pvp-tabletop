@@ -16,7 +16,7 @@
    more pages than any one invocation asks for.
 */
 
-import { findOurs, pidsToStop, isOurBrowser, isOurDevServer, isOurStandIn, chromeProfilePort, profilesToRemove } from './dev-servers.lib.mjs'
+import { findOurs, pidsToStop, isOurBrowser, isOurDevServer, isOurStandIn, commandLinePort, standInOf, standInPorts, chromeProfilePort, profilesToRemove } from './dev-servers.lib.mjs'
 
 const quiet = process.argv.includes('--quiet')
 let failures = 0
@@ -38,8 +38,8 @@ const ours = [
    proc(200, `"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --headless=new --disable-gpu --remote-debugging-port=9222 --user-data-dir=${TEMP}\\pvp-chrome-9222 --window-size=1277,821 about:blank`),
    proc(201, `"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --headless=new --remote-debugging-port=9223 --user-data-dir=${TEMP}\\pvp-chrome-9223 about:blank`),
    proc(202, `"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --headless=new --remote-debugging-port=9224 --user-data-dir=${TEMP}\\pvp-chrome-9224 about:blank`),
-   proc(300, `node ${REPO}\\tools\\fake-redis.mjs`),
-   proc(301, `node ${REPO}\\tools\\fake-deck-api.mjs`)
+   proc(300, `node ${REPO}\\tools\\fake-redis.mjs --port 6390`),
+   proc(301, `node ${REPO}\\tools\\fake-deck-api.mjs --port 6391`)
 ]
 
 const found = findOurs(ours, { repoName: 'pvp-tabletop', port: 3005 })
@@ -89,9 +89,52 @@ check('the dev server is matched on the repo and the port together',
    isOurDevServer(`node ${REPO}\\node_modules\\vite\\bin\\vite.js dev --port 3005`, { repoName: 'pvp-tabletop', port: 3005 }) === true &&
    isOurDevServer(`node C:\\other\\vite dev --port 3005`, { repoName: 'pvp-tabletop', port: 3005 }) === false)
 
-check('the stand-ins are matched by name and nothing else',
-   isOurStandIn('node tools/fake-redis.mjs') && isOurStandIn('node tools/fake-deck-api.mjs') &&
-   isOurStandIn('node tools/browser-check.mjs') === false)
+check('the stand-ins are matched on name and the port this run owns',
+   isOurStandIn('node tools/fake-redis.mjs --port 6390', { port: 6390 }) &&
+   isOurStandIn('node tools/fake-deck-api.mjs --port=6391', { port: 6391 }) &&
+   isOurStandIn('node tools/browser-check.mjs --port 6390', { port: 6390 }) === false)
+
+check('the other session\'s stand-ins are left alone',
+   pidsToStop([
+      proc(700, `node ${REPO}\\tools\\fake-redis.mjs --port 6398`),
+      proc(701, `node ${REPO}\\tools\\fake-deck-api.mjs --port 6399`)
+   ], { repoName: 'pvp-tabletop', port: 3006 }).length === 0)
+
+check('a stand-in with no port is nobody\'s, and is left alone',
+   pidsToStop([
+      proc(702, `node ${REPO}\\tools\\fake-redis.mjs`),
+      proc(703, `node ${REPO}\\tools\\fake-deck-api.mjs`)
+   ], { repoName: 'pvp-tabletop', port: 3005 }).length === 0)
+
+/* the script derives these from the app port, so these have to agree with it, and the
+   store has to step by two so that each session owns a pair and no two sessions share */
+check('the stand-in ports follow the app port, a pair per session',
+   standInPorts().redis === 6390 && standInPorts(3005).deck === 6391 &&
+   standInPorts(3006).redis === 6392 && standInPorts(3006).deck === 6393 &&
+   standInPorts(3007).redis === 6394)
+
+check('no port is shared across four sessions',
+   (() => {
+      const seen = new Set()
+      for (const app of [ 3005, 3006, 3007, 3008 ]) {
+         const { redis, deck } = standInPorts(app)
+         for (const port of [ app, redis, deck, 9222 + (app - 3005) * 8 ]) {
+            if (seen.has(port)) return false
+            seen.add(port)
+         }
+      }
+      return true
+   })())
+
+check('both spellings of the port flag are read, and nothing else is',
+   commandLinePort('node fake-redis.mjs --port 6392') === 6392 &&
+   commandLinePort('node fake-redis.mjs --port=6392') === 6392 &&
+   commandLinePort('node fake-redis.mjs') === null)
+
+check('a stand-in is recognised by its script name',
+   standInOf('node tools/fake-redis.mjs --port 6390') === 'fake-redis' &&
+   standInOf('node tools/fake-deck-api.mjs --port 6391') === 'fake-deck-api' &&
+   standInOf('node tools/browser-check.mjs') === null)
 
 /* --------------------------------------------------------------- the profiles */
 

@@ -1,0 +1,14 @@
+# Merge behaviour for the files two sessions are allowed to write at once.
+#
+# `docs/session-notes.md` is append-only: every entry is a dated paragraph that
+# nobody edits after writing it, so two sessions appending at the same time is a
+# merge that has no right answer to choose between - both lines belong in the
+# file. `merge=union` is exactly that, and it needs no custom merge driver, so it
+# works for anyone who clones this repository.
+#
+# It is set for that one file and deliberately not for `*.md` or `docs/*.md`.
+# Union on prose interleaves two rewrites of the same paragraph instead of
+# reporting a conflict, so `README.md` and `docs/gotchas.md` keep the default
+# merge: a real conflict there is information, not noise. See
+# docs/parallel-work.md.
+docs/session-notes.md merge=union

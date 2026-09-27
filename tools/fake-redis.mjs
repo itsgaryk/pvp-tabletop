@@ -9,6 +9,16 @@
  *   KV_REST_API_URL=http://127.0.0.1:6390 \
  *   KV_REST_API_TOKEN=local npm run dev             # terminal 2
  *
+ * With more than one session on this repository, give each its own store:
+ *
+ *   node tools/fake-redis.mjs --port 6482
+ *
+ * `--port` beats `FAKE_REDIS_PORT` when both are given. The flag is not just a
+ * convenience - a session's copy is closed again by its *command line* (see
+ * `isOurStandIn` in tools/dev-servers.lib.mjs), because Windows does not put the
+ * environment in the process list, so a store started without `--port` cannot be
+ * told from another session's and cannot be stopped on its own.
+ *
  * Then:  curl localhost:6390/__stats    -> { commands, byName }
  *        curl localhost:6390/__keys     -> what keys are held
  *        curl localhost:6390/__reset    -> zero the counters
@@ -19,7 +29,9 @@
  */
 import { createServer } from 'node:http'
 
-const PORT = Number(process.env.FAKE_REDIS_PORT || 6390)
+/* both spellings, `--port 6392` and `--port=6392`, because both are legal */
+const flag = /--port[=\s]+(\d+)/.exec(process.argv.slice(2).join(' '))
+const PORT = Number(flag ? flag[1] : process.env.FAKE_REDIS_PORT || 6390)
 
 /*
    FAKE_REDIS_READONLY mimics a database that is over its quota: reads still

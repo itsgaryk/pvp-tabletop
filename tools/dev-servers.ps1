@@ -20,10 +20,22 @@
 #   powershell -File tools\dev-servers.ps1 -DryRun         # say what it would start
 #   powershell -File tools\dev-servers.ps1 -Stop           # close all of it again
 #
+# **One port block per session.** Two sessions on this repository cannot share these
+# ports, and a run in one worktree must never close another session's servers - so a
+# session moves its whole block with one argument, and `-Stop` takes the same one:
+#
+#   powershell -File tools\dev-servers.ps1 -BasePort 9230              # session B
+#   powershell -File tools\dev-servers.ps1 -Stop -BasePort 9230        # and close it
+#
+# -BasePort moves the browsers, the app and both stand-ins together; the resulting
+# block for a few sessions is in docs/parallel-work.md, and the arithmetic is spelled
+# out where the ports are worked out below. The defaults (9222 / 3005 / 6390 / 6391)
+# are session A, and are what the rest of this header documents.
+#
 # (`pwsh` also works where PowerShell 7 is installed; every command below is 5.1-safe,
 # which matters because on some hosts `pwsh` does not resolve at all - see $shell.)
 #
-# Ports, and what expects them:
+# Ports, and what expects them (session A; every one of them moves with -BasePort):
 #
 #   6390  the stand-in store            FAKE in the checks, KV_REST_API_URL below
 #   6391  the stand-in deck API         VITE_LIMITLESS_WEB, so Import Random Deck
@@ -33,15 +45,19 @@
 #
 # -Stop closes what this script started and nothing else: the vite process by its
 # command line, one browser per `--user-data-dir` under $env:TEMP, and the two
-# stand-ins by name. It does not need the ports to be reachable to do it.
+# stand-ins by name *and* port. It does not need the ports to be reachable to do it,
+# and it cannot reach another session's run - but only if it is given that session's
+# -BasePort, which is why the `-Stop` line above carries it.
 #
 # Everything is started with Start-Process and left running, so this script's own
 # exit does not take the servers with it. -Stop closes what it started, found by
-# the ports above rather than by process name, so it cannot reach anything else.
+# its own command lines rather than by port ownership, so it cannot reach anything
+# else.
 
 param(
    [int]$Browsers = 3,
    [int]$BasePort = 9222,
+   [int]$Port = 3005,
    [switch]$NoDeckApi,
    [switch]$Stop,
    [switch]$DryRun,
@@ -62,9 +78,68 @@ if (-not (Test-Path $shell)) { $shell = (Get-Command pwsh -ErrorAction Stop).Sou
 # no ternary and no `??`: this has to parse in Windows PowerShell 5.1 as well, which
 # is what `pwsh` resolves to on some hosts and what the checks are usually run from
 $root = Split-Path -Parent $PSScriptRoot
-$ports = @(6390, 3005)
-if (-not $NoDeckApi) { $ports += 6391 }
-for ($i = 0; $i -lt $Browsers; $i++) { $ports += ($BasePort + $i) }
+
+# The ports of the run being started *or* closed, resolved before anything branches
+# on -Stop, so both paths agree on what "ours" means.
+#
+#   -BasePort  the first browser, and default 9222 - the one knob that moves a session
+#   -Port      the app, derived from -BasePort unless given
+#
+# -BasePort moves all three families because each session's block holds one of each:
+# given -BasePort 9222 + 8n, the browser ports are base..base+2, the app port is
+# 3005 + n, and the store ports are 6390 + 2n / 6391 + 2n. The store's stride is two
+# rather than one because a session owns a *pair* of store ports, which is what keeps
+# the first session on the 6390/6391 this repository has always used. Both formulas are
+# one definition with `standInPorts` in tools/dev-servers.lib.mjs, which the matcher and
+# the checks use, so those three cannot drift apart.
+$stride = 8
+$appPortFor = { param([int]$base) 3005 + [int](($base - 9222) / $stride) }
+
+if ($PSBoundParameters.ContainsKey('Port')) {
+   $AppPort = $Port
+} else {
+   $AppPort = & $appPortFor $BasePort
+}
+
+if ($AppPort -lt 1 -or $AppPort -gt 65535) {
+   throw "-BasePort $BasePort puts the app on $AppPort, which is not a port - use -BasePort 9222 + 8n (9222, 9230, 9238, ...) or say -Port"
+}
+
+$StandInPorts = @{ redis = 6390 + (2 * ($AppPort - 3005)); deck = 6391 + (2 * ($AppPort - 3005)) }
+$BrowserPorts = @()
+for ($i = 0; $i -lt $Browsers; $i++) { $BrowserPorts += ($BasePort + $i) }
+
+$expectPorts = @($StandInPorts.redis, $AppPort)
+if (-not $NoDeckApi) { $expectPorts += $StandInPorts.deck }
+$expectPorts += $BrowserPorts
+
+# ------------------------------------------------------- the ports are ours --
+#
+# The three families have to stay in their own slots, and each family gives an
+# independent way to check the others: from the app port, the browsers must start at
+# 9222 + 8n *and* the store at 6390 + 2n, for the same n. A session that moves one knob
+# and not the other is caught here, by arithmetic, rather than being allowed to start
+# something that quietly takes a port another session is using.
+#
+# Only a moved block is checked. The defaults are this script's own and cannot collide
+# with themselves, and refusing to start on them would be refusing to start at all.
+#
+# This runs for -DryRun too: a dry run that calls a colliding layout ready is worse than
+# no dry run.
+if ($BasePort -ne 9222 -or $PSBoundParameters.ContainsKey('Port')) {
+   if ((($BasePort - 9222) % $stride) -ne 0) {
+      throw "-BasePort $BasePort is not 9222 + 8n, so it does not name a block. Browsers step by 8 so that each session's block holds exactly one browser range, one app port and two store ports; any other -BasePort has to share a port with a session that did choose a multiple of 8. Use 9222, 9230, 9238, ..."
+   }
+   $wanted = & $appPortFor $BasePort
+   if ($AppPort -ne $wanted) {
+      throw "app port $AppPort goes with -BasePort $(9222 + (($AppPort - 3005) * $stride)), not with -BasePort $BasePort (which wants $wanted). The app port and the store ports both follow from the block, so drop -Port or move -BasePort"
+   }
+   foreach ($port in @($AppPort, $StandInPorts.redis, $StandInPorts.deck)) {
+      if ($BrowserPorts -contains $port) {
+         throw "port $port is both a browser port and an app or store port - a session's browser range is $BasePort..$($BrowserPorts[-1]) and its app port is $wanted"
+      }
+   }
+}
 
 # ---------------------------------------------------------------- cleanup --
 #
@@ -81,17 +156,23 @@ for ($i = 0; $i -lt $Browsers; $i++) { $ports += ($BasePort + $i) }
 # tools/dev-servers-check.mjs proves the matcher stops what this started and nothing
 # else; run it after touching either file.
 
-function Get-OursNode {
+function Get-OursNode([int]$AppPort) {
    $script = Join-Path $PSScriptRoot 'dev-servers.pids.mjs'
    if (-not (Test-Path $script)) { return $null }
    if (-not (Get-Command node -ErrorAction SilentlyContinue)) { return $null }
 
+   # The app port *is* the ownership: dev-servers.pids.mjs matches the dev server on
+   # it and derives the two stand-in ports from it. Without this the matcher would
+   # look for the default 3005 and find another session's run instead of this one.
+   $env:PORT = "$AppPort"
    try {
       $json = (& node $script 2>$null) -join "`n"
       if (-not $json) { return $null }
       return $json | ConvertFrom-Json
    } catch {
       return $null
+   } finally {
+      Remove-Item Env:\PORT -ErrorAction SilentlyContinue
    }
 }
 
@@ -124,7 +205,7 @@ function Stop-ByPort([int]$port) {
 }
 
 function Clear-Ours {
-   $ours = Get-OursNode
+   $ours = Get-OursNode $AppPort
    $total = 0
 
    if ($ours) {
@@ -134,17 +215,14 @@ function Clear-Ours {
       # the matcher is unreachable - no node, no module, or a command line we cannot
       # read - so say so, and fall back to ports, which may find nothing at all
       Write-Warning '  cannot match on command lines here (node or the module is unavailable), falling back to ports'
-      $total += Stop-ByPort 3005
-      for ($i = 0; $i -lt $Browsers; $i++) { $total += Stop-ByPort ($BasePort + $i) }
-      $total += Stop-ByPort 6390
-      $total += Stop-ByPort 6391
+      foreach ($port in ($expectPorts | Sort-Object -Unique)) { $total += Stop-ByPort $port }
    }
 
    return $total
 }
 
 if ($Stop) {
-   Write-Host 'closing what a previous run started'
+   Write-Host "closing what a previous run started (app $AppPort, browsers $($BrowserPorts -join '/'), stand-ins $($StandInPorts.redis)/$($StandInPorts.deck))"
    $total = Clear-Ours
 
    if ($total -eq 0) {
@@ -153,13 +231,18 @@ if ($Stop) {
       Write-Host "closed $total process(es)"
    }
 
-   # the browsers' profiles are ours, and a run leaves one per page behind
-   foreach ($dir in @(Get-ChildItem -Path $env:TEMP -Directory -Filter 'pvp-chrome-*' -ErrorAction SilentlyContinue)) {
+   # the browsers' profiles are ours, and a run leaves one per page behind - but only
+   # the ones on *this* session's browser ports. Removing every `pvp-chrome-*` would
+   # delete a profile another session's browser is still using, and that browser is
+   # only given the profile at launch, so it is the one thing that cannot be shared.
+   foreach ($port in ($BrowserPorts | Sort-Object -Unique)) {
+      $dir = Join-Path $env:TEMP "pvp-chrome-$port"
+      if (-not (Test-Path $dir)) { continue }
       try {
-         Remove-Item $dir.FullName -Recurse -Force -ErrorAction Stop
-         Write-Host "  removed profile $($dir.Name)"
+         Remove-Item $dir -Recurse -Force -ErrorAction Stop
+         Write-Host "  removed profile pvp-chrome-$port"
       } catch {
-         Write-Host "  profile $($dir.Name) is still in use - it can be deleted once the browser has exited"
+         Write-Host "  profile pvp-chrome-$port is still in use - it can be deleted once the browser has exited"
       }
    }
 
@@ -188,7 +271,7 @@ function Wait-Port([int]$port, [string]$what, [int]$tries = 120) {
 
 # is the app serving? This is the authority on readiness, not a port probe: on some
 # hosts a TCP connect to the dev server fails while the app serves fine.
-function Test-Health([int]$port = 3005) {
+function Test-Health([int]$port) {
    try {
       $res = Invoke-WebRequest -Uri "http://localhost:$port/api/relay/health" -UseBasicParsing -TimeoutSec 3
       return $res.StatusCode -eq 200
@@ -210,20 +293,21 @@ if ($DryRun) {
    Write-Host "  repo root     $root"
    Write-Host "  dev server    $shell"
    Write-Host "  chrome        $Chrome"
-   Write-Host "  ports         $(($ports | Sort-Object -Unique) -join ', ')"
+   Write-Host "  ports         $(($expectPorts | Sort-Object -Unique) -join ', ')"
+   Write-Host "  app port      $AppPort$(if (-not $PSBoundParameters.ContainsKey('Port')) { '  (from -BasePort)' })"
    Write-Host ''
    foreach ($entry in @(
-      @{ port = 6390; what = 'fake redis'; script = 'tools/fake-redis.mjs' },
-      @{ port = 6391; what = 'fake deck api'; script = 'tools/fake-deck-api.mjs' }
+      @{ port = $StandInPorts.redis; what = 'fake redis'; script = 'tools/fake-redis.mjs' },
+      @{ port = $StandInPorts.deck; what = 'fake deck api'; script = 'tools/fake-deck-api.mjs' }
    )) {
-      if ($NoDeckApi -and $entry.port -eq 6391) { continue }
+      if ($NoDeckApi -and $entry.port -eq $StandInPorts.deck) { continue }
       $full = Join-Path $root $entry.script
       $state = if (Test-Port $entry.port) { 'already up' } else { 'would start' }
       Write-Host "  $state  $($entry.what) on $($entry.port)"
       Write-Host "           $full  (exists: $(Test-Path $full))"
    }
-   $appState = if (Test-Port 3005) { 'already up' } else { 'would start' }
-   Write-Host "  $appState  the app on 3005 via npm run dev"
+   $appState = if (Test-Port $AppPort) { 'already up' } else { 'would start' }
+   Write-Host "  $appState  the app on $AppPort via npm run dev"
    for ($i = 0; $i -lt $Browsers; $i++) {
       $port = $BasePort + $i
       $state = if (Test-Port $port) { 'already up' } else { 'would start' }
@@ -236,37 +320,40 @@ if ($DryRun) {
 # already listening means an earlier run is still up: reuse it rather than start a
 # second one that cannot bind, which would leave two scripts disagreeing about it
 $standins = @()
-if (-not $NoDeckApi) { $standins += @{ port = 6391; what = 'fake deck api'; script = 'tools/fake-deck-api.mjs' } }
-$standins += @{ port = 6390; what = 'fake redis'; script = 'tools/fake-redis.mjs' }
+if (-not $NoDeckApi) { $standins += @{ port = $StandInPorts.deck; what = 'fake deck api'; script = 'tools/fake-deck-api.mjs' } }
+$standins += @{ port = $StandInPorts.redis; what = 'fake redis'; script = 'tools/fake-redis.mjs' }
 
 foreach ($entry in $standins) {
    if (Test-Port $entry.port) { Write-Host "already up: $($entry.what) on $($entry.port)"; continue }
 
    Write-Host "starting $($entry.what) on $($entry.port)"
-   Start-Process -FilePath 'node' -ArgumentList (Join-Path $root $entry.script) `
+   # the port is passed as an argument, not only through the environment: Windows does
+   # not put the environment in the process list, so this is the only way a later
+   # `-Stop` can tell this session's stand-in from another session's copy
+   Start-Process -FilePath 'node' -ArgumentList @((Join-Path $root $entry.script), '--port', "$($entry.port)") `
       -WorkingDirectory $root -WindowStyle Hidden
    $null = Wait-Port $entry.port $entry.what
 }
 
 # the windows the checks are written against: see the header of browser-check.mjs
 $devEnv = @{
-   KV_REST_API_URL       = 'http://127.0.0.1:6390'
+   KV_REST_API_URL       = "http://127.0.0.1:$($StandInPorts.redis)"
    KV_REST_API_TOKEN     = 'local'
    RELAY_IDLE_MS         = '8000'
    RELAY_PROMPT_MS       = '12000'
    RELAY_MEMBER_STALE_MS = '600000'
    RELAY_POLL_WAIT_MS    = '1500'
 }
-if (-not $NoDeckApi) { $devEnv.VITE_LIMITLESS_WEB = 'http://127.0.0.1:6391' }
+if (-not $NoDeckApi) { $devEnv.VITE_LIMITLESS_WEB = "http://127.0.0.1:$($StandInPorts.deck)" }
 
-if (Test-Port 3005) {
-   Write-Host 'already up: the app on 3005'
+if (Test-Port $AppPort) {
+   Write-Host "already up: the app on $AppPort"
 } else {
-   Write-Host 'starting the dev server on 3005'
+   Write-Host "starting the dev server on $AppPort"
    $envLines = $devEnv.GetEnumerator() | ForEach-Object { "`$env:$($_.Key)='$($_.Value)'" }
    $log = Join-Path $root '.tmp-dev-server.log'
    Start-Process -FilePath $shell -WorkingDirectory $root -WindowStyle Hidden -ArgumentList @(
-      '-NoProfile', '-Command', (($envLines -join '; ') + "; npm run dev *> `"$log`"")
+      '-NoProfile', '-Command', (($envLines -join '; ') + "; npm run dev -- --port $AppPort *> `"$log`"")
    )
 
    # The app is up when its health route answers, which also proves the relay loaded.
@@ -276,10 +363,10 @@ if (Test-Port 3005) {
    # been up the entire time. Ask the app instead; treat the port as a courtesy.
    $ok = $false
    for ($i = 0; $i -lt 180; $i++) {
-      if (Test-Health) { Write-Host '  up: the app on 3005 (health answered)'; $ok = $true; break }
+      if (Test-Health $AppPort) { Write-Host "  up: the app on $AppPort (health answered)"; $ok = $true; break }
       Start-Sleep -Milliseconds 500
    }
-   if (-not $ok) { Write-Warning "  the app never answered /api/relay/health - see $log" }
+   if (-not $ok) { Write-Warning "  the app never answered /api/relay/health on $AppPort - see $log" }
 }
 
 # one browser per page: a single CDP connection cannot multiplex them (see browser.mjs)

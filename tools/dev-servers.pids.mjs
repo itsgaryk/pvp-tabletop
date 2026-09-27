@@ -12,6 +12,11 @@
 
      node tools/dev-servers.pids.mjs
      {"devServer":[123],"browsers":[456,457,458],"standins":[789,790]}
+
+   `PORT` is the app port of the run being closed, and it is the whole of what makes
+   the answer belong to one session: the dev server is matched on it, and the two
+   stand-in ports are derived from it by `standInPorts`. Set it to the port that
+   session's `-PORT` gave the app, or a run in another worktree is what gets closed.
 */
 
 import { execFileSync } from 'node:child_process'
