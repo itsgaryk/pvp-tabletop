@@ -1112,14 +1112,26 @@ own card as well, and the owner's own board would offer the "somebody else's car
 their own card — a menu whose every entry asks the other player to move it. It cannot be found
 by looking at one board, because each board does exactly what its own copy of the flag says.
 
-What replaced it is a property of the **batch** — the set of cards a Reveal or a Look is
-showing, held in `stores/reveal.js` — and a card is actionable exactly when it is one of them.
-Three things fall out of that, and each is why the shape is right rather than merely different:
+What replaced it is a property of the **batch** — the set of cards a Reveal, a Look or a Reveal
+Hand is showing, held in `stores/reveal.js` — and a card is actionable exactly when a window that
+is *up* is showing it **and is carrying it**. Three things fall out of that, and each is why the
+shape is right rather than merely different:
 it cannot outlive the board it was about (the batch is reset with the board, and replaced
-wholesale by the next reveal); it cannot drift, because it *is* the record every move is
+wholesale by the next gesture); it cannot drift, because it *is* the record every move is
 already written against; and it is one object per client, so the two boards cannot disagree
 about what it says. The general rule is worth stating: **a per-card flag is a claim about a
 card, and a card here does not belong to one board.** See [reveal.md](reveal.md).
+
+**And "one of the cards of the batch" is not the whole rule either, because the batch's cards
+are the board's cards.** A batch is a *live view* of a pile the mirror already holds, so the card
+the window draws and the card in the opponent's hand zone are the same object — and an answer
+that asked only "is this one of the batch's cards" was yes for the card in the zone, behind the
+window, and again after the window was closed. The permission is therefore asked of the **pile
+the gesture is carrying the card with** as well: a window hands over its batch, every zone of the
+board hands over the zone, and the two are different objects. That is also the rule stated the
+other way: a card of the opponent's *on the board* is never actionable in a room, wherever it
+came from. Reported as *cards should only be actionable in the Reveal Hand window* and *once the
+owner's card is placed from a window onto the board it should become non-actionable*.
 
 **A `$:` statement reading a store can lose its *other* inputs, and the failing answer looks like a
 perfectly reasonable one.** This is the same family as "a `$:` cannot see a store that a plain
@@ -1277,8 +1289,9 @@ the player's own is never somebody else's. Both are asserted in `tools/render-ch
 because neither has a symptom until the wrong menu opens on the wrong card.
 
 **`$: x = someFunction()` loses the store the function reads, and the value it keeps is the one
-it was built with.** The Look window needed to name the deck a watcher is being shown, and the
-seat that answers it lives in the `look` store, so the obvious line is:
+it was built with.** The Look window needed to name the deck a watcher was being shown — a heading
+that has since gone, because the window is the looker's alone now — and the
+seat that answered it lives in the `look` store, so the obvious line is:
 
 ```js
 import { lookSeat } from '$lib/stores/reveal.js'
@@ -1290,11 +1303,21 @@ and the window still said "your opponent's deck" on a watcher's board, for the w
 panel, while `lookSeat()` answered `0` when asked from the console. Svelte compiles a reactive
 statement from the **references it can see in the expression**, and a function call exposes
 nothing: the statement runs once at init and never again. Reading the store in the component
-fixes it and is the shape to prefer — `$: seat = $look ? $look.seat : null` — with the store
-subscription as the input the compiler can see. This is the same family as the entry above this
+fixes it and is the shape to prefer — a `$` reference in the expression, so the store
+subscription is an input the compiler can see. This is the same family as the entry above this
 one about `$name` on a plain value — both are reactivity the compiler cannot follow, both compile
 clean, and the tell is a value that is *right when asked* and *wrong on screen* — **ask what the
 compiler can see as the input, not what the value is.**
+
+**The same lesson, one layer down, is why the permission is asked through a store.** `isActionable`
+reads the batches, their views and the spent record itself, so `$: actionable = isActionable(card,
+pile)` is the one-line version of the fault above *and* its inverse: the answer is a snapshot of the
+moment the card was built, so a card of the opponent's hand zone that was rendered *before* the
+Reveal Hand window opened answered none of the window — and one that a board state rebuilt *during* a
+window went on answering after it closed. Reported exactly that way (*after the window closes the
+cards in the opponent's hand are still actionable*). `windows` in reveal.js is the subscription, and
+`opponent/Card.svelte` reads it: **when a rule lives in a function that reads stores, the component
+still has to subscribe to what the rule is about.**
 
 **A drop handed `($draggedCard, $cardSelection)` that uses the first one moves one card.** Every zone
 of the far half calls `dropRevealedCard(target, $draggedCard, $cardSelection)` — the card the pointer
@@ -1396,7 +1419,7 @@ general point: when a check cannot drive a path, **say which path and why**, bec
 skipped assertion and a passing one look identical in a report.
 
 **An event that is only for some members needs the relay to know that, and the audience is a
-*seat*, not a role.** A Look is shown to the player who took it and to the room's watchers, and
+*seat*, not a role.** A Look is reported to the player who took it and to the room's watchers, and
 never to the owner of the deck that was read — the ids are cards out of a face-down deck, which
 is exactly what that player is not shown. Refusing on the client would be a rule a crafted client
 ignores, so the sender asks for an audience and the relay decides it from membership
@@ -1405,6 +1428,13 @@ delivery. Two things are worth keeping: the filtering has to happen on **read**,
 filters an event it will not deliver *and still advances past it* — a member who is skipped must
 not be left asking for the same sequence number for ever — and the audience list is built from
 the room's own member list, so a client cannot name a member it should not reach.
+
+Note that the audience an event is *addressed* to and the window a board *draws* are separate
+decisions, and they came apart here: the Look still reaches the watchers on the wire — the named
+log line is theirs — while the window it used to bring up on a watcher's board is gone (reported as
+*it should not bring up the Look window for the spectator*). `react('cardsLooked')` applies the
+batch on every board it reaches and opens the window only where the look was this board's own; a
+rule kept in the addressing would have taken the log line away with the panel.
 
 The *seat* half of that is the other trap. A Reveal names a half (`mine`/`theirs`) and both
 boards have the same two halves, so one deck store per board is enough. A Look is one player's

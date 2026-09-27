@@ -7,7 +7,7 @@ audiences, and that is the whole of the difference between them:
 | | Shown to | Window opens on | Ends with |
 | --- | --- | --- | --- |
 | **Reveal** | both players | the revealer's board | Close & Shuffle, then Close |
-| **Look** | the player who looked | that player's board and a watcher's | Close & Shuffle |
+| **Look** | the player who looked | that player's board | Close & Shuffle |
 | **Reveal Hand** | the player who asked | that player's board and a watcher's | Close |
 | **Discard Top Card / X** | nobody — no window | — | the cards are in the discard |
 
@@ -79,11 +79,26 @@ Prizes*, *Attach to Their Active*, *Show Details* — with every entry
 landing on the **owner's** half. There is no *To Hand* and no shared-zone entry, and both
 absences are rules — see *The owner's hand is not a destination*.
 
-That property is not a field written onto the card. It is the **batch**: a card is
-actionable exactly when it is one of the cards of an open batch, and `isActionable`
-in [src/lib/stores/reveal.js](../src/lib/stores/reveal.js) is the one place the
-answer lives. Four reasons it is done that way, and each of them was a design
-decision rather than a shortcut:
+That property is not a field written onto the card, and it is not "one of the cards of a batch"
+either. It is **the card as the window carries it**, and three things make it so:
+
+- **the window is on screen.** A batch deliberately outlives its window (a Look's cards are
+  kept when the panel is closed), so "the window is up" is part of the answer rather than
+  something left to whatever happens to be drawn
+- **the card is one of the cards the batch is showing** — the batch's live view of the pile,
+  so a card that has been moved out of it stops answering
+- **the card is carried by that window's own pile.** A window hands each of its cards the
+  *batch* (`asPile`); every zone of the board hands over the zone. This is what keeps the
+  permission inside the window, and it is the answer to a reported fault: the Reveal Hand
+  window drew the opponent's hand, and the **same card objects** in the opponent's Hand Zone —
+  behind the window, and again after it was closed — were selectable too, because a batch is a
+  live view of a pile the mirror already holds. Stated the other way round, which is the same
+  rule: **in a room, a card of the opponent's on the board is never actionable**, whether a
+  window put it there or its owner did.
+
+`isActionable` in [src/lib/stores/reveal.js](../src/lib/stores/reveal.js) is the one place the
+answer lives, and it takes the pile the gesture is carrying the card with. Four reasons it is
+not a flag on the card, and each of them was a design decision rather than a shortcut:
 
 - **A flag on the card would leak.** A card object is shared between a board and its
   mirror *within one client* — the mirror's cards are the same objects, handed over
@@ -94,6 +109,16 @@ decision rather than a shortcut:
   The batch is derived from the pile itself, so it cannot be stale.
 - **It cannot outlive the board it was about.** The batch is reset with the board
   (`onBoardCleanup`), and the next gesture replaces it wholesale.
+- **And the answer is re-asked rather than remembered.** `isActionable` reads the batches, their
+  views and the spent record itself, so a component needs to *subscribe* to what the windows are
+  showing for its answer to stay live — `windows` in reveal.js is that subscription, and
+  `opponent/Card.svelte` reads it. A `$: actionable = isActionable(card, pile)` has no inputs a
+  compiler can see: it runs once, when the card is built, and keeps that answer for the card's
+  whole life. That is the shape the reported fault came and went in — the cards of the Hand Zone
+  were built before the window opened and answered none of it, while a board state that rebuilt
+  them during a window left them answering after it closed. The same snapshot had a card put back
+  into its own pile (*To Top of Deck*) go on offering its menu.
+
 What the player sees is **nothing at all**, and that is the second report this section answers:
 the cards that may be acted on used to be picked out with a 2px `--primary-color` outline whose
 colour breathed on a loop (`opponent/Card.svelte`). It is gone — see *No glow*, below — so the
@@ -345,8 +370,9 @@ duplication seam `dedupeSlot` closes for the Bench.
 
 ## Who gets a window
 
-The three gestures have three audiences, and two of them are the same one: "the player who
-took it" plus, for a Look and for a Reveal Hand, the room's watchers.
+The three gestures have three audiences, and the shape they share is: **a window is the board of
+the player who took the gesture, and the table is told by the game log.** A Reveal and a Look are
+both that, exactly; a Reveal Hand adds the room's watchers to the boards the window opens on.
 
 **A Reveal puts the window on the board that revealed, and on nobody else's.** Everyone else is
 told by the game log, which names the cards — that is the record of what the table was shown, and
@@ -358,23 +384,25 @@ is told.
 
 Two things follow from it, and both are deliberate:
 
-- **the batch still travels to every board.** The window and the *permission* are different
-  questions, and the batch is the permission (`isActionable`). Withholding it to withhold the
-  window would have taken the permission with it. It also keeps the two boards' *records* the
-  same, which is what `applyReveal` is one function for.
+- **the batch still travels to every board.** The window and the *record* are different
+  questions, and `applyReveal` is one function so that the two boards cannot hold different
+  accounts of the same act.
 - **the opponent therefore cannot act on a revealed card**, because a revealed card sits in a
-  face-down deck — one pile image — and the window was the only place it was a card to
-  right-click. That was put to them as the consequence of the change and accepted: *the opponent
+  face-down deck — one pile image — and the permission is only ever asked of a card a *window* is
+  carrying. That was put to them as the consequence of the change and accepted: *the opponent
   does not need to act on revealed cards*.
 
-**A Look puts the window on the player who took it and on the room's watchers**, and on nobody
-else:
+**A Look puts the window on the player who took it, and on nobody else's board.** The watchers are
+told the same way the table is told about a Reveal — by the log, in this case the *named* line
+(`Looked at [Pikachu, Switch, …]`, which the looker gets too) — and that is a change: the window
+used to be drawn on a watcher's board as well, on the reasoning that *a Look is a public act with a
+private meaning*, and a table where a look happens is a table where something is happening. It was
+reported as a window in the way: *when a player looks at the X cards on the opponent's deck it
+should not bring up the Look window for the spectator*. A Look's window is a reading of somebody
+else's deck, and a panel over a watcher's board is the one board that has no business reading it.
 
-- **the watchers get it, because a Look is a public act with a private meaning.** The cards
-  are the looker's — a watcher cannot move them, and the window says so — but a table where
-  a look happens is a table where something *is* happening, and a watcher shown nothing at
-  all is being told the game is not being played. The window is the report; the cards stay
-  the looker's.
+What the Look keeps from that first design is its **audience on the wire**, which is unchanged:
+
 - **the owner of the deck does not get it, and neither does its client.** This is the
   place in this feature where an event is addressed to some members and not others, and the
   reason is that the *ids* are the secret: `cardsLooked` names cards out of a face-down
@@ -383,16 +411,13 @@ else:
   sends the event to the sender and to every spectator in the room from membership, strips
   the routing field before storing it, and is what a poll filters on. A rule kept on the
   client would be a rule a crafted client could ignore.
-
-A watcher's Look window is **read-only by the same one rule** a player's is —
-`isActionable` refuses a spectator — and it carries **Close** rather than Close & Shuffle,
-because both of a Look's endings are the looker's: the shuffle is the other player's deck
-changing, and the batch on a watcher's board is not its own look to end.
+- **the watcher is handed the batch**, which is the record of the gesture (`cardsLooked`, the
+  same event the log's named line rides), and draws nothing with it: a spectator is refused the
+  permission anyway (`isActionable`), and there is no window for it to be refused in.
 
 A Look is *not* shared in the sense a Reveal is. The looker may still act on the cards it
-was shown (that is the permission the batch carries), the opponent is told nothing, and the
-cards leave the deck the moment they are moved, which the watcher's window follows because
-it is a live view of the same deck.
+was shown (that is the permission the batch carries, while the window is up), the opponent is
+told nothing, and the cards leave the deck the moment they are moved.
 
 **A Reveal Hand has a Look's audience and a Reveal's consequence for the owner.** The window
 opens on the player who asked for it and on the room's watchers, and the ids go the same way
@@ -482,12 +507,18 @@ would be a second copy of something the wire already carries.
 - `cardsRevealed { owner, pileName, cards }` — the batch, stated rather than
   announced, so one handler serves the revealer, the opponent and a spectator.
   `owner` is the **sender's** word for the half.
+- `cardsLooked { looker, lookerSeat, pileName, cards }` — the same batch for a Look, with the
+  player who took it named instead of a half, because a Look is always a reading of the far half
+  of *that player's* board. It is addressed: the looker and the room's watchers, never the deck's
+  owner. What the looker does with it and what a watcher does with it are different things now —
+  the looker's board opens the window, and a watcher's draws nothing and reads the log's named
+  line (see *Who gets a window*).
 - `handRevealed { reader, pileName, cards }` — the same batch for a Reveal Hand, with the
   reader named instead of a half: a hand is read off the far half of the *reader's* own board,
   so a watcher's board — which mirrors both players — has to be told which of its mirrors the
   ids came from. Its `pileName` is `'hand'`, which is what picks the hand off that reader
   (`theirPileFor` in reveal.js). It is addressed, the way a Look is: the reader and the room's
-  watchers, never the hand's owner.
+  watchers, never the hand's owner. Unlike a Look, the window does open on a watcher's board.
 - `handToggle { revealed }` — the per-zone flag an *owner* sets to show their own hand, and the
   one event in this group that **nothing in this feature sends**. It is still relayed, still
   applied (`opponent.js`), and still read by `opponent/Hand.svelte`; a Reveal Hand leaves the
@@ -498,10 +529,10 @@ would be a second copy of something the wire already carries.
   the order of a deck it cannot read. Only a Reveal and a Look have this ending.
 - `oppCardAction { card, from, action, slotId }` — one player asking the owner of a
   card to move it.
-- **A Look has no event at all.** It shares nothing, which is not a convention: the
-  names above are the allow-list in
-  [src/routes/api/relay/events/+server.js](../src/routes/api/relay/events/+server.js),
-  and what is not in it cannot be relayed.
+
+The names above are the allow-list in
+[src/routes/api/relay/events/+server.js](../src/routes/api/relay/events/+server.js), and what is
+not in it cannot be relayed.
 
 A Look's only visible effect on the other player is the shuffle, if the looking
 player ends it that way — which is what a card that says "look at the top X, then
@@ -600,8 +631,9 @@ deck: there is no "top" to name and nothing to count off, so the gesture is the 
 components and deliberately not one. They differ in three ways that are rules rather than
 styles:
 
-- **the audience** — a Reveal is drawn on both boards from each client's own copy of
-  the batch; a Look and a Reveal Hand are drawn on the boards the event reached
+- **the audience** — a Reveal is drawn from this client's own copy of the batch, on the board
+  that revealed; a Look on the board that took it; a Reveal Hand on the boards the addressed
+  event reached, which includes the room's watchers
 - **the cards** — a Reveal's are drawn by `board/Card.svelte`, because a Reveal may
   be about the player's *own* deck and those cards are the player's; a Look's and a
   Reveal Hand's are drawn by `opponent/Card.svelte`, because they are always the other
@@ -616,26 +648,33 @@ three separate rules, each of which a prop would turn into something a caller ca
 A `shuffle` prop on this window is a window that can be told to shuffle a hand.
 
 Both deck windows carry **Close & Shuffle and never a Close beside it**, they are the same fixed-width grid (one full row of
-136px cards) so a reveal of two opens the same window a reveal of ten does, and **the shuffle
-belongs to the pair of them**: one reveal is one act with one deck and one ending, so once either
-player has shuffled, the other player's window — which is still open, and still showing the cards —
-loses the shuffle and keeps only Close. The same `shuffled` flag rides the `backToDeck` event, so
-which button each player has never depends on which of them pressed it.
+136px cards) so a reveal of two opens the same window a reveal of ten does. A Reveal's ending is
+**one shuffle between the two of them**: the revealer and the board that was told share one
+`shuffled` flag riding the `backToDeck` event, so which button either of them sees never depends on
+which of them pressed it. A Look's ending is the looker's alone, because there is nobody else with
+the window.
 
 A *Close* beside *Close & Shuffle* was the first shape both windows had, and it was wrong for the same
 reason in each: it offers a way to put the deck back exactly as it was found, which is the one ending a
 reveal is not. A reveal is taken *because* the top of the deck is about to be read, so the order it was
 read in is the thing that should not survive it; a Look ends with a shuffle because the deck belongs to
-somebody else. So the ending is one button that changes rather than two that sit together — **Close &
-Shuffle while the shuffle is owed, Close after it has happened** — and Escape or a click outside still
-closes either window without shuffling, which is how every panel in the app closes.
+somebody else. So the ending is one button rather than two — **Close & Shuffle while the shuffle is
+owed, Close after it has happened** — and Escape or a click outside still closes either window without
+shuffling, which is how every panel in the app closes.
 
-A **frozen batch** is what makes that possible, and it is also what keeps the other player's window
-alive at all: a window draws the batch's cards *that are still in the deck*, and a shuffle leaves
-none of them there — so without freezing, the cards would vanish, the window would close itself, and
-the button that would have closed it would go with it. Freezing is an explicit act rather than
-something the view works out for itself, because "a card that was moved" and "a deck that was
+A **frozen batch** is the other half of that ending: a window draws the batch's cards *that are still
+in the deck*, and a shuffle leaves none of them there, so the batch is frozen where it stands rather
+than following a deck that no longer holds what it was reading. Freezing is an explicit act rather
+than something the view works out for itself, because "a card that was moved" and "a deck that was
 shuffled" are different answers to what is on show.
+
+**That pair of mechanisms is older than the audience it was written for**, and it is worth saying so
+rather than leaving the reader to work it out: the freeze and the "Close after the shuffle" button
+exist for a window that is still up on the board that did *not* press the button — and there is no
+such window any more. A Reveal's window is the revealer's, and a Look's is the looker's, so the board
+that presses the shuffle is the board that has the window, and its window closes with the button. What
+is still load-bearing is the `shuffled` flag riding `backToDeck`, which is what makes one reveal one
+ending between the two halves; the frozen view is kept as the batch's own account of what was on show.
 
 Until it is frozen, a batch is a **live view of the pile it was taken from**, not a copy: the window
 shows the batch's cards that are *still in that pile*, and a card that has been moved goes from the
@@ -692,22 +731,27 @@ above.
 
 ## Checking it
 
-`node tools/render-check.mjs` holds the half of this that needs no browser: the
-permission rule (a card is actionable while it is in a batch and not otherwise), the
-shape of a batch (a live view of a pile, and not one of the board's own piles), all three
-windows rendering with their cards and their buttons, and the wiring that offers
-the entries and picks the right menu for a card of the far half's.
+`node tools/render-check.mjs` holds the half of this that needs no browser: the permission rule —
+a card is actionable while it is one of the cards a window that is *up* is showing **and** it is
+carried by that window's batch, the same card handed one of the far half's own zones is refused,
+and a closed window's cards stop answering — the shape of a batch (a live view of a pile, and not
+one of the board's own piles), all three windows rendering with their cards and their buttons, and
+the wiring that offers the entries and picks the right menu for a card of the far half's.
 
-It holds the permission's two edges as well: a card stops answering the moment this player has
+It holds the permission's other edges as well: a card stops answering the moment this player has
 acted on it, and the record of that does not outlive its batch. It also asserts, out of the
 component's own source, that the far half's card carries no action class and that there is no
 outline rule behind it — a binding with nothing to draw it and a rule with nothing to bind it are
-two separate bugs, and one assertion cannot see both.
+two separate bugs, and one assertion cannot see both — and that the card *subscribes* to what the
+windows are showing (`$windows`) rather than keeping the answer it was built with, which is the
+shape the reported fault came and went in.
 
-`node tools/reveal-check.mjs` drives the rest in two browsers: the window's audience, the whole
-of a hand in the window where the count says it should be, the one button, the log line on both
-boards, the hand still drawn as card backs afterwards, the owner's hand refusing a drop, the menu
-offering no *To Hand*, no card animating anywhere, and a card that has been moved going on
+`node tools/reveal-check.mjs` drives the rest in two browsers, and a third where one is running:
+the window's audience (the revealer's alone, the looker's alone, a Reveal Hand's on the watcher's
+board too), the whole of a hand in the window where the count says it should be, the cards in the
+**Hand Zone** answering nothing with the window open or closed, the one button, the log line on
+both boards, the hand still drawn as card backs afterwards, the owner's hand refusing a drop, the
+menu offering no *To Hand*, no card animating anywhere, and a card that has been moved going on
 refusing once it is out of the window.
 
 `node tools/solo-check.mjs` asserts the same about the animation where it was worst — in solo

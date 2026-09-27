@@ -84,7 +84,7 @@ writeFileSync(entry, `
    import Page from '${p('routes/+page.svelte')}'
    import { cards, cardSelection, deck, discard, bench, draw, hand, lz, moveSelection, resetBoard, resetSelection, attachSelection, selectCard, selectPile, shuffleAfterLeavingDeck, stadium, table, toBench, cardPile } from '${p('lib/stores/player.js')}'
    import { slot } from '${p('lib/stores/custom/cards.js')}'
-   import { reveal, revealView, look, lookView, handReveal, handRevealView, isActionable, canReveal, topCount, revealTop, lookTop, spendCards, resetRevealState } from '${p('lib/stores/reveal.js')}'
+   import { reveal, revealView, revealOpen, look, lookView, lookOpen, handReveal, handRevealView, handRevealOpen, isActionable, canReveal, topCount, revealTop, lookTop, spendCards, resetRevealState } from '${p('lib/stores/reveal.js')}'
    import { OPP_ACTIONS, opponentCardAction, respondToOpponentCardAction } from '${p('lib/stores/oppAction.js')}'
    import { spectating } from '${p('lib/stores/connection.js')}'
    import InspectionView from '${join(root, 'tools', 'pile-dialog.svelte').split(sep).join('/')}'
@@ -93,7 +93,7 @@ writeFileSync(entry, `
    import HandRevealDialog from '${p('lib/play/dialogs/HandReveal.svelte')}'
    /* what a decklist import does: the list of cards, then the board built from it */
    const setDeck = (cards_) => { cards.set(cards_); resetBoard() }
-   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, handReveal, handRevealView, HandRevealDialog, isActionable, look, LookDialog, lookTop, lookView, lz, moveSelection, OPP_ACTIONS, opponentCardAction, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, RevealDialog, revealTop, revealView, selectCard, setDeck, shuffleAfterLeavingDeck, slot, spendCards, spectating, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
+   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, handReveal, handRevealOpen, handRevealView, HandRevealDialog, isActionable, look, lookOpen, LookDialog, lookTop, lookView, lz, moveSelection, OPP_ACTIONS, opponentCardAction, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, revealOpen, RevealDialog, revealTop, revealView, selectCard, setDeck, shuffleAfterLeavingDeck, slot, spendCards, spectating, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
 `)
 
 const svelte = {
@@ -530,8 +530,8 @@ for (const [ half, zone ] of [ [ 'the player', p('lib', 'play', 'board', 'Temp.s
 }
 
 /*
-   Reveal and Look: the two ways cards out of a deck are shown, and the one
-   property both of them exist to apply.
+   Reveal, Look and Reveal Hand: the three ways cards out of somebody else's pile are
+   shown, and the one property all of them exist to apply.
 
    This is the half of the pair a render *can* answer, and it is the half that
    matters most, because the property - "this opponent card may be acted on" - is
@@ -542,21 +542,35 @@ for (const [ half, zone ] of [ [ 'the player', p('lib', 'play', 'board', 'Temp.s
 
    What is asserted here is the *rule* rather than a rendering:
 
-   - the permission is the batch and nothing else: a card is actionable while it is
-     in the Reveal batch or the Look batch, and not before, not after the batch is
-     replaced, and not after the board is cleared
+   - the permission is the batch **as the window hands it over**: a card is actionable
+     while it is one of the cards a batch is showing *and* it is carried by that batch's
+     pile - and the same card handed one of the far half's own zones is refused, which is
+     the reported fault in one line (*cards in the Hand Zone should not be selectable*)
+   - not before a batch exists, not after the card has been acted on, and not after the
+     board is cleared
    - a batch is a view of a deck, so the same card object is in the far half's deck
      *and* in the batch - and `cardPile` therefore answers null for it, which is how
      a card in those windows is told apart from a card on the board
-   - the two windows render, with their cards and their two buttons
+   - the three windows render, with their cards and their buttons
    - both entries refuse solo, which is the rule the menus also state
 
-   Neither window can be opened by a click here - one is opened by a relay event
-   and the other by a menu entry - so they are rendered from a batch put into the
+   None of the windows can be opened by a click here - one is opened by a relay event
+   and the others by a menu entry - so they are rendered from a batch put into the
    store directly, which is the same state the event would leave behind.
 */
 mod.resetRevealState()
-check('a card is not actionable before anything has been shown', !mod.isActionable(get(mod.defaultOpponent.deck)[0] || {}))
+/*
+   The pile is asked of every one of these questions, and the first one asks it with the far
+   half's **own deck** - which is the pile the board draws that card in, and the whole of the
+   reported fault: the permission used to be "one of the cards of a batch", a batch is a live
+   view of a pile the board holds, and so the same card object answered for the card in the
+   opponent's hand zone, behind the window, and again after the window was closed. A card is
+   actionable as the *window's* card or not at all (see `isActionable`).
+*/
+check('a card is not actionable before anything has been shown',
+   !mod.isActionable(get(mod.defaultOpponent.deck)[0] || {}, mod.defaultOpponent.deck),
+   'asked with the far half\'s own deck, which is the pile the board carries it with')
+
 check('and nothing may be revealed in solo', mod.canReveal() === false, `canReveal = ${mod.canReveal()}`)
 
 check('and "the top X" is what the deck has when X is larger', mod.topCount(mod.deck, 999) === get(mod.deck).length)
@@ -597,9 +611,31 @@ const viewOf = () => shownIds.map((id) => farDeck.find((card) => card._id === id
 batch.pile = { name: 'deck', get: viewOf, subscribe: (fn) => { fn(viewOf()); return () => {} } }
 mod.reveal.set(batch)
 mod.revealView.set(viewOf())
+mod.revealOpen.set(true)
 
-check('a revealed card is actionable', mod.isActionable(viewOf()[0]))
-check('and one that was not revealed is not', !mod.isActionable(farDeck[0]))
+check('a revealed card is actionable', mod.isActionable(viewOf()[0], batch.pile))
+check('and one that was not revealed is not', !mod.isActionable(farDeck[0], batch.pile))
+/*
+   And the window being *up* is part of the answer: a batch outlives its window on purpose,
+   so a rule that only asked the pile would go on granting a permission nothing on screen is
+   handing over. The report's second sentence is exactly this (*after the window closes the
+   cards are still actionable*), which is why it is asked here rather than left to the
+   component to hide.
+*/
+mod.revealOpen.set(false)
+check('and it stops answering the moment the window is closed',
+   !mod.isActionable(viewOf()[0], batch.pile),
+   'the batch outlives its window; the permission does not')
+mod.revealOpen.set(true)
+/*
+   And the same card, in the same deck, is **not** actionable when it is carried by the deck
+   rather than by the window: this is the rule, in one line, and it is the one the browser
+   check can only see as a click that does nothing.
+*/
+check('and the same card handed the far half\'s own deck is refused',
+   !mod.isActionable(viewOf()[0], mod.defaultOpponent.deck),
+   'a card of the opponent\'s on the board is never actionable, in a room')
+
 
 /*
    The reveal's log line, read off the source rather than run: `shareReveal` needs a room
@@ -661,10 +697,10 @@ check('and a reveal is written into the log with the cards named',
 
 mod.spectating.set(true)
 check('and nothing of the batch is actionable for a spectator',
-   !mod.isActionable(viewOf()[0]),
+   !mod.isActionable(viewOf()[0], batch.pile),
    'isActionable is the single refusal every gesture asks')
 mod.spectating.set(false)
-check('and a player is not refused by it', mod.isActionable(viewOf()[0]))
+check('and a player is not refused by it', mod.isActionable(viewOf()[0], batch.pile))
 check('and it shows the cards of the batch',
    Boolean(revealHtml) && (revealHtml.match(/class="card"/g) || []).length === mod.revealView.get().length,
    `${(revealHtml?.match(/class="card"/g) || []).length} cards, ${mod.revealView.get().length} on show`)
@@ -679,9 +715,11 @@ const lookedView = () => lookedIds.map((id) => farDeck.find((card) => card._id =
 */
 mod.reveal.set(null)
 mod.revealView.set([])
-mod.look.set({ ownerHere: 'theirs', pileName: 'deck', cards: lookedIds })
+const lookPile = { name: 'deck', get: lookedView, subscribe: (fn) => { fn(lookedView()); return () => {} } }
+mod.look.set({ ownerHere: 'theirs', pileName: 'deck', pile: lookPile, cards: lookedIds })
 mod.lookView.set(lookedView())
-check('a looked-at card is actionable too', mod.isActionable(lookedView()[0]))
+mod.lookOpen.set(true)
+check('a looked-at card is actionable too', mod.isActionable(lookedView()[0], lookPile))
 
 const lookHtml = renders('the look window renders, with the cards on show', mod.LookDialog, {
    props: { renderOpen: true },
@@ -719,10 +757,28 @@ check('and the far half has a hand to reveal', theirHand.length > 1, `${theirHan
 
 const handIds = theirHand.slice(-3).map((card) => card._id)
 const handView = () => handIds.map((id) => theirHand.find((card) => card._id === id)).filter(Boolean)
-mod.handReveal.set({ looker: null, remote: false, pileName: 'hand', pile: { name: 'hand', get: handView, subscribe: (fn) => { fn(handView()); return () => {} } }, cards: handIds })
+const handPile = { name: 'hand', get: handView, subscribe: (fn) => { fn(handView()); return () => {} } }
+mod.handReveal.set({ looker: null, remote: false, pileName: 'hand', pile: handPile, cards: handIds })
 mod.handRevealView.set(handView())
+mod.handRevealOpen.set(true)
 
-check('a card of the revealed hand is actionable', mod.isActionable(handView()[0]))
+check('a card of the revealed hand is actionable', mod.isActionable(handView()[0], handPile))
+/*
+   **And the same card is refused where the board draws it.** This is the report, at the
+   level of the rule: the hand zone renders these very objects - `opponent/Hand.svelte`
+   hands each of them the hand - so an answer that asked only "is this one of the batch's
+   cards" said yes to the cards in the Hand Zone, which is *the Reveal Hand window allows
+   the owner's cards in the Hand Zone to be selected*. It is the same hand, the same card
+   and the same batch: only the pile it is carried with differs.
+*/
+check('and is refused when the board carries it instead of the window',
+   !mod.isActionable(handView()[0], mod.defaultOpponent.hand),
+   'the Hand Zone hands the hand, so the cards in it are never actionable')
+mod.handRevealOpen.set(false)
+check('and refused again once the window is closed',
+   !mod.isActionable(handView()[0], handPile),
+   'nothing on screen is handing that batch over any more')
+mod.handRevealOpen.set(true)
 
 const handHtml = renders('the reveal hand window renders, with the cards on show', mod.HandRevealDialog, {
    props: { renderOpen: true },
@@ -771,13 +827,15 @@ mod.handRevealView.set([])
 const spentCard = { _id: 9701, name: 'Spent Card', set: 'sv1', number: '1' }
 const otherCard = { _id: 9702, name: 'Other Card', set: 'sv1', number: '2' }
 mod.defaultOpponent.hand.push(spentCard, otherCard)
-mod.handReveal.set({ looker: null, remote: false, pileName: 'hand', pile: { name: 'hand', get: () => [ spentCard, otherCard ], subscribe: (fn) => { fn([ spentCard, otherCard ]); return () => {} } }, cards: [ spentCard._id, otherCard._id ] })
+const spentPile = { name: 'hand', get: () => [ spentCard, otherCard ], subscribe: (fn) => { fn([ spentCard, otherCard ]); return () => {} } }
+mod.handReveal.set({ looker: null, remote: false, pileName: 'hand', pile: spentPile, cards: [ spentCard._id, otherCard._id ] })
 mod.handRevealView.set([ spentCard, otherCard ])
+mod.handRevealOpen.set(true)
 
-check('a card of a window is actionable to begin with', mod.isActionable(spentCard))
+check('a card of a window is actionable to begin with', mod.isActionable(spentCard, spentPile))
 mod.spendCards([ spentCard ])
-check('and stops the moment this player has acted on it', !mod.isActionable(spentCard))
-check('and the rest of the window still answers', mod.isActionable(otherCard))
+check('and stops the moment this player has acted on it', !mod.isActionable(spentCard, spentPile))
+check('and the rest of the window still answers', mod.isActionable(otherCard, spentPile))
 check('and the card is still in the pile, which is why the view alone could not answer it',
    get(mod.defaultOpponent.hand).includes(spentCard))
 
@@ -788,9 +846,10 @@ check('and the card is still in the pile, which is why the view alone could not 
    for the wrong reason.
 */
 mod.resetRevealState()
-mod.handReveal.set({ looker: null, remote: false, pileName: 'hand', pile: { name: 'hand', get: () => [ spentCard, otherCard ], subscribe: (fn) => { fn([ spentCard, otherCard ]); return () => {} } }, cards: [ spentCard._id, otherCard._id ] })
+mod.handReveal.set({ looker: null, remote: false, pileName: 'hand', pile: spentPile, cards: [ spentCard._id, otherCard._id ] })
 mod.handRevealView.set([ spentCard, otherCard ])
-check('and the board being cleared forgets what was spent', mod.isActionable(spentCard),
+mod.handRevealOpen.set(true)
+check('and the board being cleared forgets what was spent', mod.isActionable(spentCard, spentPile),
    'the record does not outlive the batch it was about')
 mod.handReveal.set(null)
 mod.handRevealView.set([])
@@ -814,6 +873,28 @@ check('and no card of the far half is bound to an action class',
 check('and there is no action outline to wear',
    !/\.actionable\s*\{/.test(farCardSource) && !/@keyframes actionable/.test(farCardSource),
    'the rule and its keyframes are both gone')
+/*
+   **And the answer is re-asked rather than snapshotted.** `isActionable` reads the batches,
+   their views and the record of what has been spent itself, so a `$:` that only *called* it
+   would compile to a statement about `card` alone - run once, when the card was created, and
+   kept for the card's whole life. That is how the reported fault appeared and disappeared:
+   the cards of the opponent's hand zone were built before the window opened and answered
+   none of it, while a board state that rebuilt them during a window left them answering
+   after it closed. The component has to read the store, and that is a line of its source
+   rather than anything a render to a string can show.
+*/
+check('and the far half\'s card re-asks the permission when a window changes',
+   /\$windows/.test(farCardSource) && /isActionable\(card, pile, \$windows\)/.test(farCardSource),
+   'the card subscribes to what the windows are showing instead of keeping one answer')
+/*
+   And the Look's window is the looker's alone, which is the store's rule rather than the
+   component's: the component cannot tell a watcher from a player, and the board that must
+   not draw one is a board whose `lookOpen` was never set.
+*/
+const revealStoreSource = readFileSync(join(src, 'lib', 'stores', 'reveal.js'), 'utf8')
+check('and a Look\'s window is opened for the looker and for nobody else',
+   /if \(mine\) lookOpen\.set\(true\)/.test(revealStoreSource),
+   'the addressed event still reaches the watchers for the log line, and opens no window')
 
 /*
    And the view is the deck's, not a copy of it, which is the difference between a
@@ -831,23 +912,25 @@ check('and there is no action outline to wear',
 */
 mod.look.set(null)
 mod.lookView.set([])
-mod.reveal.set({ owner: 'mine', senderIsMe: true, ownerHere: 'mine', pileName: 'deck', cards: shownIds })
+const shownPile = { name: 'deck', get: viewOf, subscribe: (fn) => { fn(viewOf()); return () => {} } }
+mod.reveal.set({ owner: 'mine', senderIsMe: true, ownerHere: 'mine', pileName: 'deck', pile: shownPile, cards: shownIds })
 mod.revealView.set(viewOf())
+mod.revealOpen.set(true)
 
 const shown = viewOf()[1]
 check('a card is on show while it is still in the deck',
-   mod.revealView.get().includes(shown) && mod.isActionable(shown))
+   mod.revealView.get().includes(shown) && mod.isActionable(shown, shownPile))
 
 farDeck.splice(farDeck.indexOf(shown), 1)
 mod.revealView.set(viewOf())
 check('and leaves the window the moment it is moved out of the deck',
    !mod.revealView.get().includes(shown),
    `${mod.revealView.get().length} of ${shownIds.length} still on show`)
-check('and stops answering clicks with it', !mod.isActionable(shown))
+check('and stops answering clicks with it', !mod.isActionable(shown, shownPile))
 
 mod.resetRevealState()
 check('and nothing is actionable once the board is cleared',
-   !mod.isActionable(shown) && !mod.isActionable(farDeck[0]))
+   !mod.isActionable(shown, shownPile) && !mod.isActionable(farDeck[0], shownPile))
 
 /*
    **A card of theirs that goes into a shared zone stays theirs.**
@@ -930,8 +1013,8 @@ check('and a card of the player\'s own only takes it inside a reveal or a look',
    /isForeignPile\(pile\)/.test(ownCardSource) && /piles\(\)\.includes\(p\)/.test(ownCardSource) &&
    /if \(isForeignPile\(pile\)\) \{\s*openOppCardActionMenu/.test(ownCardSource))
 check('and no action is taken on a card that does not answer',
-   /if \(!list\.length \|\| !list\.every\(canActOn\)\) return false/.test(oppActionSource),
-   'a selection with one card that does not answer is refused whole')
+   /if \(!list\.length \|\| !list\.every\(\(card\) => canActOn\(card, options\.pile\)\)\) return false/.test(oppActionSource),
+   'a selection with one card that does not answer is refused whole, and the pile it came with is part of the question')
 check('and the owner is the one who performs the move',
    /react\('oppCardAction'/.test(oppActionSource) && /respondToOpponentCardAction/.test(oppActionSource))
 

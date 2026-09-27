@@ -1,21 +1,25 @@
+import { derived } from 'svelte/store'
 import { writable } from './custom/writable.js'
 import { share, react, publishLog, publishLogTo, spectating, myId, seatedPlayers as seated, onBoardCleanup } from './connection.js'
 import { solo } from './soloState.js'
 
 /*
-   Reveal and Look: the two ways a player is shown cards out of a deck.
+   Reveal, Look and Reveal Hand: the three ways a player is shown cards out of somebody
+   else's pile.
 
-   They are the same gesture with two different audiences, which is the whole of
-   the difference between them:
+   They are the same gesture with three different audiences, which is the whole of the
+   difference between them:
 
-      Reveal   both players are shown the cards. The window appears on both
-               players' boards, and either of them may act on the cards
-               afterwards.
-      Look     the player who looked is shown them, and so is anybody watching
-               the table. The opponent is not - neither the window nor the ids
-               behind it (see the note over `shareLook`).
+      Reveal        both players are told the cards, by an event; the window is the
+                    revealer's own reading of them
+      Look          the player who looked is shown them, and so is anybody watching the
+                    table - the watchers by the game log, and the looker by the window.
+                    The opponent gets neither the window nor the ids behind it (see the
+                    note over `shareLook`)
+      Reveal Hand   the whole of one player's hand, in the Look's window, for the player
+                    who asked
 
-   The two are deliberately one module: they share the permission rule below, and
+   They are deliberately one module: they share the permission rule below, and
    a second copy of "these cards may be acted on" is the copy that goes stale.
 
    -------------------------------------------------------------------------
@@ -47,42 +51,60 @@ import { solo } from './soloState.js'
    asks for an audience, the relay decides it from membership, and a poll answers
    each member only what is theirs.
 
-   That is also why a Look travels at all, having once not: the window is the
-   *report* of a look, and a watcher sitting at a table where one happens was
-   shown nothing at all. What a Look does not become is shared in the sense a
-   Reveal is: the opponent is not told, and the cards stay the looker's to act on
-   (`isActionable` refuses a spectator, which is the whole of how a watcher's
-   window is read-only).
+   That is also why a Look travels at all, having once not: a watcher sitting at a
+   table where a look happens was shown nothing at all, and the named log line is the
+   report of it. What a Look does not become is shared in the sense a Reveal is: the
+   opponent is not told. And the **window** belongs to the looker alone, which is where
+   this differs from the two gestures beside it - see `cardsLooked`.
 
    -------------------------------------------------------------------------
    The permission: the "allowed to take action on this opponent card" property
    -------------------------------------------------------------------------
 
-   A card shown by a Reveal or a Look is a card the player may act on *on the
-   other player's side*: move it to that player's discard, put it into play as one
-   of their Pokemon, and so on. The permission is not a field written onto the
-   card object. It is answered by the batch - a card is actionable exactly when it
-   is one of the cards of an open batch - and that is deliberate, because it is
-   the only shape of the rule that cannot leak:
+   A card shown by a Reveal, a Look or a Reveal Hand is a card the player may act
+   on *on the other player's side*: move it to that player's discard, put it into
+   play as one of their Pokemon, and so on. The permission is not a field written
+   onto the card object, and it is not "one of the cards a batch holds" either. It
+   is **the card as the window carries it**: one of the cards the batch of a window
+   that is on screen is showing, carried by that batch's own pile - which is the
+   pile a window hands its cards (`asPile`) and is not any pile of the board. All
+   three, because any one of them alone leaks:
 
-      - it cannot outlive the board it was about: this store is reset with the
-        board, and a batch is replaced wholesale by the next one
-      - it must not be a property of the card: a card object is shared between a
-        board and its mirror within one client, and a flag on it would follow the
-        card onto the owner's own board, where it would offer the opponent's menu
-        for their own card
-      - it needs no second source of truth, which is the failure mode of a set of
-        ids kept beside the cards: it drifts the moment a move forgets to write it
+      - the **batch** alone cannot outlive the board it was about, and it is
+        replaced wholesale by the next gesture - but a batch reads a pile the
+        mirror already holds, so its cards *are* the objects the board's own zones
+        draw, and "one of the cards of the batch" answered for the same card in
+        the opponent's hand zone, behind the window, and again after the window
+        was closed
+      - its **pile** alone is not enough either, because a batch deliberately
+        outlives its window (see below) - so a closed window's batch would go on
+        granting a permission with nothing on screen to use it on
+      - a **flag on the card** cannot work at all: a card object is shared between
+        a board and its mirror within one client, so a property written onto one
+        would follow it onto the owner's own board, where it would offer the
+        opponent's menu for their own card
+      - and a **set of ids kept beside the cards** is the failure mode of both:
+        a second source of truth that drifts the moment a move forgets to write it
+
+   So the rule is `isActionable(card, pile)` - the card, and the pile the gesture
+   is carrying it with - and the answer is that the pile is the batch of a window
+   that is up, a card of which is on show. A window hands over its batch; every
+   zone of the board hands over the zone (`opponent/Hand.svelte`,
+   `opponent/Stadium.svelte`, the bench slots), and a zone is never a batch, so **in
+   a room the opponent's cards on the board are not actionable at all** - which is
+   the rule the report asked for in as many words: *cards should only be actionable
+   in the Reveal Hand window*.
 
    Both halves of a Reveal carry the same batch, because both were told the same
-   event - so both players may act, which is what a reveal means: the cards are
-   known to the table. A Look's batch is the looker's alone, so only they may act
-   on those cards, and a watcher that can see them is refused by `isActionable`.
+   event. A Look's batch is the looker's alone, and a watcher - if one is handed
+   the batch at all - is refused by `isActionable` for the same one line.
 
-   A Look's permission is deliberately *kept* when its window is closed
-   (`lookOpen` goes false, the batch stays): the card said "look at the top X
-   cards", so those cards are what the player is looking at whether or not the
-   panel is on screen. Close is a view being dismissed, not an undo.
+   A Look's batch is deliberately *kept* when its window is closed (`lookOpen`
+   goes false, the cards stay in store): the card said "look at the top X cards",
+   so those cards are what the player is looking at whether or not the panel is on
+   screen. Close is a view being dismissed, not an undo. **What closing does end
+   is the permission**, because the permission is the batch *as a window hands it
+   over* - and a closed window hands nothing over.
 */
 
 /*
@@ -125,13 +147,17 @@ export const reveal = writable(null)
 
       `looker`   the member id of the player who looked, or null when that is
                  this board - which is what picks the pile the batch reads
-                 (`theirPileFor`) and what tells a watcher whose pile it is showing
-      `seat`     `looker`'s seat in the game's own order, for a watcher that has
-                 to name the half (see Board.svelte); null locally
+                 (`theirPileFor`), and what tells a watcher's board which of its two
+                 mirrors the ids came from
+      `seat`     `looker`'s seat in the game's own order; null locally. It is what a
+                 board that is *not* the looker can name the half by, and nothing
+                 draws it now that the Look window is the looker's own - it stays on
+                 the batch because the event carries it and `backToDeck` matches a
+                 watcher's batch by it (see `lookSeat`)
       `remote`   whether this batch arrived from the other board. A look that is
                  *ours* is the player's own reading and ends with Close &amp;
-                 Shuffle; one that arrived is a watcher's and has no ending of
-                 its own.
+                 Shuffle; one that arrived was taken by somebody else and has no
+                 ending of its own.
 
    `theirHere` is the pile store the batch reads, resolved by the owner of the
    mirrors: the looker's own, or - for a watcher - the mirror of the player the
@@ -160,11 +186,47 @@ export const handReveal = writable(null)
 /*
    Whether a window is on screen. A batch outlives its window (see the note
    above), so "what was shown" and "what is on screen" are two questions and two
-   stores: one boolean could not say "closed, and still the cards in hand".
+   stores: one boolean could not say "closed, and still the batch".
 */
 export const revealOpen = writable(false)
 export const lookOpen = writable(false)
 export const handRevealOpen = writable(false)
+
+/*
+   What the three windows are showing, as one store: each window's batch, the cards that
+   batch is showing right now, and whether the window is on screen at all.
+
+   It exists for the **recomputation** rather than for the answer. `isActionable` reads the
+   batches, their views and the record of what has been spent *itself* - it is the one place
+   the rule lives - so a component that writes `$: actionable = isActionable(card, pile)` has
+   given the compiler **no inputs at all**: the statement is compiled as depending on `card`
+   and `pile`, runs once when the card is created, and keeps that answer for the card's whole
+   life. Measured, and reported: the cards of the opponent's hand zone were built before the
+   Reveal Hand window opened, so they answered none of it - and a board state that rebuilt
+   them while the window was open left them answering after it was closed (*after the "Reveal
+   Hand" window closes the cards in the opponent's hand are still actionable*). The same
+   snapshot is why a card that was moved and put straight back into its pile - *To Top of
+   Deck* - went on offering its menu.
+
+   So a component reads this store and hands the value to `isActionable`
+   (`$windows` in `opponent/Card.svelte`): the rule stays in one function, and the
+   subscription that keeps a component's answer live is the component's. A caller with no
+   component to subscribe in - a menu entry, a drop handler - calls `isActionable` without it,
+   and the same value is read at the moment it asks, which is what a gesture wants.
+*/
+export const windows = derived(
+   [ reveal, look, handReveal, revealView, lookView, handRevealView, revealOpen, lookOpen, handRevealOpen ],
+   () => windowsOnShow()
+)
+
+/* what the three windows hold at this instant: the batch, its live view, and whether it is up */
+function windowsOnShow () {
+   return [
+      { batch: reveal.get(), view: revealView.get(), open: revealOpen.get() },
+      { batch: look.get(), view: lookView.get(), open: lookOpen.get() },
+      { batch: handReveal.get(), view: handRevealView.get(), open: handRevealOpen.get() }
+   ]
+}
 
 /* the player's own deck, registered rather than imported (see below) */
 let myDeckStore = null
@@ -497,6 +559,12 @@ function gather (pile, ids) {
    not in `piles()` (custom/board.js), and `board/Card.svelte` reads exactly that to
    pick the menu for somebody else's card. A flag beside the name would be a second
    answer to a question the board can already answer.
+
+   It is also **the pile the permission is asked of** (`isActionable`): a batch object is
+   made once per gesture and handed to every card in that gesture's window, so "is this
+   card carried by that batch" is one identity test - and a zone of the board, which is
+   what the same card objects are handed where the board draws them, is a different
+   object and refuses.
 */
 function asPile (batch) {
    const get = () => viewOf(batch)
@@ -858,14 +926,16 @@ function applyHandReveal ({ reader, pileName, cards }, remote) {
 
    The shuffle is shared, and it *has* to be: the deck belongs to the other
    player, and a shuffle is state of theirs. What is not shared is who saw what -
-   the cards the player looked at stay between the looker and the watchers, and
-   the opponent is told nothing beyond the deck rearranging itself, which is
-   exactly what a card that says "shuffle that deck" looks like from their side
-   too.
+   the cards the player looked at stay between the looker and the watchers the look
+   was reported to, and the opponent is told nothing beyond the deck rearranging
+   itself, which is exactly what a card that says "shuffle that deck" looks like
+   from their side too.
 
-   Only the player who took the look has this ending, which is why it is here and
-   not the whole of `closeLook`: a watcher's window is a reading of somebody
-   else's look, and a shuffle is somebody else's deck changing (see `remote`).
+   This is the looker's ending and only the looker's, which is why it is here and not the
+   whole of `closeLook`: a batch this board did not take is somebody else's look, and a
+   shuffle is somebody else's deck changing (see `remote`). Such a board draws no window
+   either (see `cardsLooked`), so the guard is the rule said once rather than a button
+   being withheld.
 */
 export function lookCloseAndShuffle () {
    lookOpen.set(false)
@@ -880,12 +950,34 @@ export function lookCloseAndShuffle () {
 /*
    Whether a card may be acted on as one of the *other* player's.
 
-   Both batches answer it the same way, so it is one question and one function: the
-   card is one of the cards currently *on show* in either of them. It asks the
-   batch's live view rather than its record of ids, and that is the whole of why
-   this is a function rather than a set membership test at the call site - a card
-   that has already been moved is no longer on show, so it stops answering, and
-   `oppAction.js` refuses it a second time (see the note over `asPile`).
+   Three things make it so, and **all** of them are needed:
+
+      - the window that is showing the cards is **on screen** (`open`)
+      - the card is one of the cards that window is showing (the batch's live view)
+      - the card is being carried by **that window's pile** - `pile` is what the window
+        handed it, and a window hands over its batch (`asPile`)
+
+   The pile is the whole of "only in the window", and it is what the report was about:
+   *the Reveal Hand window allows the owner's cards in the Hand Zone to be selected ...
+   cards should only be actionable in the Reveal Hand window*. A batch reads a pile the
+   mirror already holds - a hand, a deck - and `viewOf` resolves its ids against that very
+   pile, so a window's cards **are** the objects the board's own zones draw. An answer that
+   asked only "is this one of the batch's cards" therefore said yes to the same card in the
+   opponent's hand zone, behind the window, and went on saying it after the window was
+   closed. Asked of the pile as well, the same card is refused wherever the board draws it,
+   because a zone hands over the zone (`opponent/Hand.svelte`, `opponent/Stadium.svelte`, the
+   bench slots) and a zone is never a batch - which is the same rule stated the other way:
+   **in a room, a card of the opponent's on the board is never actionable**, whether it was
+   put there by a window, by its owner, or by nobody at all.
+
+   The open flag is what makes "only in the window" true of the *store* rather than only of
+   the screen: the batch outlives its window by design (see the note above), so a rule that
+   ignored the flag would go on answering for a pile that no window is handing over any
+   more. It also means a closed window's cards stop answering at once, whatever a
+   component's own snapshot of the answer happens to be.
+
+   It asks the batch's live view rather than its record of ids, so a card that has already
+   been moved out of the pile stops answering, and `oppAction.js` refuses it a second time.
 
    **A spectator is refused here**, and that is the whole of how a spectator's window is
    read-only: it sees the same batch (see the note over `cardsLooked`), and every way of
@@ -893,32 +985,24 @@ export function lookCloseAndShuffle () {
    question first. One refusal at the source rather than a `$spectating` test in each of
    them, which is the same rule `share()` applies from the other end.
 
-   It is also what keeps a Look the looker's: a watcher is refused by the same line,
-   and the opponent never had the batch at all - the relay does not send it there.
+   It is also what keeps a Look the looker's: a watcher is refused by the same line, and the
+   opponent never had the batch at all - the relay does not send it there.
 
-   **A Reveal's batch reaches the opponent and its window does not** (see `cardsRevealed`),
-   so an opponent holds a permission with nothing to use it on: the revealed cards sit in a
-   face-down deck, which is one pile image, and the window was the only place they were
-   cards. That is the shape asked for rather than an oversight - the table is told what was
-   shown by the log, and the cards are not the opponent's to move. Nothing here needs a
-   refusal for it: a gesture on the cards can only come from a window, and there is no
-   window on that board to make one.
+   `showing` is what a *component* subscribes to (see `windows`), and the default is the
+   same value read at the moment the call is made. A caller that has a `$` to read should
+   pass it, or its answer is a snapshot of the moment the card was created.
 
    **A card this player has already moved stops answering**, and that is what `spent` is for -
    see the note over it. Without that, a card sent to the owner's *hand* stayed actionable for
    ever: it is still in the pile the batch reads, so the live view still shows it, and the card
    could be picked up and sent somewhere else a second time.
 */
-export function isActionable (card) {
-   if (!card) return false
+export function isActionable (card, pile = null, showing = windowsOnShow()) {
+   if (!card || !pile) return false
    if (spectating.get()) return false
    if (spentIds.has(card._id)) return false
 
-   const inReveal = reveal.get() ? revealView.get().includes(card) : false
-   const inLook = look.get() ? lookView.get().includes(card) : false
-   const inHand = handReveal.get() ? handRevealView.get().includes(card) : false
-
-   return inReveal || inLook || inHand
+   return showing.some(({ batch, view, open }) => open && batch && batch.pile === pile && view.includes(card))
 }
 
 /*
@@ -1016,14 +1100,20 @@ export function revealOwnerHere () {
 
    A Reveal answers a window with a half in this board's words (`revealOwnerHere`),
    because both boards have the same two halves and only the words for them differ.
-   A Look cannot: a watcher's board mirrors *both* players, so "theirs" is not one
-   half of its screen but one half of the looker's - which is a seat, and the seat is
-   the only thing either board can agree on.
+   A Look cannot: a board that is not the looker's mirrors *both* players, so "theirs"
+   is not one half of its screen but one half of the looker's - which is a seat, and
+   the seat is the only thing either board can agree on.
 
-   Exported for a check to read, and deliberately **not** what the window calls: a
-   component that says `$: seat = lookSeat()` leaves the compiler nothing to see as
-   an input, and the value it keeps is the one it was built with (see the note in
-   `Look.svelte`). The window reads `$look.seat` itself.
+   **Nothing draws it any more.** A watcher's Look window was the one thing that had to
+   name the half it was showing, and it is gone (see `cardsLooked`): the window is the
+   looker's own, so its heading is the looker's own words for the far half. The seat is
+   still on the batch - the event carries it, and `backToDeck` matches a watcher's batch
+   by it - so this read stays as the one way to ask for it.
+
+   Exported rather than called from a component, and that is the other half of the
+   lesson: a component that says `$: seat = lookSeat()` leaves the compiler nothing to
+   see as an input, and the value it keeps is the one it was built with (see the note in
+   `docs/gotchas.md`).
 */
 export function lookSeat () {
    const batch = look.get()
@@ -1095,8 +1185,8 @@ function topIds (pile, count) {
    The batch is applied here *first*, exactly as a Reveal's is, so the player who
    looked sees their own window at once: their own events are never handed back to
    them, so nothing else would show it. What it is *not* is `setBatch` alone: the
-   ids are shared, because a Look is shown to the player who took it and to the
-   room's watchers (see `shareLook`).
+   ids are shared, because a Look is *reported* to the room's watchers as well as
+   kept by the player who took it (see `shareLook`).
 */
 export function lookTop (asked) {
    const pile = pileFor('theirs', 'deck')
@@ -1110,19 +1200,22 @@ export function lookTop (asked) {
 }
 
 /*
-   Show the top of a deck to the looker and to the room's watchers.
+   Show the top of a deck to the looker, and tell the room's watchers what was seen.
 
    The event carries the same three things a reveal's does, and a fourth that only
    a look needs: **whose** look it was. A reveal's cards are the room's, and each
    board finds them in the deck the event names; a look's cards are one player's
-   reading of the other player's deck, so a watcher's board - which mirrors *both*
-   players - has to be told which of its two mirrors the ids came from. The
-   looker's member id is that answer, and it is also what the relay addresses the
+   reading of the other player's deck, so a board that is not the looker's - which
+   mirrors *both* players - has to be told which of its two mirrors the ids came from.
+   The looker's member id is that answer, and it is also what the relay addresses the
    event to: the looker and the spectators, never the owner of the deck.
 
-   A watcher's window is a *reading* of somebody else's look rather than their own,
-   which is what `remote` records on the batch: it has no ending of its own,
-   because both of a look's endings are the looker's (see `lookCloseAndShuffle`).
+   **The window is the looker's and the report is the watchers'.** The looker's own
+   board opens it here; a board the event arrives at applies the batch and does not open
+   one (`cardsLooked`), and reads the named log line below instead. A batch that arrived
+   is a *reading* of somebody else's look rather than that board's own, which is what
+   `remote` records on it: it has no ending of its own, because both of a look's endings
+   are the looker's (see `lookCloseAndShuffle`).
 */
 function shareLook (pile, ids) {
    const batch = applyLook({ looker: null, cards: ids }, false)
@@ -1149,8 +1242,8 @@ function shareLook (pile, ids) {
 
       The **unnamed** one is the room's: it says a look happened and nothing about what was
       in it, which is what the deck's owner is entitled to know. The **named** one goes to
-      the looker and the watchers, who were shown those cards - it is the log's copy of what
-      the window is drawing.
+      the looker and the watchers, who are the people the look was reported to - it is the
+      log's copy of what the window is drawing for the looker.
    */
    publishLog(lookLine(ids.length))
    publishLogTo(lookedLine(namesOf(pile, ids)), to)
@@ -1176,9 +1269,10 @@ function seatOf (id) {
    disagree about what was on show.
 
    `looker` is the member id of the player who took the look, or null when that is
-   this board. `seat` is the same player's seat, so a watcher's window can name the
-   half it is showing; `remote` says the batch arrived rather than being ours, which
-   is what takes the shuffle ending off a watcher's window.
+   this board. `seat` is the same player's seat, for a board that is not the looker's
+   to name the half by (`lookSeat`); `remote` says the batch arrived rather than being
+   taken here, which is what says this board has no ending of its own for it
+   (`lookCloseAndShuffle`).
 
    The record is the ids the event **named**, not the ones this board could find at
    this instant - the same rule as a reveal's, and for the same reason: the full
@@ -1228,10 +1322,12 @@ function applyLook ({ looker, lookerSeat = null, pileName, cards }, remote) {
    revealer's: a player's own events are never handed back to them (see `emit` in
    relay/client.js), so the revealer's window is opened by `shareReveal` itself. So the
    batch is applied here and the window is not opened at all - and the batch still travels,
-   deliberately: it is the *permission* (`isActionable`), so an opponent who right-clicks a
-   card they can see on the board can still act on it, and a spectator is refused by the
-   same one rule. Withholding the batch to withhold the window would have taken the
-   permission with it.
+   deliberately: it is the *record* of what was shown, and the two boards' copies of a
+   gesture are supposed to be the same one. It is **not** a permission on this board,
+   because the cards a reveal names are in a pile this board draws as one image (a
+   face-down deck) and the permission is only ever asked of a card a *window* is carrying
+   (see `isActionable`). Withholding the batch to withhold the window would have left the
+   two boards holding different accounts of the same act.
 */
 react('cardsRevealed', (data) => {
    /* one function, one word: the sender's `owner` is what the batch keeps (see `pileFor`) */
@@ -1251,13 +1347,23 @@ react('cardsRevealed', (data) => {
    `audienceOf` in the relay's events route). So this handler is never run on the
    opponent's board with a batch about somebody else's look.
 
-   The batch is applied the same way on both, and the *window* opens on both - the
-   looker reads their own look, and a watcher reads the one they are watching. What
-   differs is only what a window may do with it: the looker may end it with a
-   shuffle, a watcher may close it (`remote`).
+   **The window opens for the looker and for nobody else.** It used to open on a watcher's
+   board too - a Look is a public act with a private meaning, and a watcher shown nothing at
+   all is being told the game is not being played - and it was reported as a window in the
+   way: *when a player looks at the X cards on the opponent's deck it should not bring up the
+   Look window for the spectator*. A reading of somebody else's deck is not the watcher's
+   screen to have a panel over, which is the same rule the Reveal window has always followed
+   (*a window is the player's own reading, and the table is told by the log*). What a watcher
+   is told is the **named log line**, which is the report of the look and is what the event
+   is still addressed to them for (`shareLook` -> `publishLogTo`).
 
-   `looker` being this board's own member id is what makes it ours; `seat` is what a
-   watcher's window names the half by.
+   The batch is still applied on both, because it is the record of the gesture and the two
+   boards' copies of it should not differ; a watcher has nothing to act on it with
+   (`isActionable` refuses a spectator). `remote` therefore only says "this arrived rather
+   than being taken here" - it is what takes the shuffle ending off a batch this board did
+   not take (`lookCloseAndShuffle`), which is now a window such a board never draws.
+
+   `looker` being this board's own member id is what makes it ours.
 */
 react('cardsLooked', ({ looker, lookerSeat, pileName, cards }) => {
    const mine = !looker || looker === myId.get()
@@ -1268,7 +1374,7 @@ react('cardsLooked', ({ looker, lookerSeat, pileName, cards }) => {
       return
    }
 
-   lookOpen.set(true)
+   if (mine) lookOpen.set(true)
 })
 
 /*
@@ -1331,16 +1437,17 @@ react('backToDeck', ({ owner, shuffled }) => {
    }
 
    /*
-      A Look's batch is named by *whose* look it was rather than by a half, so the
-      batch a watcher holds is matched by that player: a look is a reading of the
-      looker's far half, which is the deck of the *other* seat. On the looker's own
+      A Look's batch is named by *whose* look it was rather than by a half, so a board
+      that is not the looker's matches its copy by that player: a look is a reading of
+      the looker's far half, which is the deck of the *other* seat. On the looker's own
       board there is no seat on the batch (`seat` is null for a look taken here) and
       nothing to do either - `lookCloseAndShuffle` froze that batch before it shared
       the shuffle.
 
-      A watcher's window has no shuffle of its own, but the deck on its screen has
-      been rearranged, so the cards it is showing stay where they are rather than
-      vanishing as the view empties (see `freeze`).
+      That board draws no window now (see `cardsLooked`), so the freeze it makes is the
+      batch's *record* being kept in step rather than a panel being held open: the deck
+      on its screen has been rearranged, so the cards the batch named still belong to it
+      rather than vanishing as a live view would (see `freeze`).
    */
    const batch = look.get()
    if (batch && batch.seat !== null && watchSeat(batch.seat) === seatOf(localOwner(owner))) {
