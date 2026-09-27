@@ -693,8 +693,12 @@ three audiences ([reveal.md](reveal.md)):
 | Gesture | Where it is | Who sees the cards | How it ends |
 | --- | --- | --- | --- |
 | **Reveal** | *Reveal Top X* on a deck of yours, or on theirs | the whole table: the revealer's own window, everyone else by a log line that names the cards | *Close & Shuffle* (shuffles that deck), or *Close* / `Esc` with no shuffle |
-| **Look** | *View Top X* on the **opponent's** deck | **you alone.** The deck's owner is told only that a look happened | *Close & Shuffle* — one ending, because a card that says "look at the top X" never puts them back untouched |
-| **Reveal Hand** | *Reveal Hand* on the **opponent's** hand | you, and the room's watchers; the hand's owner is told by *Revealed opponent's hand* | *Close* only — a hand has no order to shuffle |
+| **Look** | *View Top X* on the **opponent's** deck | **a window on your board and nobody else's.** The room's watchers are told by a log line that names the cards; the deck's owner is told only that a look happened | *Close & Shuffle* — one ending, because a card that says "look at the top X" never puts them back untouched |
+| **Reveal Hand** | *Reveal Hand* on the **opponent's** hand | you, and the room's watchers — this is the one of the three whose window opens on a watcher's board; the hand's owner is told by *Revealed opponent's hand* | *Close* only — a hand has no order to shuffle |
+
+**A window is the board of the player who took the gesture, and the table is told by
+the game log.** Reveal and Look are exactly that; Reveal Hand adds the room's watchers
+to the boards its window opens on.
 
 Four things are worth knowing about all three:
 
@@ -732,8 +736,9 @@ is the only place in the game where a card crosses the table. The rules are:
   spot, which takes one and refuses a batch aimed at it whole. *Attach* names one card
   and says so.
 
-The window that shows an opponent's card **also refuses a spectator**: a watcher sees
-the same cards and may act on none of them.
+**A spectator may act on nothing out of a window.** A Reveal's and a Reveal Hand's
+windows open on a watcher's board and are read-only; a Look's does not open there at
+all, and the watcher reads the named log line instead.
 
 The one gesture of this kind with no card behind it is on the opponent's deck menu:
 *Discard Top Card* and *Discard Top X*, which discard from the top of their deck
@@ -855,8 +860,10 @@ As a consequence, a spectator sees a great deal:
 - **The clock, without its controls**, and the turn counter without its ends.
 - **No game actions and none of their shortcuts** — no Setup, Hide, Flip Coin, End
   Turn, and no deck panels.
-- **A window's cards are its to read and not to act on.** A spectator sees the same
-  Reveal, Look and Reveal Hand windows and may move nothing out of them.
+- **A window's cards are its to read and not to act on.** A spectator gets the Reveal
+  and Reveal Hand windows and may move nothing out of them. A **Look** is the
+  exception in the other direction: its window is the looker's board alone, so a
+  watcher is told what was looked at by the log's named line rather than by a panel.
 - **The flip**, which swaps which player is on which half of the screen. It is a view
   change: no card moves, nothing is relayed, and the two players' boards are
   untouched.
