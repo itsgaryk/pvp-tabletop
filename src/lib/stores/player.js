@@ -88,7 +88,15 @@ onBoardCleanup(() => {
    resetTimer()
 })
 
-export function importDeck (txt, cb, rd = false) {
+/*
+   A decklist onto this board, from the API's answer to either a typed list (`txt`)
+   or a request for a random one (`rd`).
+
+   `cb` is the answer; `onError` is handed the reason when there was no answer at all
+   - the request ran out of time, or the API could not be reached. Nothing is loaded
+   in that case, because nothing arrived (see util/fetch-web.js).
+*/
+export function importDeck (txt, cb, rd = false, onError = null) {
    if (isSpectator()) return
 
    const callback = (res) => {
@@ -125,8 +133,8 @@ export function importDeck (txt, cb, rd = false) {
       shareBoardstate()
    }
 
-   if (rd) get('/api/dm/random', callback)
-   else post(`/api/dm/import`, { input: txt }, callback)
+   if (rd) get('/api/dm/random', callback, onError)
+   else post(`/api/dm/import`, { input: txt }, callback, onError)
 }
 
 export function draw (count = 1, setup = false) {

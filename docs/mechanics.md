@@ -182,9 +182,22 @@ Two things are reported back to the player, and neither is a gate on the *board*
   cards and complains if the total is not 60. The deck is *already loaded* at this
   point, and it stays loaded: the message is a warning, not a refusal.
 
-Both are a gate on the *window* all the same: it closes only on an import that had
-nothing to say about it, so *Import Random Deck* is checked exactly as a typed list is,
-and a deck the API complained about leaves the window up to be corrected.
+Neither is a gate on the *board* — the deck is loaded either way — and they are a gate on
+the *window* for a typed list only. **The two imports are held to different rules**, and
+that is the point of them: *Import Deck* closes the window when the API reported nothing
+and the list adds up to 60, while *Import Random Deck* closes it as soon as cards have
+arrived. A random list is not the player's to correct, so a check that refused one would
+leave them at a window with nothing they could do about it; a typed list is theirs to
+correct, so a complaint about it leaves the window up to be fixed.
+
+**A request that never answers does not leave the window spinning.** The API is somebody
+else's, so the request has a deadline of 30 seconds and a failure is reported where the
+deck would have been: the spinner stops, the reason is on screen (*the deck API did not
+answer within 30 seconds*, or *could not reach the deck API*), and the buttons are there
+to press again. Nothing is loaded for a failure, because nothing arrived — the deck the
+player already had is left alone. It matters more than it looks: a room's window cannot
+be dismissed until a deck lands, so a request with no deadline and no answer was a player
+with no way out of the window at all ([gotchas.md](gotchas.md)).
 
 An import is **shuffled as it lands**, and it writes nothing to the game log — neither
 the import nor the shuffle. That makes the deck a deck from the moment it arrives rather

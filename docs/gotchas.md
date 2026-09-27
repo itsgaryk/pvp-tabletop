@@ -334,6 +334,19 @@ check that reads the board *under* the window still passes, because `clickText` 
 screen and not in the DOM, so a passing check is not evidence that a player could reach
 the button.
 
+**A deck request that fails is answered, not swallowed.** The import used to end at
+`console.error` with the callback never called at all, and nothing on screen can tell
+that from a request still in flight: the window sat on its spinner for ever, and with a
+room's window unclosable until a deck lands, a player had no way out of it. So
+`util/fetch-web.js` gives a request a 30-second deadline and hands the reason to the
+caller (`onError`), which the window shows where the deck would have been; nothing is
+loaded for it, because nothing arrived. Worth knowing when a check *waits* for an
+import: a request that never returns now ends, with words on screen, in half a minute.
+It also means a real Limitless deck that takes longer than that is abandoned rather than
+waited for — the deadline is the same shape the relay's own requests have
+(`requestTimeout` in `relay/client.js`), and a browser check uses
+`tools/fake-deck-api.mjs`, which answers at once.
+
 **That stand-in also cannot set a board up**, which is worth knowing before a check
 that needs a dealt board is written: its 60 cards carry no `stage`, so
 `hasBasic($cards)` is false, `deckValid` is false, and the Setup button is *disabled*

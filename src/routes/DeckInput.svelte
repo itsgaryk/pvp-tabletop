@@ -55,16 +55,37 @@
    /*
       What came back, and what to do about it.
 
-      Both things reported here are warnings rather than gates on the *board* - the
-      cards are already loaded by the time this runs (see importDeck in player.js) -
-      but they are a gate on this window, which closes only on an import that had
-      nothing to say about it. The API's own errors are joined into one message; the
-      sixty-card count is the one rule the app adds, and it is the same sum the Setup
-      button's deck is built from.
+      **The two imports are held to different rules, and deliberately so.**
+
+      A list the player typed is checked: the API's own errors, and the one rule the
+      app adds - sixty cards, which is the sum the Setup button's deck is built from.
+      A list they did *not* type is not: there is nothing in a random deck for them to
+      correct, so a check that refused one would leave them at a window with no way to
+      satisfy it. A random deck closes the window as soon as cards have arrived, and
+      the API's own words are worth showing only when none did.
+
+      None of this is a gate on the *board* - the cards are loaded before this runs
+      (see importDeck in player.js) - it is a gate on this window, which closes only
+      on an import it has nothing to complain about.
    */
-   function done (res) {
+   function done (res, random) {
       loading = false
       loadingRandom = false
+
+      /* an answer that is not an import's: there is no deck in it to speak of */
+      if (!Array.isArray(res?.cards)) {
+         response = res?.error || 'The deck API sent something that is not a deck.'
+         return
+      }
+
+      if (random) {
+         if (!res.cards.length) {
+            response = res.errors.join("\n") || 'The deck API sent no cards.'
+            return
+         }
+         succeed()
+         return
+      }
 
       const count = res.cards.reduce((c, card) => c + card.count, 0)
 
@@ -78,6 +99,10 @@
          return
       }
 
+      succeed()
+   }
+
+   function succeed () {
       response = ''
       confirming = false
       imported = true
@@ -90,10 +115,24 @@
       showMessage('Deck successfully imported')
    }
 
+   /*
+      No answer came: the request ran out of time, or the API could not be reached.
+
+      Nothing was loaded, so nothing on the board changes - the spinner stops, the
+      reason is on screen, and the button is there to press again. Without this the
+      window simply span for ever, and in a room, where it cannot be dismissed until a
+      deck lands, a player had no way out of it at all (see util/fetch-web.js).
+   */
+   function failed (message) {
+      loading = false
+      loadingRandom = false
+      response = message
+   }
+
    function doImport () {
       response = ''
       loading = true
-      importInto(txt, done)
+      importInto(txt, (res) => done(res, false), false, failed)
    }
 
    /* the random import asks first: the button replaces whatever is in the box */
@@ -106,7 +145,7 @@
       confirming = false
       response = ''
       loadingRandom = true
-      importInto('', done, true)
+      importInto('', (res) => done(res, true), true, failed)
    }
 
    /* the one way out, and only once a deck is in - see `required` */

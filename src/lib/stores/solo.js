@@ -50,8 +50,11 @@ export function exitSolo () {
    "Import Deck 2": the same decklist the player's own window takes, landed on the
    opponent's half instead. Shared events are no-ops here, since there is no room
    to tell.
+
+   `onError` is handed the reason when no answer came at all, and nothing is loaded
+   for it (see fetch-web.js and importDeck in player.js).
 */
-export function importOpponentDeck (txt, cb, rd = false) {
+export function importOpponentDeck (txt, cb, rd = false, onError = null) {
    const callback = (res) => {
       fixOld(res.cards)
       defaultOpponent.cards.set(res.cards)
@@ -70,8 +73,8 @@ export function importOpponentDeck (txt, cb, rd = false) {
       cb(res)
    }
 
-   if (rd) get('/api/dm/random', callback)
-   else post('/api/dm/import', { input: txt }, callback)
+   if (rd) get('/api/dm/random', callback, onError)
+   else post('/api/dm/import', { input: txt }, callback, onError)
 }
 
 /*
