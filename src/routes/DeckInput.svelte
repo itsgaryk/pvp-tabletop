@@ -205,7 +205,16 @@
             {/if}
          </button>
 
-         <p class="import-response" role="alert">{response}</p>
+         <!--
+            Only when there is something to say. An empty paragraph here is a gap
+            between two buttons that is not the window's own: the confirmation below
+            is one flex gap away from the button above it, and an element reserving
+            room for a message that has not been written pushed it two gaps and a line
+            further down than that.
+         -->
+         {#if response}
+            <p class="import-response" role="alert">{response}</p>
+         {/if}
 
          {#if confirming}
             <div
@@ -288,9 +297,14 @@
       color: var(--text-color);
    }
 
+   /*
+      The API's errors, or the reason nothing came back, in the space the window grows
+      by when there is one. It reserves nothing when it is empty - it is not rendered
+      at all then - because the room it would keep is a gap between the buttons that
+      the window's own spacing does not have.
+   */
    .import-response {
       @apply whitespace-pre;
-      min-height: 1.5rem;
       color: var(--text-color-two);
    }
 
