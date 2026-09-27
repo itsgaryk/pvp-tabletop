@@ -597,7 +597,11 @@ bug:
   below it. The app is right and the stand-in is incomplete: a deck of 60 cards with no Basic
   Pokémon is not a deck, which is why the same check passes against the real
   `limitlesstcg.com`. One field on the stand-in's card objects is the whole fix, and it is
-  also why `importDeck()` in the checks cannot set a board up.
+  also why `importDeck()` in the checks cannot set a board up. The bail also goes through
+  `$autoMulligan`, which is now **false with no control anywhere** — the Mulligans block left
+  the settings menu and only the loop behind it was kept
+  ([mechanics.md](mechanics.md#mulligans)) — so in play the guard cannot fire and this is not
+  what those two checks are failing on; the message they report is the same either way.
 
   It is worth knowing that it can also be the stand-in *as it is running* rather than as it
   is written: this was met again with an **old `tools/fake-deck-api.mjs` process** — one from
@@ -1609,4 +1613,29 @@ vocabulary for the word — the audience's `to` and the wire's `to` are the seco
 respectively. Two checks hold it now: `tools/relay-check.mjs` asserts a move keeps its
 destination *and* that an audience is still spliced out, and `tools/zone-sync-check.mjs` does
 the same end-to-end, in two browsers, where the card has to appear on the other board.
+
+**A setting that leaves the menu but keeps its code keeps everything except its default — and
+the *stored* value is the part that bites.** Auto-mulligan is the case: the Mulligans block was
+removed from the settings menu, `GameActions.svelte` kept the whole feature, and
+`autoMulligan` was turned to `false` in `settings.js` — which on its own is not enough, because
+`storable()` reads `localStorage` *after* its default and a browser that had the checkbox ticked
+still had `auto_mulligan: true`. That value outvotes the new default and nobody can reach the
+control to change it back: hands are redrawn for ever and the only clue is a log line. So the key
+is deleted on load (`if (browser) localStorage.removeItem('auto_mulligan')`, above the export that
+reads it — order matters, since `storable()` samples `localStorage` as it is constructed), and
+what a re-enabled feature has to deal with is written down in
+[mechanics.md](mechanics.md#mulligans) rather than in a comment nobody greps for. The general
+telling: **the UI is a setting's only writer**, so retiring a control retires the only way to
+undo whatever the last version of it wrote — check what the old default persisted before
+believing a new default is in force. The panel is also where the *absence* is asserted, so a
+returning block has to be put back in the expected list in `tools/browser-check.mjs` — two lists,
+one for solo and one for a room.
+
+**And a store module that fixes a `localStorage` key on import puts that side effect on every
+importer.** `settings.js` is imported by `Board.svelte`, `GameActions.svelte`, `Settings.svelte`
+and the room prompt, so the line above runs once per page load from whichever of them loads
+first, in whatever order the bundler chose — which is fine here only because it depends on
+nothing but `browser`. The tidier shape, if a second retired setting ever needs the same
+treatment, is a named one-shot beside `storable()` in `custom/storable.js` rather than growing
+`settings.js` into a module that acts when read.
 

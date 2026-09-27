@@ -1248,9 +1248,14 @@ if (want('panel')) {
       reason to the others: it is still a real setting, but only in solo. In a room
       the format decides the markers (see the `format` section), so a control here
       could only disagree with the room it is in.
+
+      "Mulligans" is gone too, and for a third reason: auto-mulligan is off and
+      has no control any more. The setting and the loop that reads it are still in
+      the tree - a panel is the things a player can change, and this is not one of
+      them any more (docs/mechanics.md#mulligans).
    */
    check('and only settings that can be set are there',
-      JSON.stringify(shape.map((s) => s.title)) === JSON.stringify(['Mulligans', 'Board zones', 'Diagnostics']),
+      JSON.stringify(shape.map((s) => s.title)) === JSON.stringify(['Board zones', 'Diagnostics']),
       JSON.stringify(shape.map((s) => s.title)))
 
    const described = await alice.evaluate(`[...document.querySelectorAll('.setting')].map((b) => b.innerText.replace(/\\s+/g, ' ').trim())`)
@@ -1790,7 +1795,7 @@ if (want('format')) {
    await sleep(1200)
    const soloSettings = await alice.evaluate(`[...document.querySelectorAll('.setting .title')].map((el) => el.textContent.trim())`)
    check('and keeps the marker setting a room does not have',
-      JSON.stringify(soloSettings) === JSON.stringify(['Mulligans', 'VSTAR / GX marker', 'Board zones', 'Diagnostics']),
+      JSON.stringify(soloSettings) === JSON.stringify(['VSTAR / GX marker', 'Board zones', 'Diagnostics']),
       JSON.stringify(soloSettings))
 
    const markerList = await alice.evaluate(`[...document.querySelectorAll('input[name="powerMarker"]')].map((i) => i.parentElement.textContent.trim()).join(',')`)

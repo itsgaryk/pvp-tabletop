@@ -208,15 +208,17 @@ the table — *Shuffled Deck* in the log is a player shuffling, which an import 
 **The one and only deck rule the game knows** is that the list contains at least one
 Basic Pokémon (`card.stage === 'basic'`). It is used in exactly one place:
 
-- With **auto-mulligan on** (the default), *Setup* is disabled while the imported
-  list has no Basic — a deck that cannot produce a starting Pokémon cannot be set
-  up, so the button says so rather than dealing a hand that has to be redrawn for
-  ever.
-- With **auto-mulligan off**, *Setup* is always enabled and the check is not asked
+- With **auto-mulligan on**, *Setup* would be disabled while the imported list has
+  no Basic — a deck that cannot produce a starting Pokémon cannot be set up, so the
+  button says so rather than dealing a hand that has to be redrawn for ever.
+- **Auto-mulligan is off and cannot be turned on from the app** (see
+  [Mulligans](#mulligans)), so *Setup* is always enabled and the check is not asked
   at all. A deck with no Basic can be set up, and nothing complains.
 
 So the game enforces **60 cards as a message** and **one Basic as a precondition for
-the mulligan loop**, and nothing else at all.
+the mulligan loop**, and nothing else at all. With the loop off, that precondition has
+nothing left to hold back: the rule is still in the source and still holds the Setup
+button, but the button is never disabled in play.
 
 ### Setup
 
@@ -245,22 +247,42 @@ this order:
    is the only thing that says the board is hidden and it points at the control that
    brings them back.
 7. **`Setup` goes in the game log** — or `Setup - 3 Mulligans` when auto-mulligan is
-   on. The board state is then published to the room.
+   on, which it no longer is. The board state is then published to the room.
 
 Nothing is refused for being unusual: a deck that is short deals a short hand and
-fewer prizes, a deck with no Basic sets up when auto-mulligan is off, and Setup can
-be pressed mid-game. Setup is the only way to get a fresh board, and it is a *new
-game* rather than a rewind: the log keeps both games' lines.
+fewer prizes, a deck with no Basic sets up, and Setup can be pressed mid-game. Setup
+is the only way to get a fresh board, and it is a *new game* rather than a rewind:
+the log keeps both games' lines.
 
 In solo, Setup deals both halves — seven cards and six prizes to each — from the two
 imported decks.
 
 ### Mulligans
 
-**Auto-mulligan is on by default** (a persisted setting, *Settings → Mulligans →
-Automatically re-shuffle mulligans when starting a new game*). With it on, Setup
-repeats the whole deal — reset, shuffle, draw 7, deal 6 — until the seven-card hand
-holds a Basic Pokémon, and reports how many redraws it took:
+**Auto-mulligan is off, and there is no longer a control for it.** The *Mulligans*
+block is gone from the settings menu, and the setting behind it (`autoMulligan`,
+persisted as `auto_mulligan`) is `false` with nothing in the app that sets it to
+anything else. So the deal above runs once, and one line has a branch that never
+takes it: the log says `Setup`, never `Setup - N Mulligans`.
+
+**The code is still here on purpose**, waiting to be reused rather than rewritten:
+the setting and its storage key in `src/lib/stores/settings.js`, the loop that reads
+it in `GameActions.svelte` (`setupBoard()` and the two branches in `setup()`), the
+`showMessage` line that reports the count, and the disabled-Setup guard described
+above. Nothing was deleted, so bringing mulligans back is a default flip and a
+control, not a reimplementation — the settings file has the one-line console write
+that exercises it meanwhile.
+
+**A stored value does not outvote the new default.** The setting was a checkbox
+before, so a browser that had it ticked still has `auto_mulligan: true` in
+`localStorage` — and `storable()` reads what it finds, so that value would have kept
+redrawing hands with nothing on screen to say why. It is removed on load instead
+(one deliberate line in `settings.js`), which is also why the console write above is
+a one-page-load lever: nothing in the app ever writes the key back.
+
+What the feature does when it *is* on, kept for the day it comes back. Setup repeats
+the whole deal — reset, shuffle, draw 7, deal 6 — until the seven-card hand holds a
+Basic Pokémon, and reports how many redraws it took:
 
 - a transient message in the middle of the screen, *N Mulligans*, shown even when
   the count is 0;
@@ -945,12 +967,12 @@ instead is let the players say it in the log.
 | One energy attachment per turn | *Attach* is unlimited and uncounted |
 | One Supporter, one Stadium play per turn | nothing counts them |
 | Drawing for the turn | *Draw*, or `1`–`9`, whenever you like |
-| Deck legality: the 4-copy rule, banned lists, ACE SPEC limits, format | only "has at least one Basic", and only for the mulligan |
+| Deck legality: the 4-copy rule, banned lists, ACE SPEC limits, format | only "has at least one Basic", and only for the dormant mulligan loop |
 | A 60-card deck | a warning at import; Setup deals whatever is there |
 | Six prizes | six are dealt; any number can be added or taken, and none is counted |
 | Taking a prize for a knockout | no knockout exists; a prize is moved by hand |
 | Winning and losing | no win condition, no deck-out, no bench-out, no result |
-| Mulligan compensation | nothing is drawn for the opponent |
+| Mulligan compensation | nothing is drawn for the opponent — and with the loop off, nothing is redrawn either |
 | Evolving: stage, first turn, once per turn, "evolved this turn" | any card onto any Pokémon, any number of times |
 | Retreat cost, and the once-per-turn switch | a switch is a free move between two places |
 | Asleep and paralysed Pokémon cannot retreat | no restriction |
@@ -1000,9 +1022,12 @@ worth knowing by name, because a change to a mechanic usually belongs in one of 
 **What is not checked is most of what this document says.** Nothing asserts the damage
 and status rules, evolution, the turn counter, the visibility rules, the mulligan
 loop or the deck's legality — those are read from the code, and a change to one of
-them is a change no check will notice. `tools/render-check.mjs` is the guard of last
-resort: it renders the board in the states a person reaches, so a component that
-throws on mount fails the build's own check rather than only a browser.
+them is a change no check will notice. **The mulligan has one check, and it is about
+the feature being absent**: `tools/browser-check.mjs --only panel` asserts what the
+settings menu holds, in solo and in a room, and *Mulligans* is not in either list.
+`tools/render-check.mjs` is the guard of last resort: it renders the board in the
+states a person reaches, so a component that throws on mount fails the build's own
+check rather than only a browser.
 
 `tools/docs-check.mjs`, which CI runs, keeps this document's own links resolving
 including the ones between its sections.
