@@ -377,6 +377,49 @@ which is what makes an order assertable at all. Point the dev server at it with
 deliberately *not* what this stand-in serves, because a check about order cannot say
 where a card went while four cards answer to the same name.)
 
+## Do the pile windows say what the table says?
+
+```sh
+BASE=http://localhost:3005 CDP_PORTS=9222 node tools/pile-window-check.mjs
+```
+
+A pile's view is **one dialog for two windows** — `Inspection.svelte` over the
+player's own half and `OppInspection.svelte` over the other — and what makes one of
+them *this* pile rather than another is data in `src/lib/util/piles.js`: the name the
+heading says, the colour bar beside it, and the destinations the move buttons offer.
+Seven piles across two halves is fourteen panels, which is why this is a check rather
+than a sentence in a review.
+
+It is written against the table itself rather than against a second copy of it, so a
+change to `piles.js` is a change to what the check expects. Per pile per half it
+asserts that the heading names the pile the table names, that the swatch reads the
+table's accent colour, that the count is a number of cards, and that the deck's own
+view offers the table's four destinations **word for word and in order** while every
+other view offers none.
+
+**Its most useful property is that it found the far half.** `OppInspection` had no
+heading at all, so a view of their discard and a view of their prizes were the same
+panel with different cards in it — and the check reports that as five failures, one
+per far-half pile that has a *View All*, because a panel with no heading has no zone
+element to read. Run it against a build without the table and that is what it prints;
+that is the regression it exists to catch.
+
+It also records something the table cannot: **there is no single opener for all seven
+piles.** *View All* is on the deck, discard, lost zone and table menus, on the
+opponent's prizes, and on the opponent's deck in solo — but not on either hand menu
+and not on either Stadium, and the table's own read is the `W` key rather than a menu
+entry (the stack's double click needs cards that may not be there). Five of the
+fourteen pairs therefore have no opener in the UI at all, and the check **skips them
+by name**, so its report cannot be read as coverage it does not have.
+
+One trap when running it, or any browser check here: **check which app is actually
+being served.** Each session gets its own port block (see the table in
+[parallel-work.md](parallel-work.md)), but if that block's app port is already taken
+by another session, vite binds the next free one instead — and a check then reads
+another session's server, which looks exactly like a product bug. This check prints
+the path of the module it was served before it runs anything, so the answer is in the
+output rather than in an assumption.
+
 ## Is the clock smooth, and the same on both boards?
 
 The clock is the one thing here that is about *time*, so it gets its own tool
