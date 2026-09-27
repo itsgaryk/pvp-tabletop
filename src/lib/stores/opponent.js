@@ -98,6 +98,46 @@ export function createOpponent () {
       else bench.remove(s)
    }
 
+   /*
+      A card this mirror already has **in play**, taken back out of the slot that holds
+      it - the other half of finding a card in a pile, for the events that name a slot.
+
+      It exists for one sequence, and it is the sequence a card out of a Reveal or a Look
+      window takes: the acting board moves the card where the owner's own move will put it
+      **at once** (`optimisticMove` in oppAction.js), inventing a slot id of its own
+      because the owner has not sent one yet. The owner then answers with `cardsBenched` /
+      `cardPromoted` carrying **its** slot id - and by then the card is no longer in the
+      pile the event names, because this board already took it out. So a handler that
+      insists on finding the card in the source pile drops the owner's slot id on the
+      floor, leaves this board's invention in place, and every later event about that
+      Pokemon - the owner discarding it, damaging it, attaching to it, promoting it -
+      names a slot id this board has never heard of. Reported as: *a card placed on the
+      opponent's bench from a Look window does not leave it when its owner discards it*.
+
+      Matched by the **card**, not by the slot's stored shape, and excluding `keepId` so
+      a replayed event is a no-op rather than a second removal. `slot()` puts a card in
+      exactly one slot's `pokemon` list, so this cannot take the wrong Pokemon off the
+      board - and it is the card object itself that comes back, so the slot built from it
+      is the shape every other Pokemon in play has.
+   */
+   const removeCardInPlay = (cardId, keepId = null) => {
+      const holds = (s) => Boolean(s) && s.id !== keepId && s.pokemon.get().some(c => c._id === cardId)
+
+      const benched = bench.get().find(holds)
+      if (benched) {
+         bench.remove(benched)
+         return benched.pokemon.get().find(c => c._id === cardId) || null
+      }
+
+      const current = active.get()
+      if (holds(current)) {
+         active.set(null)
+         return current.pokemon.get().find(c => c._id === cardId) || null
+      }
+
+      return null
+   }
+
    /* helper */
 
    const slotRegex = /^([0-9a-z-]{36}).(pokemon|trainer|energy)$/i
@@ -250,19 +290,19 @@ export function createOpponent () {
       cardsBenched: ({ cards: items, from }) => {
          const pile = getPile(from)
          for (const { cardId, slotId } of items) {
-            const card = removeCard(cardId, pile)
-            if (!card) continue
             /*
-               A card this board has already put into play itself, with a slot id of its
-               own: that is the acting player's optimistic move, and it is the same card
-               the owner is now naming. The owner's slot is the one to keep, so the
-               stand-in goes - without this the board draws two Pokemon holding one card,
-               side by side, until the next full board state (see `optimisticMove` in
-               oppAction.js, which is the other half of this).
+               The card comes out of the pile the event names, and out of the slot this board
+               invented for it - or, when the source pile does not hold it any more, the
+               invention itself is the copy that comes back. **That second half is the one
+               that matters for a card played out of a window**: the acting board moved it
+               into play the moment the entry was taken, so the pile the owner's event names
+               no longer holds it, and giving up here threw the owner's slot id away while
+               keeping this board's invention - see `removeCardInPlay`, and `optimisticMove`
+               in oppAction.js for the other half of this seam.
             */
-            for (const s of [ ...bench.get() ]) {
-               if (s.id !== slotId && s.pokemon.get().some((c) => c._id === card._id)) bench.remove(s)
-            }
+            const invented = removeCardInPlay(cardId, slotId)
+            const card = removeCard(cardId, pile) || invented
+            if (!card) continue
             bench.add(slot(card, slotId))
          }
       },
@@ -273,15 +313,18 @@ export function createOpponent () {
          bench.add(s)
       },
       cardPromoted: ({ cardId, slotId, from }) => {
-         const card = removeCard(cardId, getPile(from))
+         /* the same two places the Bench handler looks - see `removeCardInPlay` */
+         const invented = removeCardInPlay(cardId, slotId)
+         const card = removeCard(cardId, getPile(from)) || invented
          if (!card) return
-         /* the same stand-in the Bench handler removes, in the Active spot */
-         for (const s of [ ...bench.get() ]) {
-            if (s.pokemon.get().some((c) => c._id === card._id)) bench.remove(s)
-         }
+         /*
+            The outgoing Active goes to the Bench, which is what the owner's own `toActive`
+            does. The Pokemon this event replaces is not it: a stand-in for this very card is
+            already gone (`removeCardInPlay`), so whatever `active` holds now is the owner's
+            own previous Active.
+         */
          const previous = active.get()
-         if (previous && previous.id !== slotId && previous.pokemon.get().some((c) => c._id === card._id)) active.set(null)
-         else if (previous) bench.add(previous)
+         if (previous) bench.add(previous)
          active.set(slot(card, slotId))
       },
       slotPromoted: ({ slotId }) => {
