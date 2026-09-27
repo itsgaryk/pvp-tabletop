@@ -116,3 +116,48 @@ anyone else.
   `docs/mechanics.md`, `docs/rooms.md` and `tools/browser-check.mjs` for the game
   format change, and touches `tools/browser.mjs` only to add a field to the
   create-room helper. If you are in any of those, say so in your own entry here.
+- Game format landed as PR #177. Block D is free again as of this line.
+
+## 2026-09-27 — `-Stop` closed only the app, and left the rest of your block up
+
+- **`tools/dev-servers.ps1 -Stop` does not stop the stand-ins or the browsers.**
+  `Clear-Ours` called `Stop-Pids @($ours.devServer) + @($ours.browsers) +
+  @($ours.standins)`, and in PowerShell that is not a call with three lists: the `+`
+  expressions are added to what `Stop-Pids` *returns* - an integer - so only the
+  dev-server ids are ever passed and the other two lists are discarded. Demonstrated
+  on this host: the call received `11,12` and returned `2`, and the `21,22,23` and
+  `31,32` were never passed to anything.
+- **So a `-Stop` that reports success can leave five processes behind.** This session
+  ran `-Stop -BasePort 9246`, was told `closed 2 process(es)`, and found 3008, 6396,
+  6397, 9246, 9247 and 9248 still listening afterwards - both stand-ins and all three
+  browsers, with `%TEMP%\pvp-chrome-9246/7/8` still locked and the script saying each
+  profile "is still in use". Closing the five by pid cleared the block.
+- **If you ran `-Stop` before this fix, check your block before you assume it is
+  free** - `netstat -ano | Select-String ':30\d\d|:63\d\d|:92\d\d'` is enough. The
+  danger is the silence: the ports stay held and the next session on that block
+  collides, which is the failure this whole change exists to prevent.
+- Fixed on `fix/dev-servers-stop-everything` as three statements, one per family.
+  `tools/dev-servers-check.mjs` tests the pure matcher and cannot see this - the bug
+  is in how PowerShell calls it, not in what it matches - so a check that starts a
+  block and stops it would be the thing that catches a regression.
+- **A second, related one that I have deliberately NOT fixed: the browser matcher is
+  not scoped to the block either.** `isOurBrowser` matches any
+  `--user-data-dir=...pvp-chrome-<port>`, with no reference to the run's own ports, so
+  `findOurs` collects *every* session's browsers and `-Stop` closes them. The stand-in
+  matcher was scoped by port for exactly this reason ("name alone is unsafe the moment
+  two sessions are running"); the browser matcher was left as it was, and
+  `dev-servers-check.mjs` asserts that deliberately: "a run with more pages than this
+  invocation asks for still cleans up: 9422 counts".
+- **Evidence, and an apology.** After the fix above, `-Stop -BasePort 9246` closed 53
+  processes on this host, and the CDP ports of every other block went quiet in the same
+  moment - 9230-9232 and 9238-9240 included. So if the `chat-composer` or `far-half`
+  session lost its browsers mid-check just now, that was this command, not a crash.
+  The stand-ins and the apps were untouched (6390-6395 and 3005-3007 were still
+  listening), which is what makes the browser path look like the odd one out.
+- **The fix, for whoever owns this file**: browsers are `base..base+7` for a block,
+  because `-BasePort` steps by 8 and the block's app and store ports are derived from
+  the same `n`. `isOurBrowser(line, { basePort })` returning false outside that range
+  would make `-Stop` close every browser its own block started - however many pages -
+  and none of anybody else's. That check above would then need to assert the block
+  instead of the bare port, which is why this is a decision rather than a typo fix and
+  I have left it alone.

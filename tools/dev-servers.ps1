@@ -210,7 +210,24 @@ function Clear-Ours {
 
    if ($ours) {
       Write-Host 'the app (vite), the browsers this script started, and the stand-ins'
-      $total += Stop-Pids @($ours.devServer) + @($ours.browsers) + @($ours.standins)
+      <#
+         One call per family, and *not* one call with the three lists added together.
+
+         `Stop-Pids @($a) + @($b) + @($c)` is not a call with three arguments: the
+         `+` expressions are added to what `Stop-Pids` *returns* - an integer - so only
+         the first list is ever passed and the other two are discarded. That is not a
+         crash and it is not visible in the output: -Stop reported "closed 2
+         process(es)", which was the app, and left both stand-ins and all three
+         browsers running with their ports held and their profile directories locked.
+         The silence is the whole danger - the next session's block collides with
+         processes this command said it had closed.
+
+         Three statements cannot be misread that way, and each names the family it
+         closes.
+      #>
+      $total += Stop-Pids @($ours.devServer)
+      $total += Stop-Pids @($ours.browsers)
+      $total += Stop-Pids @($ours.standins)
    } else {
       # the matcher is unreachable - no node, no module, or a command line we cannot
       # read - so say so, and fall back to ports, which may find nothing at all
