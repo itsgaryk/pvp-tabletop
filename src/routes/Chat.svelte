@@ -8,7 +8,10 @@
    /*
       Two streams share this window: the game log (what happened on the board)
       and chat (what the players and spectators said). Only the chat stream can
-      be written to, so the box and button are locked while the log is showing.
+      be written to, so the message box belongs to the Chat tab and is not on the
+      window at all while the log is showing - writing needs the tab that reads
+      it, and a box sitting there greyed out is a control that cannot be used and
+      a rule to read instead of a place to type.
 
       In solo there is nobody to talk to, so the window shows the log alone: no
       tabs and no message box.
@@ -18,7 +21,6 @@
    $: entries = $solo
       ? $chat.filter((entry) => entry.type !== 'chat')
       : $chat.filter((entry) => (tab === 'chat') === (entry.type === 'chat'))
-   $: locked = tab === 'game'
 
    /*
       A message that arrives while the log is showing has nowhere to appear, so
@@ -59,7 +61,7 @@
    }
 
    function sendMessage () {
-      if (locked || !message) return
+      if (!message) return
       publishToChat(message, 'chat')
       message = ''
    }
@@ -104,19 +106,23 @@
                >{entry.message}</span>
          </p>
       {/each}
-   </div>
 
-   {#if !$solo}
-      <form class="flex" on:submit|preventDefault={sendMessage}>
-         <input
-            class="chat-input" type="text" name="message"
-            disabled={locked}
-            placeholder={locked ? 'Switch to Chat to send a message' : ''}
-            on:keydown|stopPropagation bind:value={message}
-            autocomplete="off">
-         <button class="chat-button" disabled={locked}>Send</button>
-      </form>
-   {/if}
+      <!--
+         The message box is the Chat tab's, at the bottom of the window and only
+         on the window while that tab is showing: it is part of the conversation,
+         so it leaves with it rather than sitting under the game log.
+      -->
+      {#if !$solo && tab === 'chat'}
+         <form class="composer" on:submit|preventDefault={sendMessage}>
+            <input
+               class="chat-input" type="text" name="message"
+               placeholder="Type a message"
+               on:keydown|stopPropagation bind:value={message}
+               autocomplete="off">
+            <button class="chat-button">Send</button>
+         </form>
+      {/if}
+   </div>
 
 </div>
 
@@ -148,16 +154,23 @@
    }
 
    .chat {
-      @apply flex-1 p-2 border border-dark-50 rounded-md overflow-y-scroll bg-[var(--input-color)];
+      @apply flex-1 flex flex-col p-2 border border-dark-50 rounded-md overflow-y-scroll bg-[var(--input-color)];
+   }
+
+   /*
+      The message box lives inside the chat window, down at the bottom of it:
+      `margin-top: auto` puts it there however few lines the conversation has, so
+      the window does not change shape as messages arrive. It scrolls with the
+      lines rather than floating over them, which is what makes it one window
+      rather than a box under a list - and it is the Chat tab's alone (see the
+      markup), so the Game tab has no greyed-out control to read.
+   */
+   .composer {
+      @apply flex mt-auto pt-2;
    }
 
    .chat-input {
       @apply flex-1 p-2 border border-dark-50 border-r-0 rounded-l-md outline-none;
-   }
-
-   .chat-input:disabled,
-   .chat-button:disabled {
-      @apply opacity-50 cursor-not-allowed;
    }
 
    .chat-button {

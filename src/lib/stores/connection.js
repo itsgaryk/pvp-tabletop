@@ -54,8 +54,14 @@ socket.on('disconnect', () => {
 
 /*
    Ten minutes without anything happening on this board: the relay is being
-   checked for lazily, and the player is told, because news can now take up to
-   half a minute to arrive. Any click or key puts it straight back.
+   checked for lazily, and news can now take up to half a minute to arrive. Any
+   click or key puts it straight back.
+
+   It is reported rather than shown: the panel used to carry a line about it,
+   and that line is gone - the relay asks the room whether anybody is still
+   playing on the same clock, and a banner saying the same thing beside that
+   dialog was one thing too many. The state is still what the diagnostics panel
+   reads to say whether the beat has really slowed down.
 */
 export let idle = writable(false)
 

@@ -86,3 +86,21 @@ anyone else.
   app and all three browsers from inside my session. `parallel-work.md` says the stack
   cannot start here; with an approval it can, which is worth knowing before asking
   somebody to run it by hand.
+## 2026-09-27 — feat/chat-composer (session B, block 9230)
+
+- **`tools/browser-check.mjs` is contested and I have backed off it.** The `panel`
+  section was edited by this session to read the chat composer on the Game tab, on the
+  Chat tab and in a spectator's page — but `origin/fix/panel-check-answers-idle`
+  (commit 7548902, unmerged) is writing the same section for the same problem, so this
+  session's test edits are on `feat/chat-composer` and that branch should land first.
+  Whoever merges second resolves the section, do not paper over it.
+- **The root checkout is not a safe place to leave work.** It was switched to
+  `archive/far-half-pre-rebase` by another session while this session's edits were
+  uncommitted in it. The edits survived only because that switch left unrelated modified
+  files in place. Everything for this task now lives in `.worktrees/chat-composer` on
+  `feat/chat-composer`; the copies that were left in the root checkout have been restored
+  there so they cannot be committed under somebody else's branch.
+- This session took block **9230** (app 3006, store 6392/6393, browsers 9230-9232) and
+  ran `powershell -File tools\dev-servers.ps1 -BasePort 9230` from its own worktree.
+  Nothing on block 9222 or 9238 was touched; `docs/parallel-work.md` is right that a
+  bare `npm run dev` would have taken 3005, which is why the script was used.

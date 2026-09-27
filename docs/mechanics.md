@@ -829,9 +829,10 @@ was ([rooms.md](rooms.md)):
   still playing. Either player can answer, and one click takes it off both screens.
   Activity means events, not presence: two players sitting on a board are the case
   worth asking about. A spectator watches the countdown and cannot answer it.
-- **A board that has been idle for ten minutes drops to a slow poll** and says so,
-  with a *Reconnect* button. It is not a game rule: the board still works, and any
-  input or news from the other side puts it back on the normal beat.
+- **A board that has been idle for ten minutes drops to a slow poll**. It is not a
+  game rule: the board still works, and any input or news from the other side puts
+  it back on the normal beat. It is not announced on the panel — the idle prompt is
+  the room's own question, asked on the same clock.
 - When a room closes, **the board is emptied rather than reset** — a player who has
   walked away from a game should not still be holding that game's deck on the board.
   The log goes with it and the table clock goes back to 50:00.

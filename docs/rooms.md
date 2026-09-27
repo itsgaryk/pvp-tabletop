@@ -16,9 +16,11 @@ That is the same trust model as the room code itself.
 
 After ten minutes with nothing happening — no action of your own, no news from
 the other side, no click or key — the board drops to a lazy check (every 30s
-instead of every 2s) and says so on screen, with a **Reconnect** button. Any
-input, or a message from the other side, puts it straight back on the normal
-beat, so a board the opponent is playing on is never slow.
+instead of every 2s). Any input, or a message from the other side, puts it
+straight back on the normal beat, so a board the opponent is playing on is never
+slow. It is not announced on the panel: the relay asks the room whether anybody
+is still playing on the same clock (see the idle prompt below), so a line saying
+the board had gone quiet sat beside that dialog saying the same thing twice.
 
 ## Leaving, and what closes a room
 
