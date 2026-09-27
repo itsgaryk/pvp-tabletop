@@ -38,6 +38,14 @@ export const MAX_EVENTS = 400 // events kept per room
 import { RELAY_HOST_WAIT_MS } from './timing.js'
 
 /*
+   The format a room is played in. It is stamped into the room's metadata when the
+   room is made and never changes, so it is a room-level fact like the host window
+   rather than an event in the room's log - and both players plus every watcher
+   read it back out of the same reply that seats them.
+*/
+import { normalizeFormat } from '$lib/util/format.js'
+
+/*
    How long the note of why a room closed outlives the room itself. Long enough
    for every member's in-flight poll to come back and find it, short enough that
    a closed room leaves nothing meaningful behind.
@@ -493,7 +501,7 @@ export function normalizeRoomId (id) {
    Create a room. SET NX guards against the (unlikely) id collision, so two
    simultaneous creates can never adopt each other's room.
 */
-export async function createRoom (name = null) {
+export async function createRoom (name = null, format = null) {
    const store = getStore()
 
    for (let attempt = 0; attempt < 5; attempt++) {
@@ -521,6 +529,15 @@ export async function createRoom (name = null) {
             declared never started.
          */
          guestJoined: false,
+         /*
+            Which format the room is played in, from the creator's choice. It is
+            the room's rather than a player's: a joiner is told what it is rather
+            than asked, and it is what decides whether the board shows the
+            VSTAR / GX markers at all (see $lib/util/format.js). Unknown or
+            missing values are read as Standard rather than refused, so a client
+            that does not send one still gets a room.
+         */
+         format: normalizeFormat(format),
          epoch: roomEpoch(),
          /*
             The table's clock, until somebody sets one: no anchor yet, so a poll
@@ -632,6 +649,16 @@ export const spectatorsOf = (members) => (members || []).filter((m) => m.role ==
    game (and its keys) until the 6h TTL notices.
 */
 export const roomIsAlive = (members) => playersOf(members).length > 0
+
+/*
+   The format a room is played in, read off its metadata.
+
+   A room made before formats existed carries no `format` field, and the metadata
+   is a value from the store rather than something this process built - so it is
+   read through the same normalizer the client uses, and a room whose format
+   cannot be read is a room played as Standard rather than a reply that throws.
+*/
+export const formatOf = (room) => normalizeFormat(room?.format)
 
 export async function roomSummary (roomId) {
    const room = await getRoom(roomId)

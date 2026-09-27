@@ -5,6 +5,7 @@
    import { defaultOpponent } from '$lib/stores/opponent.js'
    import { logPrizeLook } from '$lib/stores/logger.js'
    import { OPPONENT, soloMoveCard, soloCardToPlay, soloCardAttach, soloCardToStadium } from '$lib/stores/solo.js'
+   import { lostZoneShown } from '$lib/stores/zones.js'
 
    const { openDetails } = getContext('boardActions')
 
@@ -83,7 +84,8 @@
          <ContextMenuOption click={() => move(deck, 'Put on top of their deck')} text="To Top of Deck" />
          <ContextMenuOption click={() => move(deck, 'Put on the bottom of their deck', { bottom: true })} text="To Bottom of Deck" />
       {/if}
-      {#if pile !== lz}
+      <!-- offered where the half it belongs to has the zone (see $lib/stores/zones.js) -->
+      {#if $lostZoneShown && pile !== lz}
          <ContextMenuOption click={() => move(lz, 'Sent to the Lost Zone')} text="To Lost Zone" />
       {/if}
       {#if pile !== prizes}

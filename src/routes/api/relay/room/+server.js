@@ -4,6 +4,7 @@ import {
    clearRejoinDeadline,
    closeRoom,
    createRoom,
+   formatOf,
    getRoom,
    getStore,
    isPlayer,
@@ -61,12 +62,19 @@ export async function POST ({ request }) {
       const action = body?.action
 
       if (action === 'create') {
-         const { roomId, memberId, role } = await createRoom(body?.name)
+         const { roomId, memberId, role } = await createRoom(body?.name, body?.format)
          const room = await getRoom(roomId)
          return json({
             roomId,
             memberId,
             role,
+            /*
+               The format the room will be played in, read back off the room it
+               was just stamped into. The creator picked it in the prompt, so here
+               it is only a confirmation - but it is the same field a joiner learns
+               it from, so both ends of a room are told the same way.
+            */
+            format: formatOf(room),
             players: seats(room),
             seq: 0,
             events: [],
@@ -133,6 +141,19 @@ export async function POST ({ request }) {
             memberId,
             players,
             role,
+            /*
+               The format the room is played in, which belongs to the room rather
+               than to whoever is arriving: a joiner and a watcher are told which
+               one it is rather than asked. It rides here, with the rest of the
+               room, because it decides which zones the board has - so a client
+               that only learned it later would draw the wrong board first and
+               correct itself.
+
+               This is the *only* way a second player learns it: the creator's
+               choice is not in the room's event log, because nothing about the
+               room happened when it was made.
+            */
+            format: formatOf(room),
             seq: room.events.length ? room.events[room.events.length - 1].seq : 0,
             events: room.events,
             /* the relay's clock, so a client can age the events it just replayed */

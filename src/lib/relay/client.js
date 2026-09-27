@@ -638,8 +638,14 @@ export class HttpSocket {
 
    /* ------------------------------------------------------------------ rooms -- */
 
-   async createRoom (name = null) {
-      return this.room('create', { name })
+   /*
+      The format is the creator's choice and belongs to the room from the moment
+      it exists, so it is part of the create call rather than an event sent after
+      it: a joiner reads it off the room rather than waiting for the creator to say
+      what it is (see `room` below).
+   */
+   async createRoom (name = null, format = null) {
+      return this.room('create', { name, format })
    }
 
    async joinRoom (roomId, name = null) {
@@ -820,6 +826,16 @@ export class HttpSocket {
 
       /* who holds the two playing seats - a spectator seats them on screen */
       this.deliver('seated', { players: this.players })
+
+      /*
+         Which format this room is played in. It belongs to the room rather than to
+         the reply that made it, so it rides with the room - the same shape `seated`
+         and the clock's snapshot take - and both players plus every watcher read
+         the one answer off the room they arrived in. It is what decides which
+         zones the board has, so it has to be known before the board is drawn
+         rather than arriving as an event in the room's log.
+      */
+      this.deliver('roomFormat', { format: res.format })
 
       /*
          What the table's clock reads, before the room's events are replayed: a

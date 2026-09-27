@@ -2,12 +2,13 @@ import { get, post } from '$lib/util/fetch-web.js'
 import { board, STADIUM_LIMIT } from './custom/board.js'
 import { pile, slot } from './custom/cards.js'
 import { writable } from './custom/writable.js'
-import { share, react, publishLog, spectating, socket, onBoardCleanup, chat } from './connection.js'
+import { share, react, publishLog, spectating, socket, onBoardCleanup, chat, roomFormat } from './connection.js'
 import { changeTimer, fromRelay, holdSync, resetTimer, syncTimer, timer } from './timer.js'
 import { fixOld } from './oldCards.js'
 import { s } from '$lib/util/strings.js'
 import { statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
 import { normalizeMarkerUsed } from '$lib/util/markers.js'
+import { markerForFormat } from '$lib/util/format.js'
 import { registerOwnDeck, registerPiles, registerSelection } from './reveal.js'
 import { logStatus, logStatusCleared } from './logger.js'
 import {
@@ -42,10 +43,19 @@ export const {
    Reset is used by the UI (Setup / Reset in Controls), so it is guarded like
    the rest of the board actions. The relay is the real authority: it refuses
    anything a spectator tries to send.
+
+   The room's format is stamped back on afterwards, because a board reset puts the
+   marker back to 'none' - which is what a new game wants and what a room does not:
+   in a room the format is the room's, so Setup must not take the VSTAR / GX marks
+   off both halves, and a player who pressed it would otherwise be left on a board
+   the room's format no longer matches. Solo is unaffected: there is no format to
+   re-apply, and its marker was already going back to off.
 */
 export function reset () {
    if (isSpectator()) return
-   return resetBoard()
+   const done = resetBoard()
+   adoptFormatMarker(roomFormat.get())
+   return done
 }
 
 /*
@@ -929,6 +939,41 @@ react('createdRoom', () => {
    resetTimer()
    pokemonHidden.set(false)
 })
+
+/*
+   The room's format decides this board's own VSTAR / GX marker.
+
+   Only Expanded puts any marks on a half. Standard and Gym Leader Challenge have
+   no Rule Box powers in their card pool between them - GX rotated out of Standard,
+   and Gym Leader Challenge allows no Pokemon with a Rule Box at all - so neither
+   has a power to track and both show the pair nowhere.
+
+   It is the room's answer rather than this player's, which is why the marker is no
+   longer among a room's Settings: the format is fixed when the room is made, both
+   halves show the same thing, and a spectator watches the two players' own marks.
+   Settings keeps that control for solo, where there is no room to take it from.
+
+   `setPowerMarker` is deliberately not what this calls. That function also clears
+   the marks' used state, which is right when a player picks a different token for
+   themselves and wrong here: a player joining an Expanded game already under way
+   would announce that the other player's VSTAR has not been used. Only the marker
+   travels, and only when this board is not already showing it.
+
+   It is a function rather than the body of the reaction because `reset` needs the
+   same thing: Setup puts the marker back to 'none', and in a room the format is
+   what decides it, so a board reset has to stamp it on again.
+*/
+function adoptFormatMarker (format) {
+   if (isSpectator()) return
+
+   const marker = markerForFormat(format)
+   if (marker === powerMarker.get()) return
+
+   powerMarker.set(marker)
+   share('powerMarker', { marker })
+}
+
+react('roomFormat', ({ format }) => adoptFormatMarker(format))
 
 /*
    Their clock: keep it. It is deliberately not passed on again - the relay logs

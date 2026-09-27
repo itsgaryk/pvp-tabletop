@@ -121,12 +121,17 @@
       - a transport that threw before it had a promise to catch - left the flag on
       and the whole menu dead, which is the same shape of dead end as a latched
       lobby status above.
+
+      A room is made in the format the prompt was left on. That choice belongs to
+      the room rather than to this player, which is why it is taken here and sent
+      once, with the create, rather than being held as a preference - see
+      `$lib/util/format.js`.
    */
-   async function create () {
+   async function create (format) {
       busy = true
       let res = null
       try {
-         res = await createRoom()
+         res = await createRoom(format)
       } finally {
          busy = false
       }
@@ -137,17 +142,17 @@
    }
 
    /*
-      All three of the menu's actions start by asking: who you are, and for two
-      of them which room. One prompt, and which button opened it is what decides
-      what happens to what comes back.
+      All three of the menu's actions start by asking: who you are, and for the
+      others which room and which format. One prompt, and which button opened it is
+      what decides what happens to what comes back.
    */
    function askForRoom (what) {
       prompt.ask(what)
    }
 
-   async function runRoomAction ({ name, roomId: id, what }) {
+   async function runRoomAction ({ name, roomId: id, what, format }) {
       roomId = id
-      if (what === 'create') return create()
+      if (what === 'create') return create(format)
       if (what === 'spectate') return spectate()
       return join()
    }

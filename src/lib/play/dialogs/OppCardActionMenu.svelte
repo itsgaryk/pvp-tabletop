@@ -7,6 +7,7 @@
    import { deck as oppDeck, active as oppActive } from '$lib/stores/opponent.js'
    import { cardSelection } from '$lib/stores/player.js'
    import { OPP_ACTIONS, opponentCardAction } from '$lib/stores/oppAction.js'
+   import { lostZoneShown } from '$lib/stores/zones.js'
 
    const { openDetails } = getContext('boardActions')
 
@@ -148,7 +149,10 @@
       <ContextMenuOption click={() => act(OPP_ACTIONS.DECK_TOP)} text="To Top of Deck" disabled={$spectating} />
       <ContextMenuOption click={() => act(OPP_ACTIONS.DECK_BOTTOM)} text="To Bottom of Deck" disabled={$spectating} />
 
-      <ContextMenuOption click={() => act(OPP_ACTIONS.LZ)} text="To Lost Zone" disabled={$spectating} />
+      <!-- the Lost Zone is the one destination a format can take off this menu -->
+      {#if $lostZoneShown}
+         <ContextMenuOption click={() => act(OPP_ACTIONS.LZ)} text="To Lost Zone" disabled={$spectating} />
+      {/if}
       <ContextMenuOption click={() => act(OPP_ACTIONS.PRIZES)} text="To Prizes" disabled={$spectating} />
 
       <!--

@@ -6,6 +6,7 @@
    import { pick, shuffle, pokemonHidden, handRevealed } from '$lib/stores/player.js'
    import { holdingCtrlOrCmd } from '$lib/util/ctrlcmd.js'
    import { isTyping } from '$lib/util/typing.js'
+   import { powerZoneShown, lostZoneShown } from '$lib/stores/zones.js'
    import { defaultOpponent, spectatorOpponents, spectatorFlipped, handRevealed as oppHandRevealed } from '$lib/stores/opponent.js'
    import { solo, onOpponentSelection, onOpponentHalf, soloSelectedTo, OPPONENT } from '$lib/stores/solo.js'
 import { isWindowPile } from '$lib/stores/reveal.js'
@@ -164,6 +165,7 @@ import { isWindowPile } from '$lib/stores/reveal.js'
    $: bottomUsed = $spectating
       ? bottomStore.powerMarkerUsed
       : (soloSwapped ? defaultOpponent.powerMarkerUsed : myPowerMarkerUsed)
+
    /*
       The name of each player's Pokemon Power zone, written in the band of the
       Stadium's cell that is that player's own while Settings -> Board zones is
@@ -206,6 +208,16 @@ import { isWindowPile } from '$lib/stores/reveal.js'
       { area: 'deck', text: 'Deck' },
       { area: 'hand', text: 'Hand' }
    ]
+
+   /*
+      The names the board draws, with a hidden zone's name going with it. The two
+      Power bands are not in this list - they are labelled inside the Stadium's
+      cell, where the same answer decides (see .stadium-area) - so the Lost Zone is
+      the only name this has to drop.
+   */
+   $: zoneLabelsShown = $lostZoneShown
+      ? zoneLabels
+      : zoneLabels.filter((label) => label.area !== 'lz' && label.area !== 'lz2')
 
    /* the active area holds one of these per player, so it is written twice */
    const activeLabel = 'Active'
@@ -421,7 +433,16 @@ import { isWindowPile } from '$lib/stores/reveal.js'
 
       else if (key === 'd') farSelected() ? soloSelectedTo('discard') : moveSelection(discard)
       else if (key === 'h') farSelected() ? soloSelectedTo('hand') : moveSelection(hand)
-      else if (key === 'l') farSelected() ? soloSelectedTo('lz') : moveSelection(lz)
+      else if (key === 'l') {
+         /*
+            L is the Lost Zone's shortcut, so it goes wherever the zone does: a
+            format without one has no key for it, the same way its menu entry is
+            not offered. Without the guard the key would be the one way left to
+            send a card into a zone nothing draws.
+         */
+         if (!$lostZoneShown) return
+         farSelected() ? soloSelectedTo('lz') : moveSelection(lz)
+      }
       else if (key === 'p') farSelected() ? soloSelectedTo('prizes') : moveSelection(prizes)
       else if (key === 'b') farSelected() ? soloSelectedTo('bench') : toBench()
       else if (key === 'a' && !holdingCtrlOrCmd(e)) farSelected() ? soloSelectedTo('active') : toActive()
@@ -593,7 +614,7 @@ import { isWindowPile } from '$lib/stores/reveal.js'
             (see zoneLabels).
          -->
          {#if $zoneBorders}
-            {#each zoneLabels as label (label.area)}
+            {#each zoneLabelsShown as label (label.area)}
                <div class="zone-label" style:grid-area={label.area}>{label.text}</div>
             {/each}
          {/if}
@@ -625,9 +646,19 @@ import { isWindowPile } from '$lib/stores/reveal.js'
             {#if soloSwapped}<Discard />{:else}<OppDiscard store={topStore} />{/if}
          </div>
 
-         <div class="lz2" class:flip={topFlipped} class:upright={topUpright}>
-            {#if soloSwapped}<LostZone />{:else}<OppLostZone store={topStore} />{/if}
-         </div>
+         <!--
+            The Lost Zone, which a Standard board does not have: the zone came in
+            with the Sword & Shield sets and rotated out of Standard with them, so
+            there is neither a zone to send a card to nor one to draw. Its name goes
+            with it (see zoneLabelsShown), and leaving the cell empty is what the
+            board's own corners already do - the grid's tracks do not move, so
+            hiding a zone takes nothing away from the ones beside it.
+         -->
+         {#if $lostZoneShown}
+            <div class="lz2" class:flip={topFlipped} class:upright={topUpright}>
+               {#if soloSwapped}<LostZone />{:else}<OppLostZone store={topStore} />{/if}
+            </div>
+         {/if}
 
          <div class="bench2" class:flip={topFlipped} class:upright={topUpright}>
             {#if soloSwapped}<Bench />{:else}<OppBench store={topStore} />{/if}
@@ -680,28 +711,44 @@ import { isWindowPile } from '$lib/stores/reveal.js'
             player's VSTAR / GX marker sits between their own bench and the
             Stadium, and the Stadium keeps the middle half it always had.
 
+            A format with no Rule Box powers to mark has no Power zones, and the
+            cell then holds the one band it has left: the Stadium takes the whole of
+            it rather than leaving a quarter of the board empty above and below it
+            (see `$powerZoneShown`, and .stadium-area.no-power below). A quarter-band of
+            nothing between a bench and the Stadium reads as a broken board, where
+            an empty cell in the grid's corner reads as the corner it is.
+
             The two Stadiums still share the one band, the player's own on top
             (see .stadium): a card dropped in the middle lands on the table being
             played rather than on the other half's, and flipping the board must
             not take the player's own out of reach.
          -->
-         <div class="stadium-area">
+         <div class="stadium-area" class:no-power={!$powerZoneShown}>
             <!--
-               Three names for the one cell - one per band - and they come first,
-               the way the board's own names come before the zones they name: a
-               caption belongs on the empty part of a zone, and a card or a token
-               in the middle of one covers its name rather than the other way
-               round.
+               A name per band, and they come first, the way the board's own names
+               come before the zones they name: a caption belongs on the empty part
+               of a zone, and a card or a token in the middle of one covers its name
+               rather than the other way round.
+
+               With the Power zones gone there is one band left, and the Stadium's
+               own name is the only one of the three that still names something
+               (see .stadium-area.no-power .power-label-mid).
             -->
             {#if $zoneBorders}
-               <div class="zone-label power-label power-label-top">{powerLabel}</div>
+               {#if $powerZoneShown}
+                  <div class="zone-label power-label power-label-top">{powerLabel}</div>
+               {/if}
                <div class="zone-label power-label power-label-mid">Stadium</div>
-               <div class="zone-label power-label power-label-bottom">{powerLabel}</div>
+               {#if $powerZoneShown}
+                  <div class="zone-label power-label power-label-bottom">{powerLabel}</div>
+               {/if}
             {/if}
 
-            <div class="power2">
-               <PowerZone marker={$topMarker} used={$topUsed} opposite={!$spectating} />
-            </div>
+            {#if $powerZoneShown}
+               <div class="power2">
+                  <PowerZone marker={$topMarker} used={$topUsed} opposite={!$spectating} />
+               </div>
+            {/if}
 
             <div class="stadium2" class:flip={topFlipped} class:upright={topUpright}>
                <OppStadium store={topStore} />
@@ -715,9 +762,11 @@ import { isWindowPile } from '$lib/stores/reveal.js'
             {/if}
             </div>
 
-            <div class="power">
-               <PowerZone marker={$bottomMarker} used={$bottomUsed} mine={!$spectating} onToggle={togglePowerMarkerUsed} />
-            </div>
+            {#if $powerZoneShown}
+               <div class="power">
+                  <PowerZone marker={$bottomMarker} used={$bottomUsed} mine={!$spectating} onToggle={togglePowerMarkerUsed} />
+               </div>
+            {/if}
          </div>
 
          <div class="active">
@@ -774,15 +823,18 @@ import { isWindowPile } from '$lib/stores/reveal.js'
             <div class="veil" class:applied={$pokemonHidden} style="grid-area: {area}"></div>
          {/each}
 
-         <div class="lz">
-            {#if $spectating}
-            <OppLostZone store={bottomStore} />
-         {:else if soloSwapped}
-            <OppLostZone store={topStore} />
-         {:else}
-            <LostZone />
+         <!-- the near half's Lost Zone, gone with the far one's in a Standard room -->
+         {#if $lostZoneShown}
+            <div class="lz">
+               {#if $spectating}
+               <OppLostZone store={bottomStore} />
+            {:else if soloSwapped}
+               <OppLostZone store={topStore} />
+            {:else}
+               <LostZone />
+            {/if}
+            </div>
          {/if}
-         </div>
 
          <div class="discard">
             {#if $spectating}
@@ -925,6 +977,25 @@ import { isWindowPile } from '$lib/stores/reveal.js'
       grid-column: 1;
    }
 
+   /*
+      A format with no Rule Box powers to mark: the cell has one band, not three,
+      and the Stadium is in it.
+
+      The rows are restated rather than left to fall where they may. `grid-row: 2`
+      is not "the middle of what there is" - it is the second track, so with the
+      Power tracks gone the Stadiums would open a new implicit row under an empty
+      first one and the cell would be half blank. Naming the one row is what makes
+      the cell the Stadium's.
+   */
+   .stadium-area.no-power {
+      grid-template-rows: minmax(0, 1fr);
+   }
+
+   .stadium-area.no-power > .stadium2,
+   .stadium-area.no-power > .stadium {
+      grid-row: 1;
+   }
+
    /* each band's name is centred in its own band, not in the cell */
    .power-label {
       grid-column: 1;
@@ -940,6 +1011,16 @@ import { isWindowPile } from '$lib/stores/reveal.js'
 
    .power-label-bottom {
       grid-row: 3;
+   }
+
+   /*
+      The one name left when the Power zones are gone. It names the band the
+      Stadium now fills, so it is centred in that band rather than in the middle of
+      three - which is where `grid-row: 2` would have left it, at the bottom of a
+      one-row cell.
+   */
+   .stadium-area.no-power .power-label-mid {
+      grid-row: 1;
    }
 
    /*

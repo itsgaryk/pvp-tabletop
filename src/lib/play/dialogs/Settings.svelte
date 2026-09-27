@@ -1,7 +1,7 @@
 <script>
    import { autoMulligan, zoneBorders } from '$lib/stores/settings.js'
    import { powerMarker, setPowerMarker } from '$lib/stores/player.js'
-   import { spectating } from '$lib/stores/connection.js'
+   import { solo } from '$lib/stores/solo.js'
    import Popup from './Popup.svelte'
    import Diagnostics from './Diagnostics.svelte'
 
@@ -15,7 +15,16 @@
    */
    let diagnostics
 
-   /* the marker shows on the player's own side of the board, and in the log */
+   /*
+      The marker shows on the player's own side of the board, and in the log.
+
+      It is solo's setting alone. In a room the format decides it, and does so for
+      both players and every watcher at once - a room made as Expanded puts both
+      marks on both halves, and Standard and Gym Leader Challenge put neither on
+      either, because neither has a Power zone to put them in (see
+      $lib/util/format.js). So there is nothing here to choose: a control that
+      could only disagree with the room is not a setting.
+   */
    const markers = [
       { value: 'none', label: 'Off' },
       { value: 'vstar', label: 'VStar' },
@@ -41,7 +50,9 @@
       One block per setting, each with the same shape: a heading, then the
       control. Every block carries a heading of its own - a checkbox with no title
       above it reads as a stray line rather than a setting - and the first and
-      last are rounded to close the panel.
+      last are rounded to close the panel. Which blocks there are can differ
+      between solo and a room, so the rounding is on the ones that come first and
+      last in both rather than on a count.
 
       The one line explaining what a setting does is only there where the control
       does not already say it. A checkbox that reads "Show borders around the
@@ -56,22 +67,21 @@
          </label>
       </div>
 
-      <div class="setting">
-         <div class="title">VSTAR / GX marker</div>
-         {#each markers as marker (marker.value)}
-            <label class="px-1 block">
-               <input
-                  type="radio" name="powerMarker" value={marker.value}
-                  checked={$powerMarker === marker.value}
-                  disabled={$spectating}
-                  on:change={() => setPowerMarker(marker.value)}>
-               {marker.label}
-            </label>
-         {/each}
-         {#if $spectating}
-            <p class="hint">A spectator does not show a marker of their own.</p>
-         {/if}
-      </div>
+      <!-- solo's own marker setting; a room's format is what decides it there -->
+      {#if $solo}
+         <div class="setting">
+            <div class="title">VSTAR / GX marker</div>
+            {#each markers as marker (marker.value)}
+               <label class="px-1 block">
+                  <input
+                     type="radio" name="powerMarker" value={marker.value}
+                     checked={$powerMarker === marker.value}
+                     on:change={() => setPowerMarker(marker.value)}>
+                  {marker.label}
+               </label>
+            {/each}
+         </div>
+      {/if}
 
       <div class="setting">
          <div class="title">Board zones</div>
@@ -122,11 +132,6 @@
    /* the heading every setting has, in the one style */
    .setting .title {
       @apply px-1 font-bold;
-   }
-
-   /* the one line under a control that says what it does */
-   .setting .hint {
-      @apply text-sm;
    }
 
    /*
