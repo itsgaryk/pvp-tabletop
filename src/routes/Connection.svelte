@@ -257,7 +257,7 @@
          diagnostics panel) still say when something is wrong.
       -->
       <div class="menu">
-         <img class="menu-logo" src="/logo.webp" alt="PVP Tabletop - Pokémon TCG multiplayer">
+         <img class="menu-logo" src="/logo.png" alt="PVP Tabletop - Pokémon TCG multiplayer">
 
          <div class="menu-actions">
             <!--
