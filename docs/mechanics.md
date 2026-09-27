@@ -585,8 +585,9 @@ It holds up to two cards *per player*, and the rules are these:
 
 **Nothing here is refused.** A play that would replace is a play that replaces, rather
 than a drop that quietly does nothing; the app answers a play with the rule instead of
-with a refusal. That behaviour is intended, and it is the one two-player interaction in
-the game that the app performs on its own.
+with a refusal. That behaviour is intended, and it is one of the few things the app does
+to one player's board because of what the other player did — the other being the damage
+and the status effect a player declares on their opponent's Active Pokémon.
 
 The client that performs it is not always the client that played the card: in a room the
 cards being cleared belong to the other player, so *their* client is the one that knows
