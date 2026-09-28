@@ -52,9 +52,12 @@ Two things about the change are worth stating, because both were asked for in as
 - **it is applied to the opponent's hand zone, and the player's own hand lost its entry.**
   A player no longer has a switch that shows their own hand: *my own hand should always be
   hidden unless the opponent uses "Reveal Hand" on my hand zone*.
-- **it needs no permission from the hand's owner.** It is unilateral, and the log is the
-  record: *when the player performs this action it should just happen and add to the game
-  log*. So there is no request, no *Allow*, and no answer — see *Who gets a window*.
+- **it asks the hand's owner first.** It used to be unilateral — *when the player performs this
+  action it should just happen and add to the game log* — and that is the half that changed: a
+  hand is the pile its owner is not shown, so turning it up is a thing done *to* them. The
+  owner is shown the consent dialog and the window opens only on a yes
+  ([mechanics.md](mechanics.md#consent-asking-the-other-player)). What did not change is the log
+  line and the zone: the line is still the record, and the hand still stays drawn as card backs.
 
 **And the hand zone stays drawn as card backs**, which was asked for after the first version of
 the window: *when "Reveal Hand" is selected the cards in the hand zone should remain as Hidden
@@ -444,9 +447,13 @@ Two more things are specific to this gesture:
 - **it is a Reveal in what it lets the reader do.** They may act on those cards, right up to
   playing them onto their owner's board — the same permission, the same request
   (`oppCardAction`), the same log line written by the owner's own move.
-- **and it is a Look in what it asks of the owner: nothing.** There is no request and no
-  answer. *When the player performs this action it should just happen and add to the game
-  log* — so the gesture is unilateral, and the log is the whole of the consent.
+- **and it asks the owner, which is where it stops being a Look.** A Look is asked about too,
+  and for the same reason — an id out of a pile its owner does not read is exactly what that
+  pile withholds — but a Reveal Hand asks about the *whole* of a hand rather than a count off
+  the top of a deck, and there is no count to put in the question. So the entry is the ask:
+  the owner is shown the consent dialog and the window opens only on a yes
+  ([mechanics.md](mechanics.md#consent-asking-the-other-player)). The log line is still the
+  record of what happened; it is no longer the whole of the consent.
 
 ### What the log says, and to whom
 

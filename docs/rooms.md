@@ -197,6 +197,10 @@ leaving the room: the settings menu's **New Game** entry. What that means is a r
 that has just been created, without the room being new: the same code, the same two
 seats, the same format, the same watchers, and a table nobody has touched yet.
 
+It is one kind of the app's general consent handshake, which is the same exchange that
+asks a player before their deck is read or their hand turned up
+([mechanics.md](mechanics.md#consent-asking-the-other-player)).
+
 It takes both players, and only one of them is asked:
 
 - **The click is the asker's consent.** They are the player who asked for it, so they

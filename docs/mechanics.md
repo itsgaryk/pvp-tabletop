@@ -782,13 +782,15 @@ log line is written by the button; the glow is what the log does not say.)
 ### Reveal, Look and Reveal Hand
 
 Three gestures let one player show cards to another, and they are one mechanism with
-three audiences ([reveal.md](reveal.md)):
+three audiences ([reveal.md](reveal.md)). **All three ask the cards' owner first**, because
+all three read a pile that owner is not shown — see [Consent](#consent-asking-the-other-player)
+below:
 
-| Gesture | Where it is | Who sees the cards | How it ends |
-| --- | --- | --- | --- |
-| **Reveal** | *Reveal Top X* on a deck of yours, or on theirs | the whole table: the revealer's own window, everyone else by a log line that names the cards | *Close & Shuffle* (shuffles that deck), or *Close* / `Esc` with no shuffle |
-| **Look** | *View Top X* on the **opponent's** deck | **a window on your board and nobody else's.** The room's watchers are told by a log line that names the cards; the deck's owner is told only that a look happened | *Close & Shuffle* — one ending, because a card that says "look at the top X" never puts them back untouched |
-| **Reveal Hand** | *Reveal Hand* on the **opponent's** hand | you, and the room's watchers — this is the one of the three whose window opens on a watcher's board; the hand's owner is told by *Revealed opponent's hand* | *Close* only — a hand has no order to shuffle |
+| Gesture | Where it is | Who is asked | Who sees the cards | How it ends |
+| --- | --- | --- | --- | --- |
+| **Reveal** | *Reveal Top X* on a deck of yours, or on theirs | the **other player**, when the deck is theirs; nobody when it is your own | the whole table: the revealer's own window, everyone else by a log line that names the cards | *Close & Shuffle* (shuffles that deck), or *Close* / `Esc` with no shuffle |
+| **Look** | *View Top X* on the **opponent's** deck | the deck's owner | **a window on your board and nobody else's.** The room's watchers are told by a log line that names the cards; the deck's owner is told only that a look happened | *Close & Shuffle* — one ending, because a card that says "look at the top X" never puts them back untouched |
+| **Reveal Hand** | *Reveal Hand* on the **opponent's** hand | the hand's owner | you, and the room's watchers — this is the one of the three whose window opens on a watcher's board; the hand's owner is told by *Revealed opponent's hand* | *Close* only — a hand has no order to shuffle |
 
 **A window is the board of the player who took the gesture, and the table is told by
 the game log.** Reveal and Look are exactly that; Reveal Hand adds the room's watchers
@@ -805,8 +807,43 @@ Four things are worth knowing about all three:
   hand; it does not draw their hand face up in its zone. (The old *Hand Revealed*
   toggle, whose owner showed their *own* hand, is gone: revealing a hand is now an act
   on the hand it is about.)
-- **A Reveal Hand needs no permission.** It happens when it is clicked; there is no
-  *Allow* prompt. *Reveal* and *Look* are equally unilateral.
+- **Each gesture asks, every time.** There is no remembered *Allow* and nothing that
+  expires: a player searching their deck may look several times in a turn, and each of
+  those is a separate reading of somebody else's pile. A *No* is per gesture for the
+  same reason. What a player is told when they are asked, and what a *No* does, is
+  [Consent](#consent-asking-the-other-player).
+
+## Consent: asking the other player
+
+Some gestures are done *to* the other player rather than by a player alone, and they cannot
+happen until that player agrees. One exchange covers all of them: the asker's click is their
+own consent, so there is one question and one answer, and the answer is the other player's.
+
+| The gesture | Who is asked | What a *Yes* does |
+| --- | --- | --- |
+| **New Game** (the settings menu) | the other player | the room goes back to how it was when it was created ([rooms.md](rooms.md#starting-again-inside-the-same-room)) |
+| **Look** — *View Top X* on their deck | the deck's owner | the look happens, and they are told only *that* it happened |
+| **Reveal** — *Reveal Top X*, or a reveal of their cards | the cards' owner | the cards are shown to the table, and the log names them |
+| **Reveal Hand** — on their hand | the hand's owner | the hand is shown to the player who asked and to the room's watchers |
+
+Three things about it, and the first is the whole shape:
+
+- **The two screens are not the same question.** The player who asked is told that the table
+  is waiting and is given **nothing to press** — their click was their ask. The player being
+  asked gets the only Yes/No. A spectator watching gets neither: the cards a reveal or a look
+  shows are the players', and a watcher is shown what the room was shown rather than deciding
+  it.
+- **A *No* changes nothing and is reported back.** The asker is told, on their own screen,
+  that the other player did not allow it. A request that quietly vanished would leave them
+  wondering whether it was seen at all.
+- **Nothing about it is enforced by the relay**, and that is deliberate: what a consent
+  *permits* is a board state, a window or a log line, and each of those belongs to the client
+  that would act on it. The relay does what it does for every other action — it refuses a
+  spectator, and it writes the two events into the room, so a client that reloads mid-ask
+  replays into the question that is still outstanding.
+
+**A gesture of your own is not asked about.** Revealing your own deck is yours to do;
+`revealTop` makes that distinction once, off the same fact it derives the deck's owner from.
 
 ### The permission to act on their card
 
