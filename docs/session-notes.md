@@ -161,3 +161,42 @@ anyone else.
   and none of anybody else's. That check above would then need to assert the block
   instead of the bare port, which is why this is a decision rather than a typo fix and
   I have left it alone.
+
+## 2026-09-28 — feat/new-game → fix/new-game-needs-two-players
+
+- **`main` now has the New Game handshake** (PR #185, squash `af13a7c`): one player asks
+  from the settings menu, the *other* player gets the only Yes/No, and a yes clears both
+  boards, the log and the clock and puts the Import Deck window back up on both. It is
+  `src/lib/stores/newGame.js`, two allow-listed events (`newGameAsked`, `newGameVote`)
+  and `dialogs/NewGamePrompt.svelte`. Merged, and verified live on production with
+  `tools/deployed.mjs`.
+- **`fix/new-game-needs-two-players` is paused mid-change**, soon after this entry was
+  written. It makes the New Game entry **greyed out while there is only one player in the
+  room**, because it takes two to agree. Where it got to: the store's `opponentHere` and
+  `canStartNewGame`, the menu's disabled control with its "waiting for a second player"
+  line, the reactivity (the block is read from the stores in `$:` statements, *not* by a
+  function call in the template - a call is evaluated once, when the panel is built, and
+  the entry went missing from a menu opened inside a room because the panel had been
+  constructed in the lobby), and a first cut of the `newgame` checks. Verified by hand
+  with `tools/probe-new-game-menu.mjs`: a room of one shows the entry greyed out, with
+  `cursor: not-allowed`, and pressing it opens nothing.
+- **Not working, and it is the check rather than the feature**: the browser check's
+  `newgame` section reports the entry as missing. Its `menuEntry` reader presses the cog
+  a second time *before* reading, so on the runs where the menu was already open it read
+  a panel it had just closed. Rebuild that section around one open menu per read before
+  believing a red run.
+- **Two things that are `main`'s rather than this branch's**, both found while testing:
+  - **Reloading a page in a room drops that player back to the lobby.** `pvp_session` is
+    gone after the load, so `resumeSession` has nothing to resume, which is the opposite
+    of what `docs/rooms.md` promises under *Reconnecting, and idle boards*. Open a room,
+    reload the page, watch the lobby come back - no edit needed to reproduce. It is what
+    a player would report as *"it made me leave the game room"*.
+  - **`tools/dev-servers.ps1 -Stop -BasePort 9222` closed 48 processes**, and other
+    blocks went quiet with it: afterwards 9230-9240 had no browsers and 3007-3009 no app
+    (the stand-ins on 6390/6391 and 6398/6399 survived). The note above predicts exactly
+    this, and the browser match is still not bounded by the block. **If your session lost
+    its browsers around 00:35 or 01:2x today, that was this command, not a crash.**
+- **This session's ports**: the `new-game` worktree held 9254-9256 with the app on 3009
+  and stand-ins on 6398/6399 (that work is merged, so the worktree can be removed); this
+  branch used session A's block, 9222-9224 with the app on 3005/3006 and 6390/6391.
+

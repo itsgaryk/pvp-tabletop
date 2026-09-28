@@ -1,5 +1,5 @@
 import { writable } from './custom/writable.js'
-import { share, react, spectating, solo, room, myId } from './connection.js'
+import { share, react, spectating, solo, room, myId, seatedPlayers } from './connection.js'
 import { playerName } from './settings.js'
 import { showMessage } from './message.js'
 
@@ -17,6 +17,10 @@ import { showMessage } from './message.js'
    **A *No* changes nothing and is reported back.** The asker is told, on their own
    screen, that the other player did not want to start a new game - a request that
    quietly vanished would leave them wondering whether it was seen at all.
+
+   **It also takes two players, and the option says so before it is taken.** A room with
+   one player in it has nobody to ask, so the entry is greyed out rather than raising a
+   question that can only go unanswered (see `canStartNewGame`).
 
    Nothing about the handshake is enforced by the relay, and that is deliberate rather
    than an omission. The board a new game clears is each player's **own** - its cards,
@@ -50,18 +54,79 @@ export const myNewGameVote = writable(null)
 export const newGameCount = writable(0)
 
 /*
-   Whether this player has a game to start again.
+   Whether the other playing seat is **occupied and here**.
 
-   A spectator has no board of their own to clear, so the option is not theirs to take -
-   and neither is it solo's, where there is nobody to ask. The relay is the authority
-   either way: it refuses a non-chat event from a spectator, so this is the UI's half of a
-   rule that is enforced on the other side too.
+   It is the relay's own answer, arriving on every poll, and two things about it matter:
 
-   It is asked by the menu so the menu raises a question rather than holding an opinion,
-   the same way the marker setting asks `$solo`.
+      the seat        `seatedPlayers` is the relay's list of seat-holders, so one entry is
+                      a room nobody has sat down opposite in yet. A seat that is *held*
+                      for somebody who vanished is still in it, which is why this is not
+                      the whole answer
+      the presence    `opponentPresent` is whether that player's own poll has refreshed
+                      them recently, and a held seat is deliberately not present (see
+                      `opponentState` in the relay's poll). Somebody who closed their
+                      laptop has not agreed to anything
+
+   So both are asked, and the answer is no unless there is a second seat *and* somebody
+   in it.
+*/
+export const opponentHere = writable(false)
+
+react('opponentPresent', ({ present }) => opponentHere.set(Boolean(present)))
+react('seated', ({ players }) => {
+   /*
+      The seats, not the presence: a room whose second player has just sat down has two
+      seats and, for the second or so before their first poll lands, no presence. The
+      click below asks for both, so being early here only means the option is greyed out
+      for a moment - where clearing on a seat alone would enable it for a player who
+      walked away.
+   */
+   if ((players || []).filter(Boolean).length < 2) opponentHere.set(false)
+})
+react('leftRoom', () => opponentHere.set(false))
+
+/*
+   Whether this player is **in a room with a board of their own** - which is what makes the
+   New Game entry part of the menu at all.
+
+   It is a different question from `canStartNewGame`, and the difference is the whole of
+   why there are two: this one decides whether the entry is *there*, and the other decides
+   whether it can be pressed. A spectator has no board of their own to clear and no
+   question to put to anybody, so the entry is not theirs and is not drawn - while a player
+   sitting alone in a room has the entry, greyed out, because there is somebody missing
+   rather than something the game cannot do.
+
+   The menu does not call this: it reads the stores itself in a `$:` statement, because a
+   plain function call in a template is evaluated once when the panel is built (see
+   Settings.svelte). This is the store's own statement of the rule, and what `askNewGame`
+   leans on.
+*/
+export function inRoom () {
+   return Boolean(room.get()) && !solo.get() && !spectating.get()
+}
+
+/*
+   Whether this player can start a game again.
+
+   Three things have to be true, and each is a different reason it can be no:
+
+      a room         there is no game outside one, and solo is not a room at all - there
+                     is nobody to agree with
+      a playing seat a spectator has no board of their own to clear, and the relay refuses
+                     a non-chat event from one, so this is the UI's half of a rule that is
+                     enforced on the other side too
+      somebody to ask `opponentHere`: the other seat is taken and its player is present. A
+                     room with one player in it has nobody to put the question to, which is
+                     why the menu entry is greyed out rather than raising a prompt that can
+                     only go unanswered
+
+   It is asked by the menu so the menu raises a question rather than holding an opinion, the
+   same way the marker setting asks `$solo`.
 */
 export function canStartNewGame () {
-   return Boolean(room.get()) && !solo.get() && !spectating.get()
+   if (!inRoom()) return false
+   if ((seatedPlayers.get() || []).filter(Boolean).length < 2) return false
+   return opponentHere.get()
 }
 
 /*

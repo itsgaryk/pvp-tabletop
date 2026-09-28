@@ -2,7 +2,8 @@
    import { zoneBorders } from '$lib/stores/settings.js'
    import { powerMarker, setPowerMarker } from '$lib/stores/player.js'
    import { solo } from '$lib/stores/solo.js'
-   import { askNewGame, canStartNewGame } from '$lib/stores/newGame.js'
+   import { room, spectating } from '$lib/stores/connection.js'
+   import { askNewGame, opponentHere } from '$lib/stores/newGame.js'
    import Popup from './Popup.svelte'
    import Diagnostics from './Diagnostics.svelte'
 
@@ -44,9 +45,22 @@
       to be one: the menu is where a player looks for what the game can do to itself.
 
       The menu closes behind the click because the prompt it raises takes the screen.
-      Its own block is only there when there is a game to start again - a room with this
-      player in it, and not solo, where there is nobody to agree with (see newGame.js).
+
+      Both of these are **store reads**, and they have to be: `$inRoom` is what makes the
+      block appear and disappear as the room is entered and left, and `$opponentHere` is
+      what greys it out and lights it up again when the other player arrives or goes quiet.
+      A plain function call in the template would be evaluated once, when the panel was
+      built - which is how the entry first went missing from a menu opened inside a room,
+      because the panel had been constructed in the lobby. Subscribing to the stores is
+      what re-runs both of these.
+
+      `inRoom` is the room and not the seat: a spectator is in the room and gets the menu,
+      and the block is still not theirs to see - they have no board of their own to clear
+      and nobody to ask, which is `ready`'s business rather than this one's.
    */
+   $: inRoom = Boolean($room) && !$solo
+   $: ready = inRoom && !$spectating && $opponentHere
+
    function newGame () {
       askNewGame()
       popup.close()
@@ -116,14 +130,26 @@
          Two screens, and one question. This click is *this* player's consent - they are
          the one who asked for it - so the other player is the one who is asked, and the
          table is cleared only when they accept (see stores/newGame.js).
+
+         The whole block is there only for a player **in a room**: a spectator has no
+         board of their own to clear and no question to ask, and solo is not a room at
+         all. Within a room it takes two players, and with nobody to ask the control is
+         **disabled rather than absent**: a greyed-out entry says the game can do this and
+         why it cannot right now, where a block that came and went would read as the menu
+         changing shape. The one line under it says the same thing in words, because
+         "greyed out" on its own does not say who has to arrive.
       -->
-      {#if canStartNewGame()}
+      {#if inRoom}
          <div class="setting">
             <div class="title">New Game</div>
-            <button class="link-button" on:click|stopPropagation={newGame}>
+            <button class="link-button" disabled={!ready} on:click|stopPropagation={newGame}>
                Start a new game
             </button>
-            <p class="hint">Your opponent has to accept, and you both edit your deck again.</p>
+            {#if ready}
+               <p class="hint">Your opponent has to accept, and you both edit your deck again.</p>
+            {:else}
+               <p class="hint">Waiting for a second player: a new game has to be agreed to.</p>
+            {/if}
          </div>
       {/if}
 
@@ -177,5 +203,16 @@
    */
    .link-button {
       @apply px-1 underline;
+   }
+
+   /*
+      And a disabled one is still a link on screen, greyed out: a button that read as a
+      button here would be the only one in the panel. `cursor: not-allowed` is what says
+      the control is there and is refusing, rather than being decoration - and the color
+      is the hint's, which is the same half-strength the line under it is written in.
+   */
+   .link-button:disabled {
+      @apply opacity-50 cursor-not-allowed;
+      color: var(--text-color-two);
    }
 </style>

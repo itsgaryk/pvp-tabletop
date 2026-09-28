@@ -197,7 +197,20 @@ leaving the room: the settings menu's **New Game** entry. What that means is a r
 that has just been created, without the room being new: the same code, the same two
 seats, the same format, the same watchers, and a table nobody has touched yet.
 
-It takes both players, and only one of them is asked:
+**It takes two players, and the menu says so before it is taken.** A room with one
+player in it has nobody to put the question to, so the entry is greyed out with a line
+saying it is waiting for a second player, rather than raising a prompt that could only
+go unanswered. It is *disabled* rather than absent: a greyed-out control says the game
+can do this and why it cannot right now, where a block that came and went would read as
+the menu changing shape.
+
+"Second player" is asked in two parts, and both are the relay's own answer on the poll:
+the seat is **taken** (`seatedPlayers`) *and* its player is **present** — a seat held
+for somebody who closed their laptop is deliberately not presence (see
+`opponentState`). A room whose second player has walked away is a room with nobody to
+ask, whatever the seat list says.
+
+And only one of the two is asked:
 
 - **The click is the asker's consent.** They are the player who asked for it, so they
   are not asked again. What they get is a centred *Waiting for opponent to accept new

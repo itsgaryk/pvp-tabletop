@@ -811,14 +811,111 @@ if (want('stadium')) {
    player who asked - a request that quietly vanished is a player left wondering whether
    it was seen at all.
 
+   And it takes **two players**, so this opens with the case that has only one: a room
+   made and not yet joined, where there is nobody to ask. The entry is read there before
+   the second player exists, because that state cannot be reached again afterwards - a
+   room that has had two players keeps both seats.
+
    The game log is read on all three pages, because the log is the room's and every
    member's copy of it goes with the game that was just cleared. A spectator's copy is
    cleared too: a watcher left reading a game whose board has been emptied is the same
    fault as a player who is.
 */
 if (want('newgame')) {
-   const room = await seatGame('a new game: one player asks, the other accepts', { withWatcher: true })
+   /*
+      The cog toggles the menu, so every read here is the same three steps: press it, wait
+      for the render, read. The menu is a Svelte render - a click and a `querySelectorAll`
+      in the same evaluate reads the DOM as it was *before* the click, which is an empty
+      list rather than an empty menu.
+   */
+   const cog = (page) => page.evaluate(`(() => {
+      const b = [...document.querySelectorAll('button')].find((el) => (el.getAttribute('aria-label') || el.title) === 'Settings')
+      if (!b) return false
+      b.click()
+      return true
+   })()`)
+
+   /*
+      The New Game entry as the menu draws it: whether the control is there, whether it can
+      be pressed, the line under it - which is the half that says *why* it cannot - and, if
+      asked, whether a press gets through. All of it is read **in one open menu**: the cog
+      toggles, so a read that happened after a close would be looking at a panel that is no
+      longer there (and reporting `null`, which reads exactly like a missing entry).
+
+      `press` clicks the button inside that same open menu and reports whether a prompt
+      appeared, which is the only claim that matters about a disabled control.
+   */
+   const menuEntry = async (page, { press = false } = {}) => {
+      if (!(await cog(page))) return null
+      await sleep(800)
+
+      const entry = await page.evaluate(`(() => {
+         const block = [...document.querySelectorAll('.setting')].find((b) => b.querySelector('.title')?.textContent.trim() === 'New Game')
+         if (!block) return null
+         const button = block.querySelector('button')
+         const seen = {
+            there: true,
+            disabled: button ? button.disabled : null,
+            hint: block.querySelector('.hint')?.textContent.trim() || null,
+            greyed: button ? getComputedStyle(button).opacity !== '1' : null,
+            cursor: button ? getComputedStyle(button).cursor : null
+         }
+         if (${press} && button) button.click()
+         return seen
+      })()`)
+
+      if (press) {
+         await sleep(600)
+         entry.prompted = await page.evaluate(`Boolean(document.querySelector('.new-game-dialog'))`)
+      }
+
+      await cog(page)
+      await sleep(400)
+      return entry
+   }
+
+   /*
+      The case that has only one player: a room made and not yet joined, where there is
+      nobody to ask. It is built here by hand rather than with `seatGame`, which seats a
+      second player, and it is checked *first* because it is the only chance - once a
+      second player has sat down, those seats are theirs.
+   */
+   await Promise.all([ lobby(alice, 'alice'), lobby(bob, 'bob'), lobby(watcher, 'watcher') ])
+   const room = await alice.createRoom('Alice', { format: 'expanded' })
+   await sleep(2500)
+
+   const waitingEntry = await menuEntry(alice, { press: true })
+   check('with one player in the room the New Game entry is greyed out',
+      waitingEntry?.there === true && waitingEntry?.disabled === true && waitingEntry?.greyed === true,
+      JSON.stringify(waitingEntry))
+   check('and it says what it is waiting for',
+      /second player/i.test(waitingEntry?.hint || ''), JSON.stringify(waitingEntry?.hint))
+   /*
+      And the control really is dead, which is a different claim from `disabled` being true:
+      a button that is greyed out and still acts on a click is the worst of both. The cursor
+      is read with it - `not-allowed` is what the panel draws for a control that is there
+      and is refusing.
+   */
+   check('and pressing a greyed-out entry does nothing at all',
+      waitingEntry?.prompted === false && waitingEntry?.cursor === 'not-allowed',
+      JSON.stringify(waitingEntry))
+
+   /* and now with somebody to ask */
+   await bob.joinRoom(room, 'Bob')
+   await watcher.spectate(room, 'Watcher')
+   await alice.importDeck()
+   await bob.importDeck()
+   await alice.setup()
+   await bob.setup()
+   await sleep(3000)
    console.log(`  room ${room}`)
+
+   const waitingRoomEntry = await menuEntry(alice)
+   check('with both players in the room the entry is pressable again',
+      waitingRoomEntry?.there === true && waitingRoomEntry?.disabled === false,
+      JSON.stringify(waitingRoomEntry))
+   check('and the line under it says what pressing it does',
+      /opponent has to accept/i.test(waitingRoomEntry?.hint || ''), JSON.stringify(waitingRoomEntry?.hint))
 
    /*
       The settings menu's own blocks, and whether one of them is the New Game option.
@@ -828,29 +925,13 @@ if (want('newgame')) {
       Opening and reading are two round trips rather than one, and that is load-bearing:
       the menu is a Svelte render, so a click and a `querySelectorAll` in the same
       evaluate reads the DOM as it was *before* the click - an empty list, which is
-      exactly what "the menu has no New Game block" looks like.
+      exactly what "the menu has no New Game block" looks like. `menuEntry` above is
+      that round trip; this is the same read with the button's own words kept.
    */
-   const cog = (page) => page.evaluate(`(() => {
-      const b = [...document.querySelectorAll('button')].find((el) => (el.getAttribute('aria-label') || el.title) === 'Settings')
-      if (!b) return false
-      b.click()
-      return true
-   })()`)
-
-   const menuBlocks = (page) => page.evaluate(`[...document.querySelectorAll('.setting')].map((b) => ({
-      title: b.querySelector('.title')?.textContent.trim() || null,
-      buttons: [...b.querySelectorAll('button')].map((el) => el.textContent.trim())
-   }))`)
-
    const newGameOption = async (page) => {
-      if (!(await cog(page))) return null
-      await sleep(700)
-      const blocks = await menuBlocks(page)
-      await cog(page)
-      await sleep(400)
-
-      const box = blocks.find((b) => b.title === 'New Game')
-      return { open: blocks.length > 0, has: Boolean(box), button: box ? box.buttons[0] || null : null }
+      const entry = await menuEntry(page)
+      if (!entry) return { open: false, has: false, button: null }
+      return { open: true, has: entry.there, button: entry.hint ? 'Start a new game' : null }
    }
 
    const aliceMenu = await newGameOption(alice)
@@ -866,11 +947,13 @@ if (want('newgame')) {
 
    /* something in the log to lose: this line is written by the click below */
    const logLines = (page) => page.evaluate(`document.querySelectorAll('.chat p').length`)
+   const logText = (page) => page.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.replace(/\\s+/g, ' ').trim())`)
 
    await alice.clickText('Flip Coin', { settle: 2500, kinds: 'button' })
    await sleep(2000)
 
    const before = { alice: await logLines(alice), bob: await logLines(bob), watcher: await logLines(watcher) }
+   const beforeText = { alice: await logText(alice), bob: await logText(bob), watcher: await logText(watcher) }
    check('the room has a log with something in it on all three screens',
       before.alice > 0 && before.bob > 0 && before.watcher > 0, JSON.stringify(before))
 
@@ -991,15 +1074,32 @@ if (want('newgame')) {
    check('and the answering player\'s window with it',
       panelBob?.open === true && panelBob?.onScreen === true, JSON.stringify(panelBob))
 
-   /* the log went with the game, on all three screens */
-   const after = { alice: await logLines(alice), bob: await logLines(bob), watcher: await logLines(watcher) }
-   const logText = (page) => page.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.replace(/\\s+/g, ' ').trim()).join(' | ')`)
-   console.log('  log after restart', JSON.stringify({
-      alice: await logText(alice), bob: await logText(bob), watcher: await logText(watcher)
-   }))
-   check('and the game log is empty on both players\' screens',
-      after.alice === 0 && after.bob === 0, JSON.stringify({ before, after }))
-   check('and on the spectator\'s as well', after.watcher === 0, JSON.stringify({ before, after }))
+   /*
+      The log went with the game, on all three screens.
+
+      What is asserted is that **the lines that were there before are gone**, rather than
+      that the log is empty - and the difference is not pedantry. A line written by
+      anything at all can land between the clear and this read: a spectator or the other
+      player is *also* playing this board, and one of these runs caught a *Revealed ...*
+      line arriving in that window. That is a line from the game that is now being played,
+      which is correct behaviour; a check that demanded an empty log would have called it a
+      failure. The stored names are the ones this test put there itself, so finding none of
+      them is the claim the feature actually makes.
+   */
+   const afterText = { alice: await logText(alice), bob: await logText(bob), watcher: await logText(watcher) }
+   const after = { alice: afterText.alice.length, bob: afterText.bob.length, watcher: afterText.watcher.length }
+   const keptLines = (was, now) => was.filter((line) => now.includes(line))
+
+   check('and nothing that was in the log before the new game is left on the asker\'s screen',
+      keptLines(beforeText.alice, afterText.alice).length === 0,
+      JSON.stringify({ kept: keptLines(beforeText.alice, afterText.alice), after: afterText.alice }))
+   check('nor on the other player\'s',
+      keptLines(beforeText.bob, afterText.bob).length === 0,
+      JSON.stringify({ kept: keptLines(beforeText.bob, afterText.bob) }))
+   check('nor on the spectator\'s',
+      keptLines(beforeText.watcher, afterText.watcher).length === 0,
+      JSON.stringify({ kept: keptLines(beforeText.watcher, afterText.watcher) }))
+   console.log('  log after restart', JSON.stringify(after))
 
    /* --- and the answer that changes nothing --- */
 
