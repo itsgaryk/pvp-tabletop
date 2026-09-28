@@ -21,9 +21,13 @@
  *   newgame    starting a game again: the settings menu's New Game is one player's
  *              ask, which is their own consent - they get the wait and the other
  *              player gets the only Yes/No. A Yes puts the room back to how it was
- *              when it was created (both boards empty, deck panels up, log cleared
- *              on every screen); a No changes nothing and is reported back to the
- *              player who asked. Neither prompt is on a spectator's screen.
+ *              when it was created: both boards empty (own half **and** the mirror,
+ *              which is the half this section could not see while it shipped broken),
+ *              the Import Deck window up, the log cleared on every screen. A No
+ *              changes nothing and is reported back to the player who asked. Neither
+ *              prompt is on a spectator's screen.
+ *              The consent handshake itself, for all four kinds, is
+ *              `tools/consent-check.mjs`.
  *   idle       the prompt appears with a live countdown, either player's answer
  *              clears it for everyone, and an unanswered one closes the room
  *   panel      the board panel's own changes: the glow that stays until it is
@@ -894,11 +898,17 @@ if (want('newgame')) {
       return pressed
    }
 
-   const prompt = (page) => page.evaluate(`(() => {
+   /*
+      The consent dialog as this section reads it. It is the app's **general** consent prompt
+      now - the New Game handshake is one kind of it - so its heading is `.consent-title` and
+      its box is `.consent-dialog`; a stale `.new-game-title` here read as a missing title on a
+      dialog that was up and correct.
+   */
+   const consentDialog = (page) => page.evaluate(`(() => {
       const box = document.querySelector('.consent-dialog')
       if (!box) return null
       return {
-         title: box.querySelector('.new-game-title')?.textContent.trim() || null,
+         title: box.querySelector('.consent-title')?.textContent.trim() || null,
          text: box.innerText.replace(/\\s+/g, ' ').trim(),
          buttons: [...box.querySelectorAll('button')].map((b) => b.textContent.trim()),
          centred: (() => {
@@ -912,7 +922,7 @@ if (want('newgame')) {
    /* the prompt takes a round trip to the other player, so it is waited for */
    const promptWhenUp = async (page) => {
       for (let i = 0; i < 40; i++) {
-         const seen = await prompt(page)
+         const seen = await consentDialog(page)
          if (seen) return seen
          await sleep(400)
       }
@@ -1081,8 +1091,8 @@ if (want('newgame')) {
    check('a No clears nothing on either board',
       !clearedBoard(stillThere.alice) && !clearedBoard(stillThere.bob), JSON.stringify(stillThere))
    check('the prompts are gone from both screens',
-      (await prompt(alice)) === null && (await prompt(bob)) === null,
-      JSON.stringify({ alice: await prompt(alice), bob: await prompt(bob) }))
+      (await consentDialog(alice)) === null && (await consentDialog(bob)) === null,
+      JSON.stringify({ alice: await consentDialog(alice), bob: await consentDialog(bob) }))
 }
 
 /* ------------------------------------------------- 3. the closed dialog --- */
