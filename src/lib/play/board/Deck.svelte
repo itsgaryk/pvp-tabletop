@@ -9,12 +9,13 @@
    import { lostZoneShown } from '$lib/stores/zones.js'
 
    import { deck, discard, lz, prizes, draw, shuffle } from '$lib/stores/player.js'
+   import { askForNumber } from '$lib/util/asks.js'
    const { openPile, openDeckOrder, openSelection } = getContext('boardActions')
 
    let menu
 
-   function drawX () {
-      let x = parseInt(prompt('Draw how many cards?'))
+   async function drawX () {
+      const x = await askForNumber('draw', { own: deck.get().length })
       if (x) draw(x)
    }
 
@@ -50,15 +51,13 @@
       many the player asks for. *Discard Top Card* is the same entry with X already
       answered.
    */
-   function discardTopX () {
-      const asked = parseInt(prompt('Discard how many cards from the top of your deck?'))
-      if (!asked || asked < 1) return
-
-      moveTop(discard, asked)
+   async function discardTopX () {
+      const asked = await askForNumber('discardTop', { own: deck.get().length })
+      if (asked) moveTop(discard, asked)
    }
 
-   function pickX (bottom = false) {
-      let x = parseInt(prompt('Look at how many cards?'))
+   async function pickX (bottom = false) {
+      const x = await askForNumber('viewTop', { own: deck.get().length })
       if (x) openSelection(deck, x, { bottom })
    }
 
@@ -82,9 +81,9 @@
       player chooses. Nothing is shuffled, so an order the player put there by an
       earlier search survives it.
    */
-   function orderTopX () {
-      let x = parseInt(prompt('Reorder how many cards from the top?'))
-      if (!x || x < 1) return
+   async function orderTopX () {
+      const x = await askForNumber('reorderTop', { own: deck.get().length })
+      if (!x) return
 
       logDeckView()
 
@@ -108,11 +107,11 @@
       It is the opponent's deck's own entry with this deck behind it, and the whole
       of it is `revealTop` in the store: which cards "the top" means, which half
       owns the deck, and the event that shows the other player. What is here is the
-      question, which every "X" on this board asks with the browser's own prompt
+      question, which every "X" on this board asks through `util/asks.js`
       (Draw X, View Top X, Order Top X).
    */
-   function revealTopX () {
-      revealTop(deck, parseInt(prompt('Reveal how many cards from the top?')))
+   async function revealTopX () {
+      revealTop(deck, await askForNumber('revealTop', { own: deck.get().length }))
    }
 
    /* the click that opens the deck needs to stop propagation,

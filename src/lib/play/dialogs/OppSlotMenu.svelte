@@ -3,6 +3,7 @@
    import ContextMenu from '$lib/components/ContextMenu.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import { STATUSES, statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
+   import { askForNumber } from '$lib/util/asks.js'
    import { logStatus, logStatusCleared } from '$lib/stores/logger.js'
 
    import { share, spectating } from '$lib/stores/connection.js'
@@ -29,8 +30,10 @@
       menu.open(x, y)
    }
 
-   function setDamage () {
-      let x = Number(prompt('How much damage is on the Pokémon?'))
+   async function setDamage () {
+      const x = await askForNumber('damage')
+      if (x === null) return
+
       slot.damage.set(x)
       share('oppDamageUpdated', { slotId: slot.id, damage: x })
    }

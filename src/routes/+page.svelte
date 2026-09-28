@@ -7,6 +7,7 @@
    import IdlePrompt from '$lib/play/dialogs/IdlePrompt.svelte'
    import NewGamePrompt from '$lib/play/dialogs/NewGamePrompt.svelte'
    import GameClosed from '$lib/play/dialogs/GameClosed.svelte'
+   import NumberPrompt from '$lib/play/dialogs/NumberPrompt.svelte'
    import Connection from './Connection.svelte'
    import DeckInput from './DeckInput.svelte'
    import { devDebug } from '$lib/util/dev-debug.js'
@@ -84,3 +85,11 @@
 <IdlePrompt />
 <NewGamePrompt />
 <GameClosed />
+
+<!--
+   The board's own number prompt. It lives here rather than inside the board because it
+   is asked from both halves and from the slot menus as well - anywhere a gesture needs
+   a count. It registers itself with `util/asks.js` when it is created, which is how the
+   ask table hands a question to a dialog without importing a component.
+-->
+<NumberPrompt />

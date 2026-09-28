@@ -377,6 +377,74 @@ which is what makes an order assertable at all. Point the dev server at it with
 deliberately *not* what this stand-in serves, because a check about order cannot say
 where a card went while four cards answer to the same name.)
 
+## Is every number the board asks for asked one way?
+
+```sh
+node tools/ask-check.mjs
+```
+
+Two names, and they are worth keeping apart: **an ask** is the data — one row of
+`src/lib/util/asks.js`, saying what the question is, what kind of number it takes and
+what it will accept — and **the number dialog** is the window that puts an ask to a
+player, `NumberPrompt.svelte`. "Prompt" did all three jobs here before this change (the
+idle prompt, the lobby's prompt, and the browser's own `prompt()`), which is why neither
+of these two is called one.
+
+A dozen gestures need a count before they can happen — how many cards to draw, to look
+at, to reveal, to reorder, to discard — and each used to carry its own copy of the
+question's words, the parse and the bounds. Eleven call sites across six files, and the
+copies had drifted: the same gesture was asked two different ways (*View Top X* on the
+two decks), `parseInt` was used for the deck questions and `Number` for the damage one,
+and the bounds were written four different ways with one call site having none.
+
+This check holds what fails quietly:
+
+- **a misspelt id throws**, at the player, because `askForNumber` refuses to open a
+  dialog that says `undefined`. The throw is right; a typo is still a crash, so the scan
+  proves every id a component names exists and that every id in the table is named by
+  something.
+- **a new call site can bypass the table.** `parseInt(prompt(…))` still compiles and
+  still looks reasonable, and it is exactly the copy the table replaced, so the scan
+  refuses one. It is comment-aware on purpose: the word "prompt" is all over these files
+  in prose, and a plain regex reported two comments as calls.
+
+The **ceiling** is the other half of it, and it is a reading of the game rather than a
+rule: every count of cards is bounded by the deck the gesture is about, read live off the
+board, so a reveal cannot ask for more cards than the deck holds. `damage` is the one row
+with no deck to bound it and carries a written-down ceiling instead. Getting this wrong
+is invisible until somebody types a large number, which is why the cases cover it: **the
+count a log line reports is a count that happened**, where before, asking to draw 999 of
+a 60-card deck drew 60 and said 999.
+
+It runs with nothing but the tree, so it is in CI with the other check scripts — the
+dialog itself is exercised in a browser instead, because a dialog is a thing you have to
+look at.
+
+## Is the number dialog typeable and safe?
+
+The dialog is the board's own, and it replaced the browser's `prompt()` for two reasons
+that are both about what a native dialog cannot do:
+
+- **It carried Chrome's "Prevent this page from creating additional dialogs" checkbox.**
+  Once a player ticks that, every later `window.prompt` in the session answers `null`
+  without showing anything — so every count on the board silently did nothing, with
+  nothing on screen to say why. A dialog of ours has no such checkbox.
+- **It could not be typed into strictly.** The browser's input is free text, so `parseInt`
+  was left to clean up whatever was typed, and `parseInt('12abc')` is 12 — which reads as
+  though the player had asked for 12 cards.
+
+So the input **accepts digits and nothing else**: a character that is not a digit never
+reaches the box. Both ways text can arrive are refused, `keydown` for the keyboard and
+`paste` for the clipboard, because refusing one leaves the other open — a paste of
+`4 cards` would otherwise sail through. A paste is filtered rather than dropped, so
+pasting `12` works and pasting `abc` leaves the box alone.
+
+It is deliberately **not** `<input type="number">`. That type accepts `e`, `+`, `-` and
+`.`, because it is a *floating point* input, so a count would take `-5` and a damage
+field would take `1e9`. `inputmode="numeric"` asks a phone for the digit keypad without
+handing the desktop a number field.
+
+
 ## Do the pile windows say what the table says?
 
 ```sh
