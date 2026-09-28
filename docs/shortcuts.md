@@ -88,11 +88,19 @@ confirmation are gone. Starting again over a game in progress is *New Game* in t
 settings menu, which asks the other player
 ([mechanics.md](mechanics.md#setup)).
 
-In a **room**, `F` and `Z` have no button at all: the row is one full-width **Game
-Setup** above the turn, so those two keys are the only way to those actions — off the
-screen rather than out of the app. `C` is the turn row's `+`. **Solo** keeps the whole
-row instead — Setup, Flip Coin and End Turn — with `Z` and its button both gone,
-because both halves are one person's and there is nobody to hide from.
+In a **room**, `F` and `Z` have no button at all: the row above the turn is one
+full-width **Game Setup** until the game is being set up, and then the **Ready** and
+**Mulligan** pair — none of which is Flip Coin or Hide Pokémon — so those two keys are
+the only way to those actions, off the screen rather than out of the app. `C` is the
+turn row's `+`. **Solo** keeps the whole row instead — Setup, Flip Coin and End Turn —
+with `Z` and its button both gone, because both halves are one person's and there is
+nobody to hide from.
+
+**The row changes once during a room's game**, and only once: the button that opens the
+setup is replaced by the two that finish it, and both are gone when the game starts
+([mechanics.md](mechanics.md#opening-a-rooms-game)). Nothing in the flow is on a key —
+a coin toss and an opening hand are decisions rather than shortcuts, and the dialog
+takes the screen while it asks.
 
 `Enter` is also how a focused button is pressed, so it ends the turn only when the
 focus is not on one.

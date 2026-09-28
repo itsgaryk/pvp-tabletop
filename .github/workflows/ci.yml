@@ -131,4 +131,16 @@ jobs:
       # is a deck behind a window that never closes (tools/deck-response-check.mjs)
       - run: node tools/deck-response-check.mjs
 
+      # the room's opening, which is three silences at once: a relay that does not know an
+      # event drops it without a word, a *Game Setup* that is enabled without a deck on both
+      # boards deals from a deck that is not there, and a *Game started* line from both seats
+      # is a log that says it twice (tools/game-setup-check.mjs)
+      - run: node tools/game-setup-check.mjs
+
+      # and the same opening, run rather than read: the store bundled with the real board and
+      # seat stores, because a guard declared below its first write is a module that throws
+      # while it evaluates - a 500 on every page load, in a file every check above passes
+      # (tools/game-setup-rule-check.mjs)
+      - run: node tools/game-setup-rule-check.mjs
+
       - run: node tools/ask-check.mjs

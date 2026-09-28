@@ -6,6 +6,7 @@
    import Controls from '$lib/play/Controls.svelte'
    import IdlePrompt from '$lib/play/dialogs/IdlePrompt.svelte'
    import ConsentPrompt from '$lib/play/dialogs/ConsentPrompt.svelte'
+   import GameSetupDialog from '$lib/play/dialogs/GameSetupDialog.svelte'
    import GameClosed from '$lib/play/dialogs/GameClosed.svelte'
    import NumberPrompt from '$lib/play/dialogs/NumberPrompt.svelte'
    import Connection from './Connection.svelte'
@@ -77,13 +78,14 @@
 </div>
 
 <!--
-   The three things that take over the whole screen. All of them are about the room
-   rather than the board: an idle room asking whether anybody is still playing, one
-   player asking the other to start the game again, and a room that has closed while
-   somebody was still in it.
+   The things that take over the whole screen. All of them are about the room rather than the
+   board: an idle room asking whether anybody is still playing, one player asking the other to
+   start the game again, the opening toss that decides who goes first, and a room that has
+   closed while somebody was still in it.
 -->
 <IdlePrompt />
 <ConsentPrompt />
+<GameSetupDialog />
 <GameClosed />
 
 <!--

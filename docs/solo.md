@@ -12,8 +12,15 @@ swaps your own board with the other side's.
 
 Solo also keeps the action row a room no longer has: *Setup*, *Flip Coin* and *End
 Turn*, all three on buttons. A room is down to one button — *Game Setup*, the full
-width of its own row above the turn — and its other actions are keyboard only
+width of its own row above the turn, replaced by **Ready** and **Mulligan** while the
+opening hands are being decided — and its other actions are keyboard only
 ([shortcuts.md](shortcuts.md#game-actions)).
+
+**Solo has none of the room's opening.** There is no second player, so there is nobody
+to toss a coin with, nobody to wait for a Ready, and no moment at which a hand has to be
+kept or thrown back as a *decision* — the press of *Setup* is the whole of it, and it
+deals both halves at once ([Opening a room's
+game](mechanics.md#opening-a-rooms-game)).
 
 Both halves of the board are yours, so the second one is playable the same way
 the first is:

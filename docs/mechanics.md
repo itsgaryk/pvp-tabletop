@@ -227,8 +227,15 @@ one button, on its own row above the turn; in solo it is the *Setup* button of t
 solo keeps. **There is no key for it**: the `N` shortcut and its confirmation are gone,
 so the deal is a button in the mode you are in, and starting again over a game in
 progress is *New Game* in the settings menu ([Starting again, inside the same
-room](rooms.md#starting-again-inside-the-same-room)). The two buttons call one function,
-and the only thing that differs between them is the log line below.
+room](rooms.md#starting-again-inside-the-same-room)).
+
+**The two modes are not the same flow any more.** Solo is one person at a button: the
+press deals both halves, and that is the whole of it. A room has a second player in it,
+so the deal is the *end* of a short negotiation and cannot happen until both of them
+have a deck and have agreed who goes first — see
+[Opening a room's game](#opening-a-rooms-game). What follows here is the deal itself,
+which both modes share: solo calls it from its button, and a room calls it from the
+phase the order settles into.
 
 1. **The board is reset.** Deck rebuilt from the imported list, and hand, prizes,
    discard, lost zone, bench, active spot, stadium, table and pickup cleared. Both the
@@ -250,16 +257,17 @@ and the only thing that differs between them is the log line below.
 6. **Your Pokémon are hidden** (in a room, not in solo) — the same action `Z` takes.
    In solo the *Setup* button glows until it is pressed, because the glow is the only
    thing that says the board is hidden and it points at the control that brings them
-   back; **a room has no such button and nothing glows**, so `Z` is the way back
-   ([Hiding your board](#hiding-your-board)).
-7. **`Setup` goes in the game log — but not on *Game Setup*.** The room's button deals
-   the opening hand and writes nothing: it is what a room does with a fresh deck rather
-   than something a player did at the table, and the board it deals already says so
-   (the hand, the prizes, turn 0). **Nothing else in a room deals**, now that the `N`
-   shortcut is gone, so a room's game log never carries a *Setup* line — while Solo's
-   own button logs: its row is the solo player's alone, its one button is the deal, and
-   the log line is that player's own. The board state is published to the room in every
-   case.
+   back. **In a room nothing glows and the veil is not the player's to lift**: it comes
+   off for both of them when both have pressed *Ready*, because until then the hand in
+   front of each of them is still being decided
+   ([Opening a room's game](#opening-a-rooms-game)).
+7. **The deal itself writes nothing.** The room's opening hand is not an event at the
+   table and the board it deals already says so — the hand, the prizes, turn 0 — so
+   *Game Setup* and the *Mulligan* behind it keep quiet, and the lines a room's log gets
+   are the ones the players actually say: the coin, the order, the mulligans and
+   *Game started*. **Solo's own button logs `Setup`**, because its row is the solo
+   player's alone and the one button is the deal. The board state is published to the
+   room in every case.
 
 Nothing is refused for being unusual: a deck that is short deals a short hand and
 fewer prizes, a deck with no Basic sets up, and Setup can be pressed mid-game. Setup
@@ -278,17 +286,90 @@ play a different one — wants New Game.
 In solo, Setup deals both halves — seven cards and six prizes to each — from the two
 imported decks.
 
+### Opening a room's game
+
+A room's game begins with two people agreeing, and the deal above is the *last* thing
+that happens rather than the first. The flow is `src/lib/stores/gameSetup.js`, and it
+has five phases: `idle`, `coin`, `order`, `deal` and `live`. Both boards are told every
+step, so the two are never in different phases.
+
+**Solo does none of this.** There is no second player to toss with, and solo's row is
+unchanged.
+
+**1. The button is gated on two things.** *Game Setup* is greyed out until there are two
+players in the room **and both have imported a deck**. The second half is not a flag of
+its own: the deck a player imported *is* the card list on their board, and the other
+player's arrives with every board state, so the rule asks `cards` and the opponent
+mirror. A deal cannot be built from a deck that is not there.
+
+**2. Deciding who goes first.** The press does not deal. It picks one of the two players
+**at random, on the board that pressed**, and names them in the event — two boards each
+drawing for themselves would disagree about half the time. That player is shown
+*Determining player order* with **Heads** and **Tails**, and the other player is shown
+the same dialog saying that the call is being made.
+
+- The call is logged as `Player chooses Heads` or `Player chooses Tails`, and the coin is
+  flipped in the same act: `Coin flip: HEADS` or `Coin flip: TAILS`.
+- **Calling it right wins the toss.** The winner is asked whether they want to go **First**
+  or **Second**; a wrong call hands that question to the other player instead, and the
+  dialog on both screens says which way the toss went.
+- The choice is logged as `Player decided to go First` or `Player decided to go Second`.
+  Choosing *Second* is not "I am second" — it says the other player goes first, and that
+  is what the turn order records.
+
+While either question is open the dialog **takes the screen**: the board, the cards and
+the chat are behind it, and there is nothing to press but the two answers. It cannot be
+clicked away or escaped out of, because neither of those is a call or a choice — the same
+behaviour the Import Deck window has.
+
+**3. The deal, and the opening hand.** As soon as the order is settled both boards deal:
+seven cards each and six prizes, hidden as the deal always hides them. The row that
+replaces *Game Setup* is **Ready** and **Mulligan**:
+
+- **Ready** starts the game. It glows continuously until the other player has pressed
+  theirs, because the wait is the other player's and a button that simply went dead would
+  read as the press having failed.
+- **Mulligan** redraws the opening hand — the same deal as the one above, so the prizes go
+  with the hand being thrown back rather than staying put. Each press **adds one to this
+  player's count** and writes two lines: `Player had N mulligans`, then `Hand: <the cards>`.
+  The count is the player's own and is not sent to the other board; the opponent reads it
+  from the log, the way every other line is read. The button shows the count as it goes.
+
+**4. The game starts when both are ready.** Then, together:
+
+- the **veil comes off** both boards — set as a state rather than toggled, so the second
+  board to arrive cannot hide the first one's Pokémon by toggling it back on;
+- the **clock starts**, from the room's default of fifty minutes;
+- the **turn moves on by one**, so the opening turn is turn 1 rather than the 0 the deal
+  leaves;
+- the row is **gone**, because the phase is `live` and the row only draws before that;
+- `Game started` goes in the log — **once**, written by the first seat, because both
+  boards notice the same moment and a line from each would say it twice.
+
+**A board that reloads mid-setup replays into it.** The four steps are room events, so a
+client that comes back arrives at the same phase with the same caller and the same ready
+list. *Your own deck is the one thing the replay does not bring back*
+([rooms.md](rooms.md#reconnecting-and-idle-boards)), so a reloaded board is sent to the
+Import Deck window again and deals when it has a deck — which is why the deal hangs off
+the *phase* rather than off the press that caused it.
+
 ### Mulligans
+
+**A room has a manual mulligan.** It is the *Mulligan* button beside *Ready*, and it is
+the player's own: each press redraws the opening hand, counts up, and writes
+`Player had N mulligans` and `Hand: <the cards>` ([Opening a room's game](#opening-a-rooms-game)).
+The usual extra card per mulligan does not exist, and the count is a log line rather than
+a shared state — the opponent reads the number because the line is the room's.
 
 **Auto-mulligan is off, and there is no longer a control for it.** The *Mulligans*
 block is gone from the settings menu, and the setting behind it (`autoMulligan`,
 persisted as `auto_mulligan`) is `false` with nothing in the app that sets it to
-anything else. So the deal above runs once, and one line has a branch that never
-takes it: the log says `Setup`, never `Setup - N Mulligans`.
+anything else. So the loop below does not run in play, and one line has a branch that
+never takes it: solo's log says `Setup`, never `Setup - N Mulligans`.
 
 **The code is still here on purpose**, waiting to be reused rather than rewritten:
 the setting and its storage key in `src/lib/stores/settings.js`, the loop that reads
-it in `GameActions.svelte` (`setupBoard()` and the two branches in `setup()`), the
+it in `GameActions.svelte` (`setupBoard()` and the call in `setup()`), the
 `showMessage` line that reports the count, and the disabled-Setup guard described
 above. Nothing was deleted, so bringing mulligans back is a default flip and a
 control, not a reimplementation — the settings file has the one-line console write
@@ -301,23 +382,23 @@ redrawing hands with nothing on screen to say why. It is removed on load instead
 (one deliberate line in `settings.js`), which is also why the console write above is
 a one-page-load lever: nothing in the app ever writes the key back.
 
-What the feature does when it *is* on, kept for the day it comes back. Setup repeats
-the whole deal — reset, shuffle, draw 7, deal 6 — until the seven-card hand holds a
-Basic Pokémon, and reports how many redraws it took:
+What the feature does when it *is* on, kept for the day it comes back. The deal repeats —
+reset, shuffle, draw 7, deal 6 — until the seven-card hand holds a Basic Pokémon, and
+reports how many redraws it took:
 
 - a transient message in the middle of the screen, *N Mulligans*, shown even when
   the count is 0;
-- `Setup - N Mulligans` in the game log.
+- on solo's button, `Setup - N Mulligans` in the game log. **A room's deal writes
+  nothing either way** (see [Setup](#setup)), and its manual *Mulligan* counts itself.
 
 Three things about the real rule are deliberately absent:
 
 - **The opponent is compensated for nothing.** The usual extra card per mulligan does
   not exist.
 - **The count is only ever a log line.** Nothing is sent to the other board; the
-  opponent reads the number because `Setup - N Mulligans` is shared like any other
-  line.
-- **There is no manual mulligan.** No button redraws a hand; a player who wants a new
-  deal presses *Setup*, which is a new game.
+  opponent reads the number because the line is shared like any other.
+- **Solo has no manual mulligan.** No button redraws a hand there; a player who wants a
+  new deal presses *Setup*, which is a new game.
 
 ## The turn
 
@@ -792,11 +873,13 @@ like:
   active moves are *counted* rather than named, which is the visibility rule below
   doing its work.
 
-**Setup hides your Pokémon for you.** In solo the *Setup* button then glows until you
-press it, since the glow is the only thing on screen that says your own board is
-hidden — and in a room nothing glows, because the button that would bring them back is
-gone from the row: `Z` is the way out, and it is the reason the action is still bound
-at all.
+**Every deal hides your Pokémon for you.** In solo the *Setup* button then glows until
+you press it, since the glow is the only thing on screen that says your own board is
+hidden. **In a room nothing glows, and the veil is not the player's to lift while the
+opening hand is still being decided**: it comes off for both of them when both have
+pressed *Ready* ([Opening a room's game](#opening-a-rooms-game)). `Z` is still bound in
+both modes — a player mid-game may hide or show their board whenever they like — it is
+just not the way out of the opening veil.
 
 ### Reveal, Look and Reveal Hand
 
@@ -1083,13 +1166,14 @@ worth knowing by name, because a change to a mechanic usually belongs in one of 
 | The clock: two real browsers counting, and a wall clock moved underneath one | `tools/clock-check.mjs` |
 | The zones' names, and that the log can judge every zone it can name | `tools/zone-vocabulary-check.mjs` |
 | A room's joins, waits, leaves and closed games | `tools/relay-check.mjs` |
+| The room's opening: the gate, the toss, the order, and what starts the game | `tools/game-setup-check.mjs` (the rules, read from the source) and `tools/game-setup-rule-check.mjs` (the same store, run) |
 
 **What is not checked is most of what this document says.** Nothing asserts the damage
 and status rules, evolution, the turn counter, the visibility rules, the mulligan
 loop or the deck's legality — those are read from the code, and a change to one of
-them is a change no check will notice. **The mulligan has one check, and it is about
-the feature being absent**: `tools/browser-check.mjs --only panel` asserts what the
-settings menu holds, in solo and in a room, and *Mulligans* is not in either list.
+them is a change no check will notice. **The auto-mulligan has one check, and it is
+about the feature being absent**: `tools/browser-check.mjs --only panel` asserts what
+the settings menu holds, in solo and in a room, and *Mulligans* is not in either list.
 `tools/render-check.mjs` is the guard of last resort: it renders the board in the
 states a person reaches, so a component that throws on mount fails the build's own
 check rather than only a browser.

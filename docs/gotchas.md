@@ -1661,3 +1661,46 @@ nothing but `browser`. The tidier shape, if a second retired setting ever needs 
 treatment, is a named one-shot beside `storable()` in `custom/storable.js` rather than growing
 `settings.js` into a module that acts when read.
 
+**A plain function call in a Svelte attribute is evaluated once, and nothing says so.** "Game
+Setup" is greyed out until two players are seated and both have imported a deck, and the first
+version asked its rule where every other rule in that row is asked:
+
+```svelte
+<button disabled={!canStartSetup()}>Game Setup</button>
+```
+
+That is `disabled={…}` over a call to a function that reads stores, and **Svelte 4 compiles the
+call, not the stores.** The expression names no store, so nothing is subscribed on its behalf and
+no `p()` branch is emitted for it — the compiler's output is `button.disabled = !canStartSetup()`
+inside `c()`, with the block's update function untouched. The button is therefore whatever it was
+when the block was *created*, for the life of the page. Against the app: a player who joined a
+room that already had somebody in it saw a permanently greyed-out *Game Setup* and could not
+start the setup at all, and once the button had been created enabled it never greyed again — a
+pressable button that silently does nothing, since the function it calls re-checks its own rule
+and returns `false`. Four things on the room's *Ready* button (`class:glow`, `disabled`, `title`
+and the `Ready ✓` label) were frozen by the same mistake, so a player who pressed it got no
+feedback of any kind.
+
+The fix is a **named reactive value**, which subscribes to what the expression reads:
+
+```svelte
+$: canSetup = $decksReady && $gameSetup.phase === 'idle' && canStartSetup()
+```
+
+and it has to *read a store* to be worth anything — `$: canSetup = canStartSetup()` compiles to a
+`$:` whose dependencies are the variables in the expression, and a bare call still names none.
+The check is readable rather than empirical: compile the component and look for a `p()` branch
+that mentions the value. `tools/game-setup-check.mjs` asserts the named form and that no bare call
+is left in the markup beside it. The general rule: **an attribute, a `class:` directive or a text
+interpolation that calls a function reading `.get()` is a snapshot**, and the reason the same code
+is correct elsewhere in this app is that it reads `$store` rather than `store.get()`.
+
+**And a module-level `let` written from a subscriber that runs during the module's own evaluation
+is a temporal dead zone.** The setup flow keeps its "this has already happened" guards as module
+locals, and a watcher on the seats calls `reset()`, which writes all of them. `let` is in its dead
+zone from the top of a file until the line it is declared on, so a guard left *below* the watcher
+that writes it is a `ReferenceError` while the module evaluates — every page load answering 500,
+in a file that reads perfectly and that a source-level check passes. It cost a review pass to
+find, and the guard against it is `tools/game-setup-rule-check.mjs`, which **imports the store**
+rather than reading it: the only way to see this class of fault is to evaluate the module.
+

@@ -87,14 +87,16 @@ writeFileSync(entry, `
    import { reveal, revealView, revealOpen, look, lookView, lookOpen, handReveal, handRevealView, handRevealOpen, isActionable, canReveal, topCount, revealTop, lookTop, spendCards, resetRevealState } from '${p('lib/stores/reveal.js')}'
    import { OPP_ACTIONS, opponentCardAction, respondToOpponentCardAction } from '${p('lib/stores/oppAction.js')}'
    import { pingCard, pingLine, pinged, pingedCard } from '${p('lib/stores/ping.js')}'
-   import { spectating } from '${p('lib/stores/connection.js')}'
+   import { gameSetup } from '${p('lib/stores/gameSetup.js')}'
+   import { spectating, seatedPlayers, myId } from '${p('lib/stores/connection.js')}'
    import InspectionView from '${join(root, 'tools', 'pile-dialog.svelte').split(sep).join('/')}'
    import RevealDialog from '${p('lib/play/dialogs/Reveal.svelte')}'
    import LookDialog from '${p('lib/play/dialogs/Look.svelte')}'
    import HandRevealDialog from '${p('lib/play/dialogs/HandReveal.svelte')}'
+   import GameSetupDialog from '${p('lib/play/dialogs/GameSetupDialog.svelte')}'
    /* what a decklist import does: the list of cards, then the board built from it */
    const setDeck = (cards_) => { cards.set(cards_); resetBoard() }
-   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, hand, handReveal, handRevealOpen, handRevealView, HandRevealDialog, isActionable, look, lookOpen, LookDialog, lookTop, lookView, lz, moveSelection, OPP_ACTIONS, opponentCardAction, pingCard, pingLine, pinged, pingedCard, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, revealOpen, RevealDialog, revealTop, revealView, selectCard, setDeck, shuffleAfterLeavingDeck, slot, spendCards, spectating, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
+   export { solo, startSolo, exitSolo, room, chat, Board, Connection, Page, bench, cardSelection, cardPile, canReveal, deck, defaultOpponent, discard, draw, gameSetup, GameSetupDialog, hand, handReveal, handRevealOpen, handRevealView, HandRevealDialog, isActionable, look, lookOpen, LookDialog, lookTop, lookView, lz, moveSelection, myId, OPP_ACTIONS, opponentCardAction, pingCard, pingLine, pinged, pingedCard, resetRevealState, resetSelection, respondToOpponentCardAction, reveal, revealOpen, RevealDialog, revealTop, revealView, seatedPlayers, selectCard, setDeck, shuffleAfterLeavingDeck, slot, spendCards, spectating, stadium, table, toBench, topCount, attachSelection, selectPile, InspectionView }
 `)
 
 const svelte = {
@@ -159,7 +161,12 @@ const check = (label, ok, detail = '') => {
 function renders (label, Component, { props = {}, context = undefined } = {}) {
    try {
       const out = Component.render(props, { context })
-      const html = out?.html ?? ''
+      /*
+         `body` first: Svelte 4's server output splits the head from the body, and a component
+         that draws nothing has `body: ''` and an `html` that is not there at all. Reading only
+         `html` made "this draws nothing" read as a component that draws something.
+      */
+      const html = out?.body ?? out?.html ?? ''
       check(label, html.length > 0, `${html.length} chars`)
       return html
    } catch (err) {
@@ -1208,6 +1215,84 @@ check('and a card attached under their Pokemon is pinged as its own card',
    /function onCardCtx[\s\S]{0,400}?e\.stopPropagation\(\)/.test(oppSlotSource),
    'the click stops at that card, or the slot menu opens over it and the ping is about the Pokemon')
 
+/*
+   **The room's opening dialog, in the states it has.** It is the one thing in this feature that
+   draws over everything, and it draws *nothing* until a phase puts it up - so a fault in it is
+   invisible to every state above, exactly like the pile dialog.
+
+   The phases are put into the store directly, which is the state the relay's own events leave
+   behind. `seatedPlayers` and `myId` are set the same way, because *who* the dialog is talking
+   to is the whole of what it branches on - and without a seat nobody is the caller, so every
+   state draws the waiting half of the dialog and the buttons are never reached.
+*/
+const setupState = (over) => ({
+   phase: 'coin',
+   chooser: null,
+   winner: null,
+   you: { chooser: null, winner: null },
+   call: null,
+   result: null,
+   order: null,
+   first: null,
+   ready: [],
+   ...over
+})
+
+const rendersNothing = (label, Component, { props = {}, context = undefined } = {}) => {
+   try {
+      const out = Component.render(props, { context })
+      const html = out?.body ?? out?.html ?? ''
+      check(label, html.trim() === '', `${html.length} chars`)
+      return html
+   } catch (err) {
+      check(label, false, `${err.name}: ${err.message}`)
+      return null
+   }
+}
+
+/* the two seats a room has, and this board's player in the first of them */
+rendersNothing('the setup dialog draws nothing with no setup under way', mod.GameSetupDialog)
+
+mod.seatedPlayers.set([ { id: 'me', name: 'Alice' }, { id: 'them', name: 'Bob' } ])
+mod.myId.set('me')
+mod.gameSetup.set(setupState({ chooser: 'me', you: { chooser: 'you', winner: null } }))
+
+const coinDialog = renders('the setup dialog renders the toss', mod.GameSetupDialog)
+check('and it names what is being decided',
+   Boolean(coinDialog) && coinDialog.includes('Determining player order'))
+check('and it offers the two faces to the player who was picked',
+   Boolean(coinDialog) && coinDialog.includes('>Heads</button>') && coinDialog.includes('>Tails</button>'),
+   'the call is this player\'s whole part in the toss - a scoped class would sit between the label and the tag')
+check('and it asks for a call rather than showing one', !coinDialog.includes('Coin flip result'))
+
+mod.gameSetup.set(setupState({
+   phase: 'order', chooser: 'me', winner: 'me', call: 'heads', result: 'heads',
+   you: { chooser: 'you', winner: 'you' }
+}))
+
+const orderDialog = renders('the setup dialog renders the choice of order', mod.GameSetupDialog)
+check('and it says the toss was won', Boolean(orderDialog) && orderDialog.includes('You won the toss'))
+check('and it offers the two sides',
+   Boolean(orderDialog) && orderDialog.includes('First') && orderDialog.includes('Second'))
+check('and both sides are the same button, because both are real choices',
+   /\.setup-buttons button \{[\s\S]{0,200}background: var\(--primary-color\)/.test(readFileSync(join(src, 'lib', 'play', 'dialogs', 'GameSetupDialog.svelte'), 'utf8')),
+   'Second is not the leftovers of First')
+
+/*
+   And the other half of it: the player who is *not* being asked. They are told what is
+   happening and given nothing to press - a dialog with buttons for both players would be two
+   people answering one question.
+*/
+mod.gameSetup.set(setupState({ chooser: 'them', you: { chooser: 'them', winner: null } }))
+const waitingDialog = renders('and it renders for the player who is waiting', mod.GameSetupDialog)
+check('and that player is given nothing to press',
+   Boolean(waitingDialog) && waitingDialog.includes('is calling the coin toss') && !waitingDialog.includes('Heads'))
+check('and is told who is being waited on', Boolean(waitingDialog) && waitingDialog.includes('Bob'))
+
+/* the board is left as it was found: a store left mid-setup is a game nothing can finish */
+mod.gameSetup.set(setupState({ phase: 'idle' }))
+mod.seatedPlayers.set([])
+mod.myId.set(null)
 try { mod.exitSolo() } catch {}
 
 console.log('')
