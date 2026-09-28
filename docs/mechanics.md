@@ -224,8 +224,11 @@ button, but the button is never disabled in play.
 
 *Setup* deals a fresh game in this order. In a room it is **Game Setup**, the room's
 one button, on its own row above the turn; in solo it is the *Setup* button of the row
-solo keeps; and `N`, after a confirmation, is either one. The shortcuts and the buttons
-call one function, and the only thing that differs between them is the log line below.
+solo keeps. **There is no key for it**: the `N` shortcut and its confirmation are gone,
+so the deal is a button in the mode you are in, and starting again over a game in
+progress is *New Game* in the settings menu ([Starting again, inside the same
+room](rooms.md#starting-again-inside-the-same-room)). The two buttons call one function,
+and the only thing that differs between them is the log line below.
 
 1. **The board is reset.** Deck rebuilt from the imported list, and hand, prizes,
    discard, lost zone, bench, active spot, stadium, table and pickup cleared. Both the
@@ -252,11 +255,11 @@ call one function, and the only thing that differs between them is the log line 
 7. **`Setup` goes in the game log — but not on *Game Setup*.** The room's button deals
    the opening hand and writes nothing: it is what a room does with a fresh deck rather
    than something a player did at the table, and the board it deals already says so
-   (the hand, the prizes, turn 0). `N` is a player saying out loud that they are
-   starting again, so *that* writes the line — *Setup*, or `Setup - 3 Mulligans` when
-   auto-mulligan is on, which it no longer is. Solo's own button logs either way: its
-   row is the solo player's alone and its one button is the deal. The board state is
-   published to the room in every case.
+   (the hand, the prizes, turn 0). **Nothing else in a room deals**, now that the `N`
+   shortcut is gone, so a room's game log never carries a *Setup* line — while Solo's
+   own button logs: its row is the solo player's alone, its one button is the deal, and
+   the log line is that player's own. The board state is published to the room in every
+   case.
 
 Nothing is refused for being unusual: a deck that is short deals a short hand and
 fewer prizes, a deck with no Basic sets up, and Setup can be pressed mid-game. Setup
@@ -398,8 +401,10 @@ type. Nothing checks that an evolution is legal, either — see
 ### The keyboard
 
 Two sets of keys, and both ignore a keystroke while somebody is typing. The game
-actions are `Enter` (end the turn), `C` (next turn), `N` (a new game, after a
-confirmation), `F` (flip a coin) and `Z` (show or hide Pokémon). The board keys are
+actions are `Enter` (end the turn), `C` (next turn), `F` (flip a coin) and `Z` (show or
+hide Pokémon). There is no key for the deal: *Game Setup* is the button, and the
+confirmation-and-`N` pair that used to be beside it is gone (see [Setup](#setup)). The
+board keys are
 the table in [board.md](board.md#keyboard-shortcuts); the ones worth repeating here
 are the move keys, because they are the same moves the card menu offers: `H` `D` `L`
 `P` for hand, discard, lost zone and prizes; `B` `A` `G` for bench, active and
