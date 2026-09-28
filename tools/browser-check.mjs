@@ -960,6 +960,38 @@ if (want('newgame')) {
       clearedAlice.deck === 0 && clearedBob.deck === 0, JSON.stringify({ alice: clearedAlice.deck, bob: clearedBob.deck }))
 
    /*
+      **The other half too**, which is the half this section could not see and did not,
+      while the feature shipped with the opponent's mirror left standing: 7 cards in hand, 6
+      prizes and a full deck still drawn on both sides of both boards. `boardCounts` reads
+      the near half's piles - each player's *own* zones - so every check above was true of a
+      board whose far half was untouched.
+
+      Counted as cards on screen rather than read from a badge, because this is about what is
+      drawn: the far half's zones are the same classes with a `2` suffix (see docs/board.md),
+      and a badge reports the pile, which is the owner's state and can be right while the
+      half beside it still shows cards.
+   */
+   const bothHalves = (page) => page.evaluate(`(() => {
+      const count = (sel) => document.querySelectorAll(sel).length
+      return {
+         near: count('.deck img.card') + count('.hand img.card') + count('.prizes img.card') + count('.bench img.card') + count('.active1 img.card'),
+         far: count('.deck2 img.card') + count('.hand2 img.card') + count('.prizes2 img.card') + count('.bench2 img.card') + count('.active2 img.card')
+      }
+   })()`)
+
+   await sleep(1500)
+   const halvesAlice = await bothHalves(alice)
+   const halvesBob = await bothHalves(bob)
+   const halvesWatcher = await bothHalves(watcher)
+
+   check('and the opponent\'s half of the asker\'s board, which a mirror draws',
+      halvesAlice.far === 0, JSON.stringify(halvesAlice))
+   check('and the opponent\'s half of the answering player\'s board',
+      halvesBob.far === 0, JSON.stringify(halvesBob))
+   check('and both halves of the spectator\'s board, which draws both players',
+      halvesWatcher.near === 0 && halvesWatcher.far === 0, JSON.stringify(halvesWatcher))
+
+   /*
       The Import Deck window, which is where the next deck comes from - and the window a
       freshly created room opens on. It is read from the DOM as well as from its own
       class: a window that is up is one that is drawn, and `required` is what says the
