@@ -557,13 +557,13 @@ pile. The piles answer it and the table does not, because the table's cards are 
 up one at a time ([selection.md](selection.md#select-all-and-the-one-zone-that-does-not-answer-it)).
 
 The game actions, from `GameActions.svelte`, which a spectator does not get at all:
-`Enter` ends the turn, `C` starts the next one, `N` starts a new game (after asking),
-`F` flips a coin, `Z` shows or hides Pokémon. In a room the shortcuts are the *only*
-way to reach three of those: the room's panel has one button — **Game Setup**, on a row
-of its own above the turn and the full width of it — and nothing else. Flip Coin and
-End Turn are off the screen rather than out of the app, and the same is true of Hide
-Pokémon in both modes. See [Setup](mechanics.md#setup) for what Game Setup does and
-does not write to the log.
+`Enter` ends the turn, `C` starts the next one, `F` flips a coin, `Z` shows or hides
+Pokémon. **The deal has no key**: it is *Game Setup* in a room and *Setup* in solo, and
+neither has a shortcut. In a room the keys are the *only* way to reach Flip Coin and End
+Turn — the row they used to be on is hidden, not removed — and `Z` is the only way to the
+hidden Pokémon in either mode. The room's one button is **Game Setup**, on a row of its
+own above the turn and the full width of it; the turn row keeps its own `−` and `+`. See
+[Setup](mechanics.md#setup) for what Game Setup does and does not write to the log.
 
 In solo both halves are playable, so every key that moves a selection first asks which
 board it is meant for (`farSelected()`): the same key moves the far half's own cards

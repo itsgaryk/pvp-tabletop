@@ -1436,9 +1436,9 @@ if (want('panel')) {
       turn 0), and the log says nothing.
 
       Read before and after rather than as "no Setup line anywhere", because the
-      room's log already has this player's *Setup* in it from `seatGame` - hidden
-      Pokemon and all, it was written - and the question is whether pressing the
-      button adds another.
+      room's log already has this player's *Setup* in it from `seatGame` - the suite
+      dealt through the button when this row was written differently - and the question
+      is whether pressing the button adds another.
    */
    const beforeSetup = await logLines()
    const dealt = await alice.evaluate(`(() => {
@@ -1452,6 +1452,22 @@ if (want('panel')) {
    check('counting the turn from zero', (await turnCount()) === '0', await turnCount())
    check('and adds nothing to the game log', (await logLines()).length === beforeSetup.length,
       JSON.stringify({ before: beforeSetup.length, after: (await logLines()).length }))
+
+   /*
+      The `N` shortcut is gone, and that is the whole of the difference between the two
+      ways a deal used to be reached: the room's button is now the only one. So the key
+      is checked both ways round - it raises no confirmation, and the board it would
+      have dealt is untouched - because a key that was unbound but still answered
+      somewhere would show up as one of those and not the other.
+   */
+   const handBeforeN = (await alice.counts()).bottom.hand
+   await pressKey(alice, 'n', 'KeyN')
+   await sleep(1200)
+   const asked = await alice.evaluate(`document.querySelector('.popup, .consent, .prompt') !== null`)
+   const handAfterN = (await alice.counts()).bottom.hand
+   check('N no longer asks to start a game, because N no longer deals one',
+      asked === false && handAfterN === handBeforeN,
+      JSON.stringify({ asked, before: handBeforeN, after: handAfterN }))
 
    /*
       `Z` is what brings the Pokemon back now that there is no button to click: the

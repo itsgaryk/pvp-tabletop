@@ -99,6 +99,16 @@
       draw7andPutPrizes()
    }
 
+   /*
+      `log` says whether the deal writes its line, and only the room's *Game Setup*
+      passes false: the room's opening hand is not an event at the table, and the board
+      it deals already says so. Solo's *Setup* logs, because its row is the solo
+      player's own and the button is the only way in. **There is no shortcut into
+      `setup()` in any mode** - the confirmation-and-`N` pair was removed with the
+      room's row, so a room that has not dealt a game deals one by button alone, and
+      starting again over a game in progress is *New Game* in the settings menu
+      (`stores/newGame.js`), which asks the other player.
+   */
    function setup ({ log = true } = {}) {
       if (!deckValid && $autoMulligan) return
       const mulligans = setupBoard()
@@ -134,15 +144,7 @@
          hideGlow = true
       }
 
-      /*
-         `log` is the difference between the two ways in, and it is not about what was
-         dealt: both deal the same game. *Game Setup* is a deal with no line of its own -
-         it is the room's opening hand rather than an event at the table, and the table
-         already has the turn counter and the shared board saying so. `N` is a player
-         saying out loud that they are starting again, which is worth a line. Solo logs
-         either way: its one button is the deal, and the log is the solo player's own.
-         (`New Game` is a third thing again - see stores/newGame.js.)
-      */
+      /* the deal writes its line unless the caller is the room's own button (see above) */
       if (log) publishLog('Setup' + ($autoMulligan ? ` - ${mulligans} Mulligans` : ''))
 
       shareBoardstate()
@@ -220,9 +222,6 @@
          e.preventDefault()
          endTurn()
       }
-      else if (key === 'n') {
-         if (window.confirm('Start new game?')) setup()
-      }
       else if (key === 'c') startTurn()
       else if (key === 'f') flipCoin()
       else if (key === 'z') switchVisibility()
@@ -244,14 +243,14 @@
 
       It deals without a line in the game log - the room's opening hand is not an
       event at the table - which is what `log: false` says, and it is the only way
-      into `setup()` that says it. See the note over `setup`.
+      into `setup()` that says it. It has no shortcut: this button is the way a game
+      gets dealt.
    -->
    {#if !$solo}
       <button
          class="game-setup"
          disabled={!deckValid && $autoMulligan}
-         on:click={() => setup({ log: false })}
-         title="Shortcut: N">Game Setup</button>
+         on:click={() => setup({ log: false })}>Game Setup</button>
    {/if}
 
    <!--
@@ -264,7 +263,7 @@
    -->
    {#if $solo}
       <div class="game-actions">
-         <button class:glow={hideGlow} disabled={!deckValid && $autoMulligan} on:click={setup} title="Shortcut: N">Setup</button>
+         <button class:glow={hideGlow} disabled={!deckValid && $autoMulligan} on:click={setup}>Setup</button>
          <button on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
          <button on:click={endTurn} title="End your turn (Shortcut: Enter): logs it, moves the turn on, and clears your Ability Used stripes">End Turn</button>
       </div>
