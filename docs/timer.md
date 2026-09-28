@@ -24,7 +24,7 @@ Three things about it are deliberate, and each was a bug first:
 
 A board reset — setup, importing a deck, adopting an opponent's board state — does
 not touch the clock. Entering a room sets it back to the default 50:00 instead.
-The clock's [keyboard shortcuts](board.md#keyboard-shortcuts) are the board's own (`C` next turn and so on), so
+The clock's [keyboard shortcuts](shortcuts.md#what-does-not-reach-the-board) are the board's own (`C` next turn and so on), so
 the board ignores keys typed into a field: the timer's minutes and seconds are
 digits, and one of those would otherwise draw that many cards as it was typed. A
 shortcut is a bare key as well: the deck's View All is `V`, and the paste chord —

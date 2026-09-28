@@ -405,7 +405,7 @@ actions are `Enter` (end the turn), `C` (next turn), `F` (flip a coin) and `Z` (
 hide Pokémon). There is no key for the deal: *Game Setup* is the button, and the
 confirmation-and-`N` pair that used to be beside it is gone (see [Setup](#setup)). The
 board keys are
-the table in [board.md](board.md#keyboard-shortcuts); the ones worth repeating here
+the table in [shortcuts.md](shortcuts.md#moving-a-selection); the ones worth repeating here
 are the move keys, because they are the same moves the card menu offers: `H` `D` `L`
 `P` for hand, discard, lost zone and prizes; `B` `A` `G` for bench, active and
 stadium; `T` `M` `S` for the top of the deck, the bottom and a shuffle back in; `Q`
