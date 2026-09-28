@@ -1,4 +1,4 @@
-﻿/*
+/*
  * The other player has to consent before their cards are read.
  *
  *   node tools/consent-check.mjs
@@ -74,8 +74,15 @@ const dialogGone = async (page, { timeout = 20000 } = {}) => {
    }
 }
 
-/* the windows a reveal opens: the looker's own, and the log line both players share */
-const openWindows = (page) => page.evaluate(`[...document.querySelectorAll('.popup')].map((p) => p.innerText.replace(/\\s+/g, ' ').trim().slice(0, 80))`)
+/*
+   The windows **on screen**. A `Popup` draws nothing until a call opens it, but the ones
+   that stay mounted render an empty box, so a plain count of `.popup` counts windows that are
+   not being shown - which reported "the owner is not shown the reveal" about a window that
+   was not up on either screen. What is asked here is what a player can see.
+*/
+const openWindows = (page) => page.evaluate(`[...document.querySelectorAll('.popup')]
+   .filter((p) => p.getBoundingClientRect().width > 0 && p.textContent.trim().length > 0)
+   .map((p) => p.innerText.replace(/\\s+/g, ' ').trim().slice(0, 80))`)
 
 /*
    Answer the board's own number prompt. `View Top X` asks how many cards before it does
@@ -249,6 +256,89 @@ const bobLog = await bob.evaluate(`[...document.querySelectorAll('.chat p')].map
 const bobWindows = await openWindows(bob)
 check('the deck\'s owner is told a look happened', bobLog.some((line) => /Looked at the top/i.test(line)), JSON.stringify(bobLog.slice(-4)))
 check('and what it found is not on their screen', bobWindows.length === 0, JSON.stringify(bobWindows))
+
+/* ------------------------------------------------------------- a reveal --- */
+
+/*
+   Reveal Top X on the opponent's deck: the same gate as the look, and it is a *public* act -
+   both players are shown the cards and the log names them - which is why it is a kind of its
+   own rather than the look with a flag. Asked for the same way: the entry, then the count.
+*/
+const closeWindows = async (page) => {
+   for (let i = 0; i < 6; i++) {
+      const closed = await page.evaluate(`(() => {
+         const box = document.querySelector('.popup')
+         if (!box) return true
+         const button = [...box.querySelectorAll('button')].find((b) => /Close/.test(b.textContent))
+         if (button) button.click()
+         return false
+      })()`)
+      if (closed) return true
+      await sleep(500)
+   }
+   return false
+}
+
+await closeWindows(alice)
+await sleep(800)
+
+await deckMenu(alice)
+const revealAsked = await clickEntry(alice, 'Reveal Top X')
+check('Reveal Top X asks too', revealAsked === true)
+check('and its count is answered the same way', (await answerNumber(alice, 2)) === true)
+
+const bobForReveal = await dialogWhenUp(bob)
+check('the deck\'s owner is asked about a reveal of their cards',
+   Array.isArray(bobForReveal?.buttons) && bobForReveal.buttons.includes('Yes') && /reveal/i.test(bobForReveal?.text || ''),
+   JSON.stringify(bobForReveal))
+
+await bob.clickText('Yes', { settle: 2500, kinds: 'button' })
+await sleep(3000)
+
+const revealed = await openWindows(alice)
+const revealedBob = await openWindows(bob)
+const bobRevealLog = await bob.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText)`)
+check('a Yes reveals to the player who asked', revealed.some((t) => /Reveal/i.test(t)), JSON.stringify(revealed))
+
+/*
+   **Both boards are told, through the log.** The window is deliberately not asserted on the
+   owner's board: measured, `cardsRevealed` reaches them - their log gains the `Revealed [...]`
+   line, names and all - and no window is drawn there, which is the gesture's existing
+   fan-out rather than anything this gate decides. `tools/probe-reveal-consent.mjs` is that
+   measurement, kept so the question is not re-opened from scratch. A reveal is the table's, so
+   the line on the owner's screen is the part that has to hold.
+*/
+check('and the reveal is the table\'s, so the owner is told what was shown',
+   bobRevealLog.some((line) => /Revealed \[.+\] from the top of/.test(line)),
+   JSON.stringify(bobRevealLog.slice(-3)))
+
+/* -------------------------------------------------------- a reveal hand --- */
+
+/*
+   Reveal Hand, whose entry is on the hand it is about. There is no count to answer - the
+   gesture is the whole hand - so the ask goes out straight from the menu entry.
+*/
+await closeWindows(alice)
+await closeWindows(bob)
+await sleep(1000)
+
+await alice.rightClick('.gameboard > .hand2 .pile')
+await sleep(800)
+const handMenu = await alice.evaluate(`[...document.querySelectorAll('body > div.z-25 .item')].map((el) => el.textContent.trim())`)
+check('the opponent\'s hand offers Reveal Hand', handMenu.some((t) => t.startsWith('Reveal Hand')), JSON.stringify(handMenu))
+
+await clickEntry(alice, 'Reveal Hand')
+const bobForHand = await dialogWhenUp(bob)
+check('the hand\'s owner is asked before it is shown',
+   Array.isArray(bobForHand?.buttons) && bobForHand.buttons.includes('Yes'),
+   JSON.stringify(bobForHand))
+check('and the question is about their hand', /hand/i.test(bobForHand?.text || ''), JSON.stringify(bobForHand))
+
+await bob.clickText('No', { settle: 2500, kinds: 'button' })
+await sleep(2500)
+
+const handWindows = await openWindows(alice)
+check('and a No leaves the hand unpublished', handWindows.length === 0, JSON.stringify(handWindows))
 
 browser.detach()
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall checks passed')
