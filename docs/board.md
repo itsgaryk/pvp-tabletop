@@ -305,7 +305,7 @@ card on the table and a card in the Stadium can be picked up together, and a mov
 takes each of them out of the pile that holds it. The selection does not span the two
 *halves*, even in solo where both are played by the same person — a card of the other
 half's starts a new selection, because every key that moves one asks which half it was
-made on (see [Keyboard shortcuts](#keyboard-shortcuts)). The board has **one** selection,
+made on (see [Keyboard shortcuts](shortcuts.md#moving-a-selection)). The board has **one** selection,
 and in solo both halves share it.
 
 **A selected card is drawn with a 2px ring in `--selection-color`, and that ring is the whole

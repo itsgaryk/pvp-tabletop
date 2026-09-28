@@ -13,7 +13,7 @@ swaps your own board with the other side's.
 Solo also keeps the action row a room no longer has: *Setup*, *Flip Coin* and *End
 Turn*, all three on buttons. A room is down to one button — *Game Setup*, the full
 width of its own row above the turn — and its other actions are keyboard only
-([board.md](board.md#keyboard-shortcuts)).
+([shortcuts.md](shortcuts.md#game-actions)).
 
 Both halves of the board are yours, so the second one is playable the same way
 the first is:
