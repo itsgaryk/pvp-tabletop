@@ -370,6 +370,12 @@ class Page {
       }
    }
 
+   /*
+      The deal, by button. In a room that button is *Game Setup* and in solo it is
+      *Setup*; the substring finds both. It is also why a room's own deal writes no log
+      line - the button is the quiet way in, and `N` is the loud one (see
+      GameActions.svelte).
+   */
    async setup () {
       await this.clickText('Setup', { settle: 1800 })
    }

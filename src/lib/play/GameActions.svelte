@@ -5,6 +5,12 @@
    import { showMessage } from '$lib/stores/message.js'
    import { isTyping } from '$lib/util/typing.js'
 
+   /*
+      `pokemonHidden` still has a reader here - `switchVisibility`, which is still on
+      the `Z` key and still what a room's Setup calls - but no longer a button that
+      names the state on screen: the Hide Pokemon button is out of the row, and the
+      same action is a shortcut only (see the row's own comment).
+   */
    import {
       cards, deck, hand, prizes, draw,
       pokemonHidden,
@@ -93,7 +99,7 @@
       draw7andPutPrizes()
    }
 
-   function setup () {
+   function setup ({ log = true } = {}) {
       if (!deckValid && $autoMulligan) return
       const mulligans = setupBoard()
       if ($autoMulligan) showMessage(`${mulligans} Mulligans`)
@@ -105,12 +111,19 @@
 
       /*
          Setting up hides your Pokemon: a fresh board is not meant to be read over
-         your shoulder. It does exactly what clicking Hide Pokemon does - the same
-         action, not a copy of it - and the button says so by glowing, since that
-         is the one thing the log line does not mention. The glow stays until the
-         button is pressed: it is pointing at the control that brings them back,
-         and a player who has not looked yet has not stopped needing to know. Solo
-         is playing both sides yourself, so there is nobody to hide them from.
+         your shoulder. It is the same action a player's own Z key takes, not a copy
+         of it. In solo the button that takes it back is on screen, so it glows: that
+         is the one thing the log line does not mention, and the glow stays until the
+         button is pressed.
+
+         In a room the flag is still set and `hideGlow` with it, but nothing draws it:
+         the room's row has one button and it is not glowable, because there is no
+         button left to bring the Pokemon back with - the Z key is what the player has
+         (see the row's own comment). The flag is kept set rather than skipped so that
+         the two modes take the same path through here; the drawing is what differs.
+
+         Solo is playing both sides yourself, so there is nobody to hide them from and
+         the call is skipped there entirely.
 
          Hidden before the board is shared, not after: whoever is watching us takes
          the state from either the event or the board state, and the board state has
@@ -121,7 +134,17 @@
          hideGlow = true
       }
 
-      publishLog('Setup' + ($autoMulligan ? ` - ${mulligans} Mulligans` : ''))
+      /*
+         `log` is the difference between the two ways in, and it is not about what was
+         dealt: both deal the same game. *Game Setup* is a deal with no line of its own -
+         it is the room's opening hand rather than an event at the table, and the table
+         already has the turn counter and the shared board saying so. `N` is a player
+         saying out loud that they are starting again, which is worth a line. Solo logs
+         either way: its one button is the deal, and the log is the solo player's own.
+         (`New Game` is a third thing again - see stores/newGame.js.)
+      */
+      if (log) publishLog('Setup' + ($autoMulligan ? ` - ${mulligans} Mulligans` : ''))
+
       shareBoardstate()
    }
 
@@ -158,7 +181,7 @@
 
    function switchVisibility () {
       setVisibility(!pokemonHidden.get())
-      /* the player has found the button, so it stops asking to be found */
+      /* the player has taken the action, so the button stops asking to be found */
       hideGlow = false
    }
 
@@ -169,10 +192,11 @@
    }
 
    /*
-      Setup hides the board for you, and the button says which one did it. It
-      stays lit until the button is clicked rather than fading on a timer: the
-      glow is the only thing that tells a player their own board is hidden, and a
-      few seconds is not long enough to be sure it was seen.
+      Solo's Setup hides the board for you, and its button says which one did it. It
+      stays lit until the button is clicked rather than fading on a timer: the glow is
+      the only thing that tells a player their own board is hidden, and a few seconds
+      is not long enough to be sure it was seen. In a room the same flag is set and
+      drawn nowhere - the row has no glowable button - so it is `Z` that clears it.
    */
    let hideGlow = false
 
@@ -214,21 +238,37 @@
 
 {#if !$spectating}
    <!--
-      The game actions sit under the chat, in the same style as the quick
-      messages there, so the board gets the whole width of the window. A
-      spectator only watches, so it gets none of them. End Turn counts as a game
-      action: it says the turn is over, so it stays usable whatever the chat
-      window is showing.
+      A game room gets one button: Game Setup, on its own row, the whole width of
+      the row, directly above the turn. Setting the game up is the one action worth
+      a button of its own there.
+
+      It deals without a line in the game log - the room's opening hand is not an
+      event at the table - which is what `log: false` says, and it is the only way
+      into `setup()` that says it. See the note over `setup`.
    -->
-   <div class="game-actions">
-      <button disabled={!deckValid && $autoMulligan} on:click={setup} title="Shortcut: N">Setup</button>
-      <!-- hiding Pokemon is about what the other player can see; solo has no other player -->
-      {#if !$solo}
-         <button class="glowable" class:glow={hideGlow} on:click={switchVisibility} title="Shortcut: Z">{$pokemonHidden ? 'Show' : 'Hide'} Pokémon</button>
-      {/if}
-      <button on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
-      <button on:click={endTurn} title="End your turn (Shortcut: Enter): logs it, moves the turn on, and clears your Ability Used stripes">End Turn</button>
-   </div>
+   {#if !$solo}
+      <button
+         class="game-setup"
+         disabled={!deckValid && $autoMulligan}
+         on:click={() => setup({ log: false })}
+         title="Shortcut: N">Game Setup</button>
+   {/if}
+
+   <!--
+      Solo keeps the row it had, and it is the only place it is left. Both halves
+      are one person's, so there is no Hide Pokemon button - there is nobody to hide
+      from - while Flip Coin and End Turn are the solo player's own controls, and the
+      Setup button's glow is the one thing on screen that says the setup just hid the
+      boards. A room hides Flip Coin and End Turn rather than removing them: they are
+      still the game's, and still on `F` and `Enter` (see the shortcuts above).
+   -->
+   {#if $solo}
+      <div class="game-actions">
+         <button class:glow={hideGlow} disabled={!deckValid && $autoMulligan} on:click={setup} title="Shortcut: N">Setup</button>
+         <button on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
+         <button on:click={endTurn} title="End your turn (Shortcut: Enter): logs it, moves the turn on, and clears your Ability Used stripes">End Turn</button>
+      </div>
+   {/if}
 {/if}
 
 <!--
@@ -254,6 +294,20 @@
 {/if}
 
 <style>
+   /*
+      The room's one button, and the whole width of its row: `w-full` rather than
+      the share-of-the-row `flex-1` the buttons below it take, because it has no
+      row-mates to share with and a button that stops short of the turn row above
+      it reads as a mistake.
+   */
+   .game-setup {
+      @apply block w-full font-bold text-white bg-[var(--primary-color)] px-2 py-1.5 rounded-md whitespace-nowrap;
+   }
+
+   .game-setup:disabled {
+      @apply opacity-50;
+   }
+
    .game-actions {
       @apply flex flex-wrap gap-1;
    }
@@ -267,9 +321,10 @@
    }
 
    /*
-      Setup hides the board for you, and the button shows which one did it. The
-      pulse repeats rather than stopping after a couple of beats: it stays until
-      the button is clicked, which for a player who is mid-turn may be a while.
+      Solo's Setup hides the boards for you, and its button shows which one did it.
+      The pulse repeats rather than stopping after a couple of beats: it stays until
+      the button is clicked, which for a player who is mid-turn may be a while. A
+      room has no such button, so nothing there is glowable.
    */
    .game-actions button.glow {
       animation: hide-glow 1s ease-in-out infinite;

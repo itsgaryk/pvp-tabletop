@@ -868,10 +868,19 @@ if (want('newgame')) {
    check('and a spectator\'s does not - there is no board of theirs to clear',
       watcherMenu?.open === true && watcherMenu?.has === false, JSON.stringify(watcherMenu))
 
-   /* something in the log to lose: this line is written by the click below */
+   /* something in the log to lose: this line is written by the key below */
    const logLines = (page) => page.evaluate(`document.querySelectorAll('.chat p').length`)
 
-   await alice.clickText('Flip Coin', { settle: 2500, kinds: 'button' })
+   /*
+      Flip Coin is off a room's screen now, so its line is reached on `F` - the same
+      action the button used to take, not a stand-in for it. There is no button left to
+      click, and the line in the log is all this check is here for.
+   */
+   await alice.evaluate(`(() => {
+      const el = document.activeElement || document.body
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', bubbles: true, cancelable: true }))
+      return true
+   })()`)
    await sleep(2000)
 
    const before = { alice: await logLines(alice), bob: await logLines(bob), watcher: await logLines(watcher) }
@@ -1195,7 +1204,8 @@ if (want('idle')) {
    check('and for the spectator', await dialogCleared(watcher, { timeout: 20000 }))
    check('the game goes on', (await alice.counts()).mode === 'room', (await alice.counts()).mode)
 
-   await alice.clickText('Setup', { settle: 2500 })
+   /* the room's button reads *Game Setup*; the substring is what finds it */
+   await alice.clickText('Game Setup', { settle: 2500 })
    check('and the board still works', (await alice.counts()).bottom.hand > 0, JSON.stringify(await alice.counts().bottom))
 
    const again = await dialogWhenUp(alice, 'idle', { timeout: 60000 })
@@ -1223,10 +1233,69 @@ if (want('panel')) {
    const room = await seatGame('the board panel: the glow, the clock, the Chat tab and both markers', { withWatcher: true })
    console.log(`  room ${room}`)
 
-   const hideButton = () => alice.evaluate(`(() => {
-      const b = [...document.querySelectorAll('.game-actions button')].find((el) => /Pok/.test(el.textContent))
-      return b ? { text: b.textContent.trim(), glow: b.classList.contains('glow') } : null
+   /*
+      The room's game actions, and what is *not* among them.
+
+      A room gets one button - Game Setup - on a row of its own above the turn, and
+      the whole width of that row. The Hide Pokemon button is out of the game
+      altogether (the same action is on `Z`), and Flip Coin and End Turn are off the
+      screen rather than out of the app, which the checks below take on `F` and
+      `Enter`.
+
+      Read as boxes rather than as a list of names, because "on its own row" and
+      "the whole width of the row" are the two things a list of names cannot tell
+      apart: a button that shares a row with the turn and one that has its own row
+      read the same as words, and so do a button that fills its row and one that
+      stops short of it.
+   */
+   const roomActions = () => alice.evaluate(`(() => {
+      const box = (el) => {
+         const r = el.getBoundingClientRect()
+         return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), bottom: Math.round(r.bottom) }
+      }
+      const setup = document.querySelector('.game-setup')
+      const turn = document.querySelector('.turn-row')
+      return {
+         texts: [...document.querySelectorAll('.game-actions button')].map((b) => b.textContent.trim()),
+         setup: setup ? { text: setup.textContent.trim(), ...box(setup) } : null,
+         turn: turn ? box(turn) : null,
+         flip: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Flip Coin'),
+         end: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'End Turn'),
+         pokemonButton: [...document.querySelectorAll('button')].some((b) => /Pok.mon/.test(b.textContent))
+      }
    })()`)
+
+   /*
+      Press a key at the page rather than at a button: the room's Flip Coin and End
+      Turn are not on screen any more, so this is how the checks reach the actions
+      they still are. The target is whatever has focus, or the body when nothing
+      does.
+   */
+   const pressKey = (page, key, code) => page.evaluate(`(() => {
+      const el = document.activeElement || document.body
+      el.dispatchEvent(new KeyboardEvent('keydown', {
+         key: ${JSON.stringify(key)}, code: ${JSON.stringify(code)}, bubbles: true, cancelable: true
+      }))
+      return el.tagName
+   })()`)
+
+   /* the turn the table is on, as the board draws it */
+   const turnCount = () => alice.evaluate(`(() => {
+      const c = document.querySelector('.turn-row .count')
+      return c ? c.textContent.replace(/\\D+/g, '') : null
+   })()`)
+
+   /*
+      The game log's lines, without the stamp in front of each one.
+
+      It is in the DOM whether or not the Game tab is showing, which is what makes
+      this readable while the Chat tab is up - but only the `p`s are: the name and
+      the time are a span inside each line, so they are dropped rather than read as
+      part of a message.
+   */
+   const logLines = () => alice.evaluate(`[...document.querySelectorAll('.chat p')]
+      .map((p) => (p.lastElementChild ? p.lastElementChild.textContent : p.textContent).replace(/\\s+/g, ' ').trim())
+      .filter(Boolean)`)
 
    const chatTab = () => alice.evaluate(`(() => {
       const b = [...document.querySelectorAll('.tabs button')].find((el) => el.textContent.trim() === 'Chat')
@@ -1329,18 +1398,83 @@ if (want('panel')) {
       for (const page of [alice, bob]) stillPlaying(page).catch(() => {})
    }, 1000)
 
-   /* Setup hides the board and says so; the glow used to fade on a timer */
-   await alice.clickText('Show Pokémon', { settle: 1500, kinds: 'button' })
-   await alice.clickText('Setup', { settle: 2500 })
-   const lit = await hideButton()
-   check('Setup lights the Hide Pokemon button', lit?.glow === true, JSON.stringify(lit))
-   await sleep(5000)
-   check('and it stays lit rather than fading', (await hideButton())?.glow === true, JSON.stringify(await hideButton()))
-   await alice.clickText('Show Pokémon', { settle: 2000, kinds: 'button' })
-   check('clicking the button is what puts it out', (await hideButton())?.glow === false, JSON.stringify(await hideButton()))
+   /*
+      A room's game actions: one button, its own row, the whole width of it, above
+      the turn.
+
+      The widths are compared against the turn row rather than against a number: the
+      row is the thing the button is meant to match, and it is the same width at any
+      window size. A pixel of slack on each edge, because two boxes laid out by the
+      same flex rules can still round apart.
+   */
+   const roomUi = await roomActions()
+   check('a room\'s one game action is Game Setup',
+      roomUi?.setup?.text === 'Game Setup' && JSON.stringify(roomUi?.texts) === JSON.stringify([]),
+      JSON.stringify(roomUi))
+   check('and it is the whole width of the turn row below it',
+      roomUi?.setup && roomUi?.turn &&
+         Math.abs(roomUi.setup.left - roomUi.turn.left) <= 2 &&
+         Math.abs(roomUi.setup.right - roomUi.turn.right) <= 2,
+      JSON.stringify({ setup: roomUi?.setup, turn: roomUi?.turn }))
+   check('on a row of its own, above the turn',
+      roomUi?.setup && roomUi?.turn && roomUi.setup.bottom <= roomUi.turn.top,
+      JSON.stringify({ setupBottom: roomUi?.setup?.bottom, turnTop: roomUi?.turn?.top }))
+
+   /* the Hide Pokemon button is out of the room - the action it took is on Z, below */
+   check('the Hide Pokemon button is gone from a room', roomUi?.pokemonButton === false, JSON.stringify(roomUi))
 
    /*
-      A shortcut is the board's, not the button's. Clicking Setup leaves that
+      Flip Coin and End Turn are hidden rather than removed: they are off the screen
+      and still the game's, which the shortcuts below take.
+   */
+   check('and Flip Coin and End Turn are off the screen',
+      roomUi?.flip === false && roomUi?.end === false, JSON.stringify(roomUi))
+
+   /*
+      Game Setup deals without writing a line, which is the one thing about it that
+      cannot be seen: the board before and after says it dealt (a hand, six prizes,
+      turn 0), and the log says nothing.
+
+      Read before and after rather than as "no Setup line anywhere", because the
+      room's log already has this player's *Setup* in it from `seatGame` - hidden
+      Pokemon and all, it was written - and the question is whether pressing the
+      button adds another.
+   */
+   const beforeSetup = await logLines()
+   const dealt = await alice.evaluate(`(() => {
+      const b = document.querySelector('.game-setup')
+      if (!b) return false
+      b.click()
+      return true
+   })()`)
+   await sleep(2500)
+   check('Game Setup deals the board', dealt && (await alice.counts()).bottom.hand > 0, JSON.stringify(await alice.counts().bottom))
+   check('counting the turn from zero', (await turnCount()) === '0', await turnCount())
+   check('and adds nothing to the game log', (await logLines()).length === beforeSetup.length,
+      JSON.stringify({ before: beforeSetup.length, after: (await logLines()).length }))
+
+   /*
+      `Z` is what brings the Pokemon back now that there is no button to click: the
+      same action the button took, and still bound (see the keydown handler). The veil
+      is the shading over them, and it is `applied` while they are hidden - the element
+      itself is always on the board, so the class is what says which state this is.
+   */
+   const veiled = () => alice.evaluate(`(() => {
+      const v = document.querySelector('.veil')
+      return v ? v.classList.contains('applied') : null
+   })()`)
+   const hiddenBeforeZ = await veiled()
+   await pressKey(alice, 'z', 'KeyZ')
+   await sleep(1200)
+   const hiddenAfterZ = await veiled()
+   check('Z toggles the hidden Pokemon a room has no button for',
+      hiddenBeforeZ !== null && hiddenAfterZ !== null && hiddenBeforeZ !== hiddenAfterZ,
+      JSON.stringify({ before: hiddenBeforeZ, after: hiddenAfterZ }))
+
+   await alice.evaluate(`document.activeElement && document.activeElement.blur()`)
+
+   /*
+      A shortcut is the board's, not the button's. Clicking Game Setup leaves that
       button focused, and a focused button used to be treated as somebody typing,
       which swallowed every shortcut pressed from it. Only the two keys that press
       a button belong to it, so V still opens the deck from there.
@@ -1360,10 +1494,15 @@ if (want('panel')) {
       return el.tagName
    })()`)
 
-   const focusSetup = () => alice.evaluate(`[...document.querySelectorAll('.game-actions button')].find((b) => b.textContent.includes('Setup')).focus()`)
+   /* the room's only button, by the class it is the only user of - the label is a phrase */
+   const focusSetup = () => alice.evaluate(`(() => {
+      const b = document.querySelector('.game-setup')
+      if (b) b.focus()
+      return Boolean(b)
+   })()`)
 
    await focusSetup()
-   check('the Setup button is focused', /Setup/.test(await alice.evaluate(`(document.activeElement.textContent || '').trim()`)))
+   check('the Game Setup button is focused', /Game Setup/.test(await alice.evaluate(`(document.activeElement.textContent || '').trim()`)))
    const shut = await controls(alice)
    check('the deck is not open to begin with', shut.board && !shut.deck, JSON.stringify(shut))
 
@@ -1551,7 +1690,12 @@ if (want('panel')) {
    check('and the message is there', (await alice.counts()).chat > 0, String((await alice.counts()).chat))
    await alice.clickText('Game', { settle: 1200, kinds: 'button' })
    check('leaving the tab takes the message box with it', (await composer(alice)) === null, JSON.stringify(await composer(alice)))
-   await alice.clickText('Flip Coin', { settle: 2000, kinds: 'button' })
+   /*
+      Flip Coin is off the screen in a room now, so the line it writes is reached on
+      `F` - which is the same action rather than a stand-in for it: the button and
+      the key call one function (see the note over the room's game actions above).
+   */
+   await pressKey(alice, 'f', 'KeyF')
    await sleep(2500)
    check('a game-log line does not light it', (await chatTab())?.unread === false, JSON.stringify(await chatTab()))
 

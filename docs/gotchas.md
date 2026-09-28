@@ -281,16 +281,17 @@ a name. The one thing the two levels do not share is who they apply to: a specta
 handed `revealed` for both halves outright (`spectating` in those expressions), which is
 the deliberate difference from a player.
 
-**Solo hides the Hide Pokémon button, and neither half's flag is reset by entering or
-leaving solo.** `GameActions.svelte:226` renders that button only `{#if !$solo}` — solo has
-no other player to hide from — while `opponent/Slot.svelte:184` reads the board's own
+**No mode has a Hide Pokémon button any more, and neither half's flag is reset by entering
+or leaving solo.** The button is out of `GameActions.svelte`'s room row and was never in
+solo's, so `Z` is the only way to the action in either mode (`switchVisibility`, which the
+room's Game Setup still calls) — while `opponent/Slot.svelte:184` reads the board's own
 `pokemonHidden` in every mode, and `:93`, `:115`, `:122` refuse the click, the double click
 and the context menu while it is set. Three things follow, and only the third is a problem:
 
-- **The button is more load-bearing in solo than it looks.** `startSolo` resets both
+- **`Z` is more load-bearing in solo than it looks.** `startSolo` resets both
   boards (`solo.js:32-39`), so the flag is false when a solo game begins, and nothing in
-  solo sets it — the button is the only writer and it is not rendered. Which is the reason
-  the flag cannot be reached *during* solo play.
+  solo sets it — Setup's own call is guarded on a room (`if (!$solo)`) and the key is the
+  only writer left. Which is the reason the flag cannot be reached *during* solo play.
 - **The flag is cleared by a board reset, not by a mode change** (`custom/board.js:101`),
   and `startSolo`/`exitSolo` (`solo.js:32-47`) reset the clock, the flip and both boards.
   They do reach the flag through `reset()` — including the `defaultOpponent` copy — so the
@@ -300,10 +301,10 @@ and the context menu while it is set. Three things follow, and only the third is
 - **A flipped solo board can hide a half nobody can show.** `soloSwapped` puts the far
   board's components in the near row (`Board.svelte:473-495, 598-662`), where the flag they
   obey is `defaultOpponent.pokemonHidden` — so with the board flipped and that half's flag
-  set, the Pokémon in front of the player are card backs and the door out of it is at
-  `GameActions.svelte:226`, which solo does not render. The same applies to the *near*
-  half's flag if it is ever set without solo's own board being reset, which is what the
-  paragraph above says nothing does today.
+  set, the Pokémon in front of the player are card backs and the visible door out of it is
+  the `Z` key alone, which now has no button beside it to point at it. The same applies to
+  the *near* half's flag if it is ever set without solo's own board being reset, which is
+  what the paragraph above says nothing does today.
 
 The fix is the line `player.js:761-768` already has for entering a room:
 `pokemonHidden.set(false)` in both solo transitions, so the flag's lifetime is the mode's.
@@ -584,33 +585,37 @@ underscore), and the launcher shell stays blocked for as long as the dev server 
 it waits on `npm run dev` rather than detaching it.
 
 **The `panel` section fails three checks on a clean tree, and two of them are the harness.**
-`node tools/browser-check.mjs --only panel` gives **70 PASS, 3 FAIL** on `main` with nothing
-modified — worth knowing before treating a red run as your own doing. The three are not one
-bug:
+`node tools/browser-check.mjs --only panel` used to give **70 PASS, 3 FAIL** on `main` with
+nothing modified — worth knowing before treating a red run as your own doing. The three were
+not one bug, two of them were this harness rather than the app, and one of those two has since
+gone away with the checks themselves:
 
-- **`Setup lights the Hide Pokemon button` and `and it stays lit rather than fading`** are
-  `tools/fake-deck-api.mjs` **not making a legal deck**. Its 60 cards are
-  `{ name, set, number, card_type }` and carry **no `stage`**, while the app's own guard is
-  `$: deckValid = hasBasic($cards)`, which requires `card.stage === 'basic'`
-  (`GameActions.svelte:32-39`). `setup()` therefore returns at its first line —
-  `if (!deckValid && $autoMulligan) return` — and never reaches `hideGlow = true` five lines
-  below it. The app is right and the stand-in is incomplete: a deck of 60 cards with no Basic
-  Pokémon is not a deck, which is why the same check passes against the real
-  `limitlesstcg.com`. One field on the stand-in's card objects is the whole fix, and it is
-  also why `importDeck()` in the checks cannot set a board up. The bail also goes through
-  `$autoMulligan`, which is now **false with no control anywhere** — the Mulligans block left
-  the settings menu and only the loop behind it was kept
-  ([mechanics.md](mechanics.md#mulligans)) — so in play the guard cannot fire and this is not
-  what those two checks are failing on; the message they report is the same either way.
+- **Two glow checks and the incomplete deck stand-in.** They read `Setup lights the Hide
+  Pokemon button` and `and it stays lit rather than fading`, and they were
+  `tools/fake-deck-api.mjs` **not making a legal deck**: its 60 cards were
+  `{ name, set, number, card_type }` and carried **no `stage`**, while the app's own guard
+  is `$: deckValid = hasBasic($cards)`, which requires `card.stage === 'basic'`
+  (`GameActions.svelte`). `setup()` therefore returned at its first line —
+  `if (!deckValid && $autoMulligan) return` — and never reached `hideGlow = true` below
+  it. The stand-in has sent `stage: 'basic'` for its Pokémon since, which is what
+  `tools/fixture-check.mjs` reads the fixture's own arithmetic to prove; **the two checks
+  themselves are gone**, because the room's Hide Pokémon button is out of the row and
+  there is nothing left in a room to glow. What the check reads instead — *Game Setup
+  deals the board*, counting the turn from zero, and adding nothing to the game log —
+  goes through the same guard, so the warning below has not retired with the checks.
+
+  The bail also goes through `$autoMulligan`, which is now **false with no control
+  anywhere** — the Mulligans block left the settings menu and only the loop behind it was
+  kept ([mechanics.md](mechanics.md#mulligans)) — so in play the guard cannot fire.
 
   It is worth knowing that it can also be the stand-in *as it is running* rather than as it
   is written: this was met again with an **old `tools/fake-deck-api.mjs` process** — one from
   an earlier session, still holding its port — serving cards with no `stage` while the file on
-  disk had had it for months. The symptom is the app's, not the fixture's: `Setup` stays
-  disabled, the deck piles up 60 cards and no hand is dealt, and `node tools/fixture-check.mjs`
-  passes because it reads the *file*. Compare the process's start time with the file's, or just
-  restart it (`tools/dev-servers.ps1` starts the stand-ins by name), before believing anything
-  a board check says about a deck.
+  disk had had it for months. The symptom is the app's, not the fixture's: the room's `Game
+  Setup` deals nothing, the deck piles up 60 cards and no hand arrives, and
+  `node tools/fixture-check.mjs` passes because it reads the *file*. Compare the process's
+  start time with the file's, or just restart it (`tools/dev-servers.ps1` starts the
+  stand-ins by name), before believing anything a board check says about a deck.
 - **`and a card in the middle of a zone covers its name rather than the other way round`** is
   the one left *open*, and the measurement is the useful part. The check requires the first
   element with class `card` in the hit-test stack to be at index 0 (`cardAt === 0`), and for

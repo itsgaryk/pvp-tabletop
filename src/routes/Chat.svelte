@@ -140,9 +140,11 @@
    }
 
    /*
-      A message arrived while the log was showing. The same glow Setup uses on
-      the Hide Pokemon button, so "this control wants you" reads the same way
-      everywhere - and it stops the moment the tab is looked at.
+      A message arrived while the log was showing. The same glow Setup's own button
+      uses in solo, so "this control wants you" reads the same way everywhere - and
+      it stops the moment the tab is looked at. (A room's Setup button is *Game
+      Setup* and is not glowable: it deals without hiding the board for you, because
+      the room no longer has a button for bringing the Pokemon back.)
    */
    .tabs button.unread {
       animation: chat-glow 1.1s ease-in-out infinite;

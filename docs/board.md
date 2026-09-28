@@ -506,9 +506,9 @@ On screen a spectator gets the whole board and none of the play:
   in `opponent.js`) and seated from the relay's `seated` event. The normal single
   mirror is switched off while spectating rather than unmounted, because it would
   otherwise quietly collect both players' cards into one set of slots.
-- **No game actions.** The Setup / Hide Pokémon / Flip Coin / End Turn row is not
-  rendered and its shortcuts are not bound, so End Turn and New Game are not one
-  keystroke away for somebody who is only watching.
+- **No game actions.** The Game Setup button, the turn row's ends and the action row
+  are not rendered and the shortcuts are not bound, so End Turn and New Game are not
+  one keystroke away for somebody who is only watching.
 - **Both hands and both sets of prizes are face up** (`$spectating` reveals them
   outright), which is the deliberate difference from a player, who sees a hidden hand
   and hidden prizes.
@@ -558,7 +558,12 @@ up one at a time ([selection.md](selection.md#select-all-and-the-one-zone-that-d
 
 The game actions, from `GameActions.svelte`, which a spectator does not get at all:
 `Enter` ends the turn, `C` starts the next one, `N` starts a new game (after asking),
-`F` flips a coin, `Z` shows or hides Pokémon.
+`F` flips a coin, `Z` shows or hides Pokémon. In a room the shortcuts are the *only*
+way to reach three of those: the room's panel has one button — **Game Setup**, on a row
+of its own above the turn and the full width of it — and nothing else. Flip Coin and
+End Turn are off the screen rather than out of the app, and the same is true of Hide
+Pokémon in both modes. See [Setup](mechanics.md#setup) for what Game Setup does and
+does not write to the log.
 
 In solo both halves are playable, so every key that moves a selection first asks which
 board it is meant for (`farSelected()`): the same key moves the far half's own cards
