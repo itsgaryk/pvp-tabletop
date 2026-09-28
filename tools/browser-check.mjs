@@ -21,9 +21,13 @@
  *   newgame    starting a game again: the settings menu's New Game is one player's
  *              ask, which is their own consent - they get the wait and the other
  *              player gets the only Yes/No. A Yes puts the room back to how it was
- *              when it was created (both boards empty, deck panels up, log cleared
- *              on every screen); a No changes nothing and is reported back to the
- *              player who asked. Neither prompt is on a spectator's screen.
+ *              when it was created: both boards empty (own half **and** the mirror,
+ *              which is the half this section could not see while it shipped broken),
+ *              the Import Deck window up, the log cleared on every screen. A No
+ *              changes nothing and is reported back to the player who asked. Neither
+ *              prompt is on a spectator's screen.
+ *              The consent handshake itself, for all four kinds, is
+ *              `tools/consent-check.mjs`.
  *   idle       the prompt appears with a live countdown, either player's answer
  *              clears it for everyone, and an unanswered one closes the room
  *   panel      the board panel's own changes: the glow that stays until it is
@@ -894,11 +898,17 @@ if (want('newgame')) {
       return pressed
    }
 
-   const prompt = (page) => page.evaluate(`(() => {
-      const box = document.querySelector('.new-game-dialog')
+   /*
+      The consent dialog as this section reads it. It is the app's **general** consent prompt
+      now - the New Game handshake is one kind of it - so its heading is `.consent-title` and
+      its box is `.consent-dialog`; a stale `.new-game-title` here read as a missing title on a
+      dialog that was up and correct.
+   */
+   const consentDialog = (page) => page.evaluate(`(() => {
+      const box = document.querySelector('.consent-dialog')
       if (!box) return null
       return {
-         title: box.querySelector('.new-game-title')?.textContent.trim() || null,
+         title: box.querySelector('.consent-title')?.textContent.trim() || null,
          text: box.innerText.replace(/\\s+/g, ' ').trim(),
          buttons: [...box.querySelectorAll('button')].map((b) => b.textContent.trim()),
          centred: (() => {
@@ -912,7 +922,7 @@ if (want('newgame')) {
    /* the prompt takes a round trip to the other player, so it is waited for */
    const promptWhenUp = async (page) => {
       for (let i = 0; i < 40; i++) {
-         const seen = await prompt(page)
+         const seen = await consentDialog(page)
          if (seen) return seen
          await sleep(400)
       }
@@ -958,6 +968,38 @@ if (want('newgame')) {
    check('and the answering player\'s board with it', clearedBoard(clearedBob), JSON.stringify(clearedBob))
    check('and the decklist behind it, rather than dealing it again',
       clearedAlice.deck === 0 && clearedBob.deck === 0, JSON.stringify({ alice: clearedAlice.deck, bob: clearedBob.deck }))
+
+   /*
+      **The other half too**, which is the half this section could not see and did not,
+      while the feature shipped with the opponent's mirror left standing: 7 cards in hand, 6
+      prizes and a full deck still drawn on both sides of both boards. `boardCounts` reads
+      the near half's piles - each player's *own* zones - so every check above was true of a
+      board whose far half was untouched.
+
+      Counted as cards on screen rather than read from a badge, because this is about what is
+      drawn: the far half's zones are the same classes with a `2` suffix (see docs/board.md),
+      and a badge reports the pile, which is the owner's state and can be right while the
+      half beside it still shows cards.
+   */
+   const bothHalves = (page) => page.evaluate(`(() => {
+      const count = (sel) => document.querySelectorAll(sel).length
+      return {
+         near: count('.deck img.card') + count('.hand img.card') + count('.prizes img.card') + count('.bench img.card') + count('.active1 img.card'),
+         far: count('.deck2 img.card') + count('.hand2 img.card') + count('.prizes2 img.card') + count('.bench2 img.card') + count('.active2 img.card')
+      }
+   })()`)
+
+   await sleep(1500)
+   const halvesAlice = await bothHalves(alice)
+   const halvesBob = await bothHalves(bob)
+   const halvesWatcher = await bothHalves(watcher)
+
+   check('and the opponent\'s half of the asker\'s board, which a mirror draws',
+      halvesAlice.far === 0, JSON.stringify(halvesAlice))
+   check('and the opponent\'s half of the answering player\'s board',
+      halvesBob.far === 0, JSON.stringify(halvesBob))
+   check('and both halves of the spectator\'s board, which draws both players',
+      halvesWatcher.near === 0 && halvesWatcher.far === 0, JSON.stringify(halvesWatcher))
 
    /*
       The Import Deck window, which is where the next deck comes from - and the window a
@@ -1049,8 +1091,8 @@ if (want('newgame')) {
    check('a No clears nothing on either board',
       !clearedBoard(stillThere.alice) && !clearedBoard(stillThere.bob), JSON.stringify(stillThere))
    check('the prompts are gone from both screens',
-      (await prompt(alice)) === null && (await prompt(bob)) === null,
-      JSON.stringify({ alice: await prompt(alice), bob: await prompt(bob) }))
+      (await consentDialog(alice)) === null && (await consentDialog(bob)) === null,
+      JSON.stringify({ alice: await consentDialog(alice), bob: await consentDialog(bob) }))
 }
 
 /* ------------------------------------------------- 3. the closed dialog --- */

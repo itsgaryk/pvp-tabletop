@@ -81,19 +81,26 @@ const EVENTS = new Set([
    */
    'cardPinged',
    /*
-      Starting a game again, which the other player has to accept. `newGameAsked` is one
-      player proposing it - and that click is their own consent, so it is not a vote - and
-      `newGameVote` is the other player's answer to it. A yes is what clears the table and
-      opens the Import Deck window on both, and that is worked out by the clients from
-      these two events rather than stored here (see stores/newGame.js).
+      Asking the other player for permission, which is one exchange for every gesture that
+      touches the other player's game: starting a game again, reading their deck, turning
+      their hand face up. `consentAsked` is one player asking - and that click is *their*
+      own consent, so it is not a vote - and `consentVote` is the other player's answer to
+      it. What a yes then does is worked out by the clients rather than stored here (see
+      stores/consent.js, and the kind each module registers).
 
-      They are the room's rather than addressed, and they carry no game state at all: an
-      ask is `{ requestId, from, fromName }` and a vote is `{ requestId, yes }`, so nothing
-      here can move a card - the board a new game clears is each player's own, and each
-      client clears its own from the same two events.
+      They are the room's rather than addressed, and they carry no game state of their own:
+      an ask is `{ requestId, kind, from, fromName, payload }` and a vote is
+      `{ requestId, yes }`. `payload` is whatever the kind needs to finish the gesture on
+      the asker's board when the answer is yes - the ids and pile a look was about, and
+      nothing at all for a new game - so it is data the asker already has, named by the
+      gesture rather than invented here.
+
+      New Game used to have its own pair of these (`newGameAsked`/`newGameVote`); they are
+      the `newGame` kind of this one now, because it was always the same exchange with
+      different words at the end.
    */
-   'newGameAsked',
-   'newGameVote'
+   'consentAsked',
+   'consentVote'
 ])
 
 /*

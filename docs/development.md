@@ -31,3 +31,9 @@
 - `.github/workflows/ci.yml` runs `tools/relay-check.mjs` against a dev server
   with second-scale idle windows, then `npm run build`. It never touches a real
   database, so a push cannot spend a metered quota.
+- **Two gestures need more than one board to be wrong**, and each has a check of its
+  own rather than a section of `browser-check.mjs`: `tools/new-game-clear-check.mjs`
+  (a new game clears *both* halves of every screen — the section it came from read only
+  each player's own zones, which is how a New Game that left the opponent's mirror
+  standing shipped green) and `tools/consent-check.mjs` (the consent handshake, for all
+  four kinds it covers). Both need the same stack `browser-check.mjs` does.

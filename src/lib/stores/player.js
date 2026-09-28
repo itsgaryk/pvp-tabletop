@@ -94,7 +94,7 @@ onBoardCleanup(() => {
    before it happens (see stores/newGame.js).
 
    It is the same emptying the room's own ending does - `clearMyBoard` takes the cards,
-   the decklist behind them and the selection - and two things more, because a new game
+   the decklist behind them and the selection - and three things more, because a new game
    continues in this same room rather than ending it:
 
       the log        the room's log and the chat belonged to the game that was just
@@ -103,20 +103,34 @@ onBoardCleanup(() => {
       the clock      back to what a room starts on, exactly as entering one sets it. A
                      game beginning with the previous game's clock - or with none of it
                      left - is not a game beginning
+      the room       and the **empty board is published**, because the other player's
+                     mirror of this half is a copy that only this board can correct
 
-   The turn, the markers and every zone flag come back with the board's own reset, and
-   the room's format is re-stamped onto the marker by `reset()` above, so the new game
-   is played in the format the room was made in rather than in no format at all.
+   That last one is the half that was missing, and it is worth stating why it is not
+   redundant with the other player's own restart. Cleared is only half of what a mirror
+   needs to know: the *owner's* board being empty says nothing to a mirror that nothing has
+   told. Measured before this line existed, after both players had accepted a new game:
+   each player's own zones were empty and each player's **mirror still held the other's 42
+   cards** - 7 in hand, 6 prizes and a full deck, drawn on screen on both halves of both
+   boards. Reported as *"New Game doesn't clear the opponent's side of the board"*, and
+   invisible to a check that only read each player's own zones, which is exactly what the
+   `newgame` section of `tools/browser-check.mjs` did.
 
-   The opponent's mirror is deliberately not touched: it is emptied by the other
-   player's own restart, which the relay's event log and their own board state carry
-   back here - clearing it from this side would be a guess about a board this client
-   does not own.
+   `shareBoardstate` cannot be used for it: that one is guarded on the decklist behind the
+   cards (`cards.get()`), and a new game has just thrown that away - which is the state this
+   whole gesture is *for*, so the guard refuses precisely the board that has to be sent.
+
+   The opponent's mirror is still not touched from here, and that is deliberate: this board
+   speaks only for itself, and the other half is emptied by the same line running on the
+   board that owns it. Publishing is what makes those two facts meet.
 */
 onNewGameStart(() => {
    clearMyBoard()
    chat.set([])
    resetTimer()
+
+   /* our events are never handed back to us, so this is for everybody else in the room */
+   share('boardState', { cards: [], board: exportBoard() })
 })
 
 /*
