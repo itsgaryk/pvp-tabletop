@@ -823,55 +823,93 @@ if (want('stadium')) {
 */
 if (want('newgame')) {
    /*
-      The cog toggles the menu, so every read here is the same three steps: press it, wait
-      for the render, read. The menu is a Svelte render - a click and a `querySelectorAll`
-      in the same evaluate reads the DOM as it was *before* the click, which is an empty
-      list rather than an empty menu.
+      The settings cog **toggles** the menu, and that is the trap this reader is built
+      around. A press whose state nobody tracks is a coin flip: pressed an odd number of
+      times since the last read it opens, an even number it closes, so a read that assumed
+      "pressed it, so it is open" reported the New Game block as missing on every run where
+      the menu happened to be open already - which reads exactly like a missing feature.
+
+      So the panel is asked what it is doing rather than assumed: press, look, and press
+      again if the blocks are not there. `settingCount` is that question, and everything
+      below reads the menu through `withMenuOpen`.
    */
-   const cog = (page) => page.evaluate(`(() => {
+   const settingCount = (page) => page.evaluate(`document.querySelectorAll('.setting').length`)
+
+   const press = (page) => page.evaluate(`(() => {
       const b = [...document.querySelectorAll('button')].find((el) => (el.getAttribute('aria-label') || el.title) === 'Settings')
       if (!b) return false
       b.click()
       return true
    })()`)
 
-   /*
-      The New Game entry as the menu draws it: whether the control is there, whether it can
-      be pressed, the line under it - which is the half that says *why* it cannot - and, if
-      asked, whether a press gets through. All of it is read **in one open menu**: the cog
-      toggles, so a read that happened after a close would be looking at a panel that is no
-      longer there (and reporting `null`, which reads exactly like a missing entry).
+   const openMenu = async (page) => {
+      if (!(await press(page))) return false
+      await sleep(700)
+      if (await settingCount(page)) return true
 
-      `press` clicks the button inside that same open menu and reports whether a prompt
-      appeared, which is the only claim that matters about a disabled control.
+      /* the press closed it: press again */
+      if (!(await press(page))) return false
+      await sleep(700)
+      return Boolean(await settingCount(page))
+   }
+
+   const closeMenu = async (page) => {
+      if (!(await settingCount(page))) return
+      await press(page)
+      await sleep(400)
+   }
+
+   /*
+      The New Game entry as the menu draws it, read from **inside one open menu**: whether
+      the control is there, whether it can be pressed, the line under it - which is the half
+      that says *why* it cannot - and, if asked, whether a press gets through.
+
+      `tryPress` clicks the button while the menu is open and reports whether a prompt
+      appeared, which is the only claim that matters about a disabled control: one that is
+      greyed out and still acts is the worst of both. The menu is left closed behind it, so
+      the sections after this one can click on zones.
    */
-   const menuEntry = async (page, { press = false } = {}) => {
-      if (!(await cog(page))) return null
-      await sleep(800)
+   const newGameEntry = async (page, { tryPress = false } = {}) => {
+      if (!(await openMenu(page))) return null
 
       const entry = await page.evaluate(`(() => {
          const block = [...document.querySelectorAll('.setting')].find((b) => b.querySelector('.title')?.textContent.trim() === 'New Game')
          if (!block) return null
          const button = block.querySelector('button')
-         const seen = {
+         return {
             there: true,
             disabled: button ? button.disabled : null,
             hint: block.querySelector('.hint')?.textContent.trim() || null,
             greyed: button ? getComputedStyle(button).opacity !== '1' : null,
             cursor: button ? getComputedStyle(button).cursor : null
          }
-         if (${press} && button) button.click()
-         return seen
       })()`)
 
-      if (press) {
+      if (tryPress && entry) {
+         await page.evaluate(`(() => {
+            const block = [...document.querySelectorAll('.setting')].find((b) => b.querySelector('.title')?.textContent.trim() === 'New Game')
+            const button = block ? block.querySelector('button') : null
+            if (button) button.click()
+            return true
+         })()`)
          await sleep(600)
          entry.prompted = await page.evaluate(`Boolean(document.querySelector('.new-game-dialog'))`)
       }
 
-      await cog(page)
-      await sleep(400)
+      await closeMenu(page)
       return entry
+   }
+
+   /*
+      Whether the block is in this player's menu at all - the question a spectator's menu
+      answers no to. Read the same way, and asked of the *titles* rather than of the New
+      Game block alone, so a missing block is told apart from a menu that never opened.
+   */
+   const menuTitles = async (page) => {
+      if (!(await openMenu(page))) return null
+      const titles = await page.evaluate(`[...document.querySelectorAll('.setting .title')].map((el) => el.textContent.trim())`)
+      await closeMenu(page)
+      return titles
    }
 
    /*
@@ -884,7 +922,7 @@ if (want('newgame')) {
    const room = await alice.createRoom('Alice', { format: 'expanded' })
    await sleep(2500)
 
-   const waitingEntry = await menuEntry(alice, { press: true })
+   const waitingEntry = await newGameEntry(alice, { tryPress: true })
    check('with one player in the room the New Game entry is greyed out',
       waitingEntry?.there === true && waitingEntry?.disabled === true && waitingEntry?.greyed === true,
       JSON.stringify(waitingEntry))
@@ -910,7 +948,7 @@ if (want('newgame')) {
    await sleep(3000)
    console.log(`  room ${room}`)
 
-   const waitingRoomEntry = await menuEntry(alice)
+   const waitingRoomEntry = await newGameEntry(alice)
    check('with both players in the room the entry is pressable again',
       waitingRoomEntry?.there === true && waitingRoomEntry?.disabled === false,
       JSON.stringify(waitingRoomEntry))
@@ -918,32 +956,21 @@ if (want('newgame')) {
       /opponent has to accept/i.test(waitingRoomEntry?.hint || ''), JSON.stringify(waitingRoomEntry?.hint))
 
    /*
-      The settings menu's own blocks, and whether one of them is the New Game option.
-      The cog toggles the menu, so this closes it again behind itself: the panel
-      overlaps the corner of the board, and the sections after this one click on zones.
-
-      Opening and reading are two round trips rather than one, and that is load-bearing:
-      the menu is a Svelte render, so a click and a `querySelectorAll` in the same
-      evaluate reads the DOM as it was *before* the click - an empty list, which is
-      exactly what "the menu has no New Game block" looks like. `menuEntry` above is
-      that round trip; this is the same read with the button's own words kept.
+      The block as a *menu* rather than as a control: it is there for both players, and not
+      on a spectator's menu at all - a watcher has no board of their own to clear and nobody
+      to put the question to. Read as the list of titles, so "the block is missing" is told
+      apart from "the menu never opened" (`null`).
    */
-   const newGameOption = async (page) => {
-      const entry = await menuEntry(page)
-      if (!entry) return { open: false, has: false, button: null }
-      return { open: true, has: entry.there, button: entry.hint ? 'Start a new game' : null }
-   }
-
-   const aliceMenu = await newGameOption(alice)
-   const bobMenu = await newGameOption(bob)
-   const watcherMenu = await newGameOption(watcher)
+   const aliceMenu = await menuTitles(alice)
+   const bobMenu = await menuTitles(bob)
+   const watcherMenu = await menuTitles(watcher)
 
    check('a player\'s settings menu has a New Game block',
-      aliceMenu?.open === true && aliceMenu?.has === true, JSON.stringify(aliceMenu))
+      Array.isArray(aliceMenu) && aliceMenu.includes('New Game'), JSON.stringify(aliceMenu))
    check('and the other player\'s has one too',
-      bobMenu?.has === true, JSON.stringify(bobMenu))
+      Array.isArray(bobMenu) && bobMenu.includes('New Game'), JSON.stringify(bobMenu))
    check('and a spectator\'s does not - there is no board of theirs to clear',
-      watcherMenu?.open === true && watcherMenu?.has === false, JSON.stringify(watcherMenu))
+      Array.isArray(watcherMenu) && !watcherMenu.includes('New Game'), JSON.stringify(watcherMenu))
 
    /* something in the log to lose: this line is written by the click below */
    const logLines = (page) => page.evaluate(`document.querySelectorAll('.chat p').length`)
@@ -958,12 +985,16 @@ if (want('newgame')) {
       before.alice > 0 && before.bob > 0 && before.watcher > 0, JSON.stringify(before))
 
    /*
-      Raising it: press the cog, wait for the menu, press New Game. Three steps for the
-      reason above - the menu is not in the DOM until a render has happened.
+      Raising it: open the menu (however it happens to be), press New Game, and leave the
+      menu behind - `newGameEntry` would close it, but this wants the *click* left to do
+      what it does, which is raise the prompt and take the screen.
+
+      Three steps rather than one for the same reason as everything above: the block is not
+      in the DOM until a render has happened, so a click and a read in the same evaluate
+      would be looking at the menu as it was before.
    */
    const startNewGame = async (page) => {
-      if (!(await cog(page))) return false
-      await sleep(700)
+      if (!(await openMenu(page))) return false
 
       const pressed = await page.evaluate(`(() => {
          const block = [...document.querySelectorAll('.setting')].find((b) => b.querySelector('.title')?.textContent.trim() === 'New Game')
