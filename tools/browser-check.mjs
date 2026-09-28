@@ -18,6 +18,12 @@
  *   beacon     a spectator whose TAB CLOSES drops out of the count, with no
  *              button pressed - the pagehide beacon
  *   restart    a room stamped by another deployment closes on the next poll
+ *   newgame    starting a game again: the settings menu's New Game is one player's
+ *              ask, which is their own consent - they get the wait and the other
+ *              player gets the only Yes/No. A Yes puts the room back to how it was
+ *              when it was created (both boards empty, deck panels up, log cleared
+ *              on every screen); a No changes nothing and is reported back to the
+ *              player who asked. Neither prompt is on a spectator's screen.
  *   idle       the prompt appears with a live countdown, either player's answer
  *              clears it for everyone, and an unanswered one closes the room
  *   panel      the board panel's own changes: the glow that stays until it is
@@ -161,16 +167,43 @@ const emptyBoard = (z) => z.deck === 0 && z.hand === 0 && z.prizes === 0 && z.ac
 const header = (page) => page.watchLine()
 
 /*
-   Wait for a board to read as empty. Clearing a board is several store writes
-   and one render, so reading the DOM the instant a click lands catches it
-   half-applied and reports a bug that is not there.
+   A board nobody has touched: what a freshly created room opens on, and what a new game
+   puts back.
+
+   The piles are read from their **badges** rather than by counting cards on screen, and
+   that is what the badge is for: a pile's cards are stacked, so only the top one is
+   drawn, and `.prizes` is a class both halves wear - counting `.prizes img.card` on one
+   player's screen counted the opponent's six as well, which is twelve for a table that
+   was dealt six. The badge is drawn from the pile itself, so it counts the pile rather
+   than the elements that happen to share a name. The hand carries no badge and nothing
+   stacks in it, so that one is still counted.
+*/
+const pileCount = (page, selector) => page.evaluate(`(() => {
+   const badge = document.querySelector(${JSON.stringify(selector)} + ' .count')
+   return badge ? parseInt(badge.textContent.trim(), 10) : null
+})()`)
+
+async function boardCounts (page) {
+   return {
+      hand: (await zones(page)).hand,
+      deck: await pileCount(page, '.deck'),
+      prizes: await pileCount(page, '.prizes')
+   }
+}
+
+const clearedBoard = (counts) => counts.deck === 0 && counts.prizes === 0 && counts.hand === 0
+
+/*
+   Wait for a board to read as empty. Clearing a board is several store writes and one
+   render, so reading the DOM the instant a click lands catches it half-applied and
+   reports a bug that is not there.
 */
 async function emptyBoardWhen (page, { timeout = 10000 } = {}) {
    const deadline = Date.now() + timeout
    for (;;) {
-      const zones_ = await zones(page)
-      if (emptyBoard(zones_)) return zones_
-      if (Date.now() > deadline) return zones_
+      const counts = await boardCounts(page)
+      if (clearedBoard(counts)) return counts
+      if (Date.now() > deadline) return counts
       await sleep(250)
    }
 }
@@ -762,6 +795,264 @@ if (want('stadium')) {
    clearInterval(answering)
 }
 
+/* ----------------------------------------------------------- 3. new game --- */
+
+/*
+   Starting a game again, which the other player has to accept.
+
+   The whole of the feature is one question and one answer: a player picks New Game and
+   that click is *their* consent, so they are told the table is waiting; the other player
+   is the one shown a Yes/No. What is checked here is therefore the two *different*
+   screens as much as the ending - the asker being asked their own question, or a board
+   cleared before the other player answered, is the whole feature being wrong.
+
+   Both answers are checked, because they are both endings: *Yes* puts the room back to
+   how it was when it was created, and *No* changes nothing and is reported back to the
+   player who asked - a request that quietly vanished is a player left wondering whether
+   it was seen at all.
+
+   The game log is read on all three pages, because the log is the room's and every
+   member's copy of it goes with the game that was just cleared. A spectator's copy is
+   cleared too: a watcher left reading a game whose board has been emptied is the same
+   fault as a player who is.
+*/
+if (want('newgame')) {
+   const room = await seatGame('a new game: one player asks, the other accepts', { withWatcher: true })
+   console.log(`  room ${room}`)
+
+   /*
+      The settings menu's own blocks, and whether one of them is the New Game option.
+      The cog toggles the menu, so this closes it again behind itself: the panel
+      overlaps the corner of the board, and the sections after this one click on zones.
+
+      Opening and reading are two round trips rather than one, and that is load-bearing:
+      the menu is a Svelte render, so a click and a `querySelectorAll` in the same
+      evaluate reads the DOM as it was *before* the click - an empty list, which is
+      exactly what "the menu has no New Game block" looks like.
+   */
+   const cog = (page) => page.evaluate(`(() => {
+      const b = [...document.querySelectorAll('button')].find((el) => (el.getAttribute('aria-label') || el.title) === 'Settings')
+      if (!b) return false
+      b.click()
+      return true
+   })()`)
+
+   const menuBlocks = (page) => page.evaluate(`[...document.querySelectorAll('.setting')].map((b) => ({
+      title: b.querySelector('.title')?.textContent.trim() || null,
+      buttons: [...b.querySelectorAll('button')].map((el) => el.textContent.trim())
+   }))`)
+
+   const newGameOption = async (page) => {
+      if (!(await cog(page))) return null
+      await sleep(700)
+      const blocks = await menuBlocks(page)
+      await cog(page)
+      await sleep(400)
+
+      const box = blocks.find((b) => b.title === 'New Game')
+      return { open: blocks.length > 0, has: Boolean(box), button: box ? box.buttons[0] || null : null }
+   }
+
+   const aliceMenu = await newGameOption(alice)
+   const bobMenu = await newGameOption(bob)
+   const watcherMenu = await newGameOption(watcher)
+
+   check('a player\'s settings menu has a New Game block',
+      aliceMenu?.open === true && aliceMenu?.has === true, JSON.stringify(aliceMenu))
+   check('and the other player\'s has one too',
+      bobMenu?.has === true, JSON.stringify(bobMenu))
+   check('and a spectator\'s does not - there is no board of theirs to clear',
+      watcherMenu?.open === true && watcherMenu?.has === false, JSON.stringify(watcherMenu))
+
+   /* something in the log to lose: this line is written by the click below */
+   const logLines = (page) => page.evaluate(`document.querySelectorAll('.chat p').length`)
+
+   await alice.clickText('Flip Coin', { settle: 2500, kinds: 'button' })
+   await sleep(2000)
+
+   const before = { alice: await logLines(alice), bob: await logLines(bob), watcher: await logLines(watcher) }
+   check('the room has a log with something in it on all three screens',
+      before.alice > 0 && before.bob > 0 && before.watcher > 0, JSON.stringify(before))
+
+   /*
+      Raising it: press the cog, wait for the menu, press New Game. Three steps for the
+      reason above - the menu is not in the DOM until a render has happened.
+   */
+   const startNewGame = async (page) => {
+      if (!(await cog(page))) return false
+      await sleep(700)
+
+      const pressed = await page.evaluate(`(() => {
+         const block = [...document.querySelectorAll('.setting')].find((b) => b.querySelector('.title')?.textContent.trim() === 'New Game')
+         const button = block ? block.querySelector('button') : null
+         if (!button) return false
+         button.click()
+         return true
+      })()`)
+
+      await sleep(700)
+      return pressed
+   }
+
+   const prompt = (page) => page.evaluate(`(() => {
+      const box = document.querySelector('.new-game-dialog')
+      if (!box) return null
+      return {
+         title: box.querySelector('.new-game-title')?.textContent.trim() || null,
+         text: box.innerText.replace(/\\s+/g, ' ').trim(),
+         buttons: [...box.querySelectorAll('button')].map((b) => b.textContent.trim()),
+         centred: (() => {
+            const r = box.getBoundingClientRect()
+            return Math.abs((r.left + r.right) / 2 - window.innerWidth / 2) < 4 &&
+               Math.abs((r.top + r.bottom) / 2 - window.innerHeight / 2) < 4
+         })()
+      }
+   })()`)
+
+   /* the prompt takes a round trip to the other player, so it is waited for */
+   const promptWhenUp = async (page) => {
+      for (let i = 0; i < 40; i++) {
+         const seen = await prompt(page)
+         if (seen) return seen
+         await sleep(400)
+      }
+      return null
+   }
+
+   check('one player can ask for a new game', (await startNewGame(alice)) === true)
+
+   /*
+      The two screens are not the same question, and that is the point: the player who
+      asked has already consented by asking, so they get the wait and no button; the other
+      player gets the Yes/No and is the only one who can answer.
+   */
+   const askerSide = await promptWhenUp(alice)
+   const askedSide = await promptWhenUp(bob)
+   const watchingSide = await promptWhenUp(watcher)
+
+   check('the player who asked is told the other player is being asked',
+      /waiting for opponent to accept/i.test(askerSide?.title || ''), JSON.stringify(askerSide))
+   check('and has no answer of their own to give - the click was the answer',
+      JSON.stringify(askerSide?.buttons) === JSON.stringify([]), JSON.stringify(askerSide?.buttons))
+   check('the other player is asked, and asked with a Yes and a No',
+      JSON.stringify(askedSide?.buttons) === JSON.stringify(['Yes', 'No']), JSON.stringify(askedSide))
+   check('and it is centred on their screen', askedSide?.centred === true, JSON.stringify(askedSide))
+   check('and a spectator watching the handshake has nothing to answer either',
+      /deciding/i.test(watchingSide?.text || '') && JSON.stringify(watchingSide?.buttons) === JSON.stringify([]),
+      JSON.stringify(watchingSide))
+
+   /* the board stands until the other player has accepted: the ask cleared nothing */
+   const askedBoard = { alice: await boardCounts(alice), bob: await boardCounts(bob) }
+   check('asking on its own clears nothing',
+      !clearedBoard(askedBoard.alice) && !clearedBoard(askedBoard.bob), JSON.stringify(askedBoard))
+
+   /* --- and the answer that starts the game again --- */
+
+   await bob.clickText('Yes', { settle: 4000, kinds: 'button' })
+   await sleep(3000)
+
+   const clearedAlice = await emptyBoardWhen(alice)
+   const clearedBob = await emptyBoardWhen(bob)
+
+   check('accepting clears the asker\'s board', clearedBoard(clearedAlice), JSON.stringify(clearedAlice))
+   check('and the answering player\'s board with it', clearedBoard(clearedBob), JSON.stringify(clearedBob))
+   check('and the decklist behind it, rather than dealing it again',
+      clearedAlice.deck === 0 && clearedBob.deck === 0, JSON.stringify({ alice: clearedAlice.deck, bob: clearedBob.deck }))
+
+   /*
+      The Import Deck window, which is where the next deck comes from - and the window a
+      freshly created room opens on. It is read from the DOM as well as from its own
+      class: a window that is up is one that is drawn, and `required` is what says the
+      room will not let the player past it until a deck has landed (the deck that
+      satisfied the last one has just been thrown away).
+   */
+   const deckPanel = (page) => page.evaluate(`(() => {
+      const box = document.querySelector('.import-window')
+      if (!box) return null
+      const rect = box.getBoundingClientRect()
+      return {
+         open: true,
+         onScreen: rect.width > 0 && rect.height > 0,
+         title: box.querySelector('.import-title')?.textContent.trim() || null,
+         buttons: [...box.querySelectorAll('button')].map((b) => b.textContent.trim()),
+         closable: Boolean(box.querySelector('.import-close'))
+      }
+   })()`)
+
+   await sleep(800)
+   const panelAlice = await deckPanel(alice)
+   const panelBob = await deckPanel(bob)
+
+   check('the asker\'s Import Deck window is up again',
+      panelAlice?.open === true && panelAlice?.onScreen === true, JSON.stringify(panelAlice))
+   check('with the room requiring a deck from it rather than offering a way past',
+      panelAlice?.closable === false && panelAlice?.buttons.includes('Import Deck'),
+      JSON.stringify(panelAlice))
+   check('and the answering player\'s window with it',
+      panelBob?.open === true && panelBob?.onScreen === true, JSON.stringify(panelBob))
+
+   /* the log went with the game, on all three screens */
+   const after = { alice: await logLines(alice), bob: await logLines(bob), watcher: await logLines(watcher) }
+   const logText = (page) => page.evaluate(`[...document.querySelectorAll('.chat p')].map((p) => p.innerText.replace(/\\s+/g, ' ').trim()).join(' | ')`)
+   console.log('  log after restart', JSON.stringify({
+      alice: await logText(alice), bob: await logText(bob), watcher: await logText(watcher)
+   }))
+   check('and the game log is empty on both players\' screens',
+      after.alice === 0 && after.bob === 0, JSON.stringify({ before, after }))
+   check('and on the spectator\'s as well', after.watcher === 0, JSON.stringify({ before, after }))
+
+   /* --- and the answer that changes nothing --- */
+
+   /*
+      A second round needs a game that could be lost. The stand-in deck API's cards carry
+      no `stage`, so *Setup* deals nothing (see the `panel` section) - but an **import**
+      does not need one: it fills the decklist, and the Edit Deck panel is open on both
+      screens, so both players import again and both have 60 cards to lose.
+   */
+   await Promise.all([alice.importDeck(), bob.importDeck()])
+   await sleep(2500)
+
+   const kept = { alice: await boardCounts(alice), bob: await boardCounts(bob) }
+   check('a dealt game to lose, before the second ask',
+      kept.alice.deck === 60 && kept.bob.deck === 60, JSON.stringify(kept))
+
+   check('the player can ask again', (await startNewGame(alice)) === true)
+   const declinedAsk = await promptWhenUp(bob)
+   check('and the other player is asked again',
+      /start a new game\?/i.test(declinedAsk?.title || ''), JSON.stringify(declinedAsk))
+
+   await bob.clickText('No', { settle: 700, kinds: 'button' })
+
+   /*
+      The answer is reported back to the player who asked, on their own screen: the other
+      player already knows what they answered, and the asker is the one left wondering.
+
+      It is read **first and straight away**, because it is a message that fades on its own
+      after a couple of seconds - and the checks below take longer than that. Asking "is
+      the notice up?" a few seconds after the click asks it about a toast that has already
+      gone, which is a check that can only fail.
+   */
+   const notice = () => alice.evaluate(`(() => {
+      const el = document.querySelector('.alert')
+      return el ? el.textContent.trim() : null
+   })()`)
+
+   let told = null
+   for (let i = 0; i < 20 && !told; i++) {
+      told = await notice()
+      if (!told) await sleep(150)
+   }
+   check('and the player who asked is told the other player said no',
+      /did not want to start a new game/i.test(told || ''), JSON.stringify(told))
+
+   const stillThere = { alice: await boardCounts(alice), bob: await boardCounts(bob) }
+   check('a No clears nothing on either board',
+      !clearedBoard(stillThere.alice) && !clearedBoard(stillThere.bob), JSON.stringify(stillThere))
+   check('the prompts are gone from both screens',
+      (await prompt(alice)) === null && (await prompt(bob)) === null,
+      JSON.stringify({ alice: await prompt(alice), bob: await prompt(bob) }))
+}
+
 /* ------------------------------------------------- 3. the closed dialog --- */
 
 if (want('closed')) {
@@ -1244,18 +1535,18 @@ if (want('panel')) {
       "Card Size": a card on the board is the size of the zone it is in now, which
       is not a thing a slider can improve on.
 
-      "VSTAR / GX marker" is the newest to go, and it went for the opposite
-      reason to the others: it is still a real setting, but only in solo. In a room
-      the format decides the markers (see the `format` section), so a control here
-      could only disagree with the room it is in.
-
       "Mulligans" is gone too, and for a third reason: auto-mulligan is off and
       has no control any more. The setting and the loop that reads it are still in
       the tree - a panel is the things a player can change, and this is not one of
       them any more (docs/mechanics.md#mulligans).
+
+      "New Game" is not a setting and does not pretend to be one: it is the one entry
+      here that starts a game again rather than changing how one is drawn, and it is in
+      a room because a room is where there is another player to ask (see the `newgame`
+      section).
    */
    check('and only settings that can be set are there',
-      JSON.stringify(shape.map((s) => s.title)) === JSON.stringify(['Board zones', 'Diagnostics']),
+      JSON.stringify(shape.map((s) => s.title)) === JSON.stringify(['Board zones', 'New Game', 'Diagnostics']),
       JSON.stringify(shape.map((s) => s.title)))
 
    const described = await alice.evaluate(`[...document.querySelectorAll('.setting')].map((b) => b.innerText.replace(/\\s+/g, ' ').trim())`)
