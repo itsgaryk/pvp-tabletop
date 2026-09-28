@@ -19,6 +19,7 @@
    import { importOpponentDeck, solo } from '$lib/stores/solo.js'
    import { room } from '$lib/stores/connection.js'
    import { showMessage } from '$lib/stores/message.js'
+   import { newGameCount } from '$lib/stores/newGame.js'
    import Spinner from './Spinner.svelte'
 
    /*
@@ -45,6 +46,25 @@
    /* a room opens the window itself; solo opens it from a button */
    $: if ($room && !$solo && !imported) isOpen = true
    $: required = Boolean($room) && !$solo && !imported
+
+   /*
+      And a new game opens it again, for both players at once.
+
+      It does not need to be *asked for* here, because this window is where the next deck
+      comes from and the new game has just cleared the old one off the board - a player
+      left looking at an empty table with no window has to be told to press the button,
+      which is a step the game can take for them. What decides that a new game started is
+      the room's own handshake (see stores/newGame.js); this only watches the count it
+      raises, which clears `imported` as well: the deck behind that flag has just been
+      thrown away, so the window is required again rather than an ordinary one.
+   */
+   let seenNewGame = $newGameCount
+
+   $: if ($newGameCount !== seenNewGame) {
+      seenNewGame = $newGameCount
+      imported = false
+      isOpen = true
+   }
 
    let txt = ''
    let response = ''

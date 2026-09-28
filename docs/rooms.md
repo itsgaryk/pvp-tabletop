@@ -189,3 +189,67 @@ treated differently from a spectator: the seat is **held** for them (see [Waitin
 and the rejoin wait starts, while a stale spectator is simply removed. If the
 sweep leaves nobody actually sitting in a seat — and no seat being held — the
 room closes.
+
+## Starting again inside the same room
+
+A game that has ended — or one nobody wants to finish — is started again without
+leaving the room: the settings menu's **New Game** entry. What that means is a room
+that has just been created, without the room being new: the same code, the same two
+seats, the same format, the same watchers, and a table nobody has touched yet.
+
+It takes both players, and only one of them is asked:
+
+- **The click is the asker's consent.** They are the player who asked for it, so they
+  are not asked again. What they get is a centred *Waiting for opponent to accept new
+  game*, with no button on it.
+- **The other player is the one who is asked** — a centred Yes/No, and the only answer
+  in the handshake. *Yes* starts the game again; *No* ends it, changes nothing, and
+  tells the player who asked, on their own screen, that the other player did not want
+  to.
+
+The handshake is the point rather than a courtesy: clearing the table throws away a
+game somebody may still be playing, so one player cannot do it alone. It is also why
+neither dialog can be waved away — clicking beside one is not a Yes or a No, and a
+prompt that could be dismissed would leave the asker waiting on an answer that is
+never coming.
+
+What "starting again" clears, on both clients:
+
+- **every card, and every pile behind them** — including the imported decklist, so
+  the table is empty rather than a fresh deal of the game just played
+- **the game log and the chat**, which belonged to the game that was just cleared
+  (a spectator's copy of the log is cleared too: a watcher left reading a game
+  whose board is empty is the same fault)
+- **the table clock**, back to the room's default — a new game beginning with the
+  previous game's clock, or with none of it left, is not a game beginning
+
+and then the **Edit Deck** panel opens again on both screens, because that is the first
+thing a player met in this room and it is where the next deck comes from.
+
+**Nothing about it is enforced by the relay, and that is deliberate.** The board a new
+game clears is each player's *own* — its cards, its decklist, its log — so the rule can
+be applied by the client looking at them, and both clients reach the same answer because
+they are reading the same two events (`newGameAsked`, `newGameVote` — both allow-listed
+like any other). What the relay does is what it does for every other action: it refuses
+a spectator, and it writes the events into the room, where a client that reloads mid-ask
+replays into the question that is still outstanding.
+
+A vote names the ask it answers (`requestId`, made by the client that asked), so a
+replayed vote from a game ago — an ask that is no longer pending — is ignored rather than
+clearing a board. And the asker's own *yes* is applied locally rather than sent, because
+our own events are never handed back to us: the click is consent, so there is no second
+question to put to the player who asked. The Edit Deck panel's own re-opening is a
+client-side fact — `newGameCount` in `src/lib/stores/newGame.js`.
+
+**Neither the ask nor the answer writes a line in the game log, and that is deliberate.**
+The log is the thing a new game clears, and a line written by the ask travels over the
+room's own poll — so the other player's copy of it can arrive *after* their board was
+cleared, leaving a just-emptied log with "wants to start a new game" in it. Measured in
+the browser check, that is exactly what happened. What a player is told is told on screen
+instead: the prompt for the one being asked, the wait for the one who asked, and a
+message for the answer either way — *The other player accepted…*, or *…did not want to
+start a new game*, which is the only place the refusal appears.
+
+A new game is **not** a new room: the room code, the seats, the format and everyone
+watching them are untouched — which is the whole reason to have this rather than leaving
+and making another one.

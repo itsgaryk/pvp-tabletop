@@ -5,6 +5,7 @@
    import Board from '$lib/play/Board.svelte'
    import Controls from '$lib/play/Controls.svelte'
    import IdlePrompt from '$lib/play/dialogs/IdlePrompt.svelte'
+   import NewGamePrompt from '$lib/play/dialogs/NewGamePrompt.svelte'
    import GameClosed from '$lib/play/dialogs/GameClosed.svelte'
    import Connection from './Connection.svelte'
    import DeckInput from './DeckInput.svelte'
@@ -75,9 +76,11 @@
 </div>
 
 <!--
-   The two things that take over the whole screen. Both are about the room rather
-   than the board: an idle room asking whether anybody is still playing, and a
-   room that has closed while somebody was still in it.
+   The three things that take over the whole screen. All of them are about the room
+   rather than the board: an idle room asking whether anybody is still playing, one
+   player asking the other to start the game again, and a room that has closed while
+   somebody was still in it.
 -->
 <IdlePrompt />
+<NewGamePrompt />
 <GameClosed />

@@ -10,6 +10,7 @@ import { statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } fr
 import { normalizeMarkerUsed } from '$lib/util/markers.js'
 import { markerForFormat } from '$lib/util/format.js'
 import { registerOwnDeck, registerPiles, registerSelection } from './reveal.js'
+import { onNewGameStart } from './newGame.js'
 import { logStatus, logStatusCleared } from './logger.js'
 import {
    logMove, logSlotMove, logPickup, logPlacement,
@@ -83,6 +84,36 @@ export function clearMyBoard () {
    two) are cleared by their own listener for `leftRoom`.
 */
 onBoardCleanup(() => {
+   clearMyBoard()
+   chat.set([])
+   resetTimer()
+})
+
+/*
+   And the board's half of "start a game again", which the other player has to accept
+   before it happens (see stores/newGame.js).
+
+   It is the same emptying the room's own ending does - `clearMyBoard` takes the cards,
+   the decklist behind them and the selection - and two things more, because a new game
+   continues in this same room rather than ending it:
+
+      the log        the room's log and the chat belonged to the game that was just
+                     cleared, so they go with it. This is *this* board's copy: the other
+                     player's is cleared by their own half of the same rule
+      the clock      back to what a room starts on, exactly as entering one sets it. A
+                     game beginning with the previous game's clock - or with none of it
+                     left - is not a game beginning
+
+   The turn, the markers and every zone flag come back with the board's own reset, and
+   the room's format is re-stamped onto the marker by `reset()` above, so the new game
+   is played in the format the room was made in rather than in no format at all.
+
+   The opponent's mirror is deliberately not touched: it is emptied by the other
+   player's own restart, which the relay's event log and their own board state carry
+   back here - clearing it from this side would be a guess about a board this client
+   does not own.
+*/
+onNewGameStart(() => {
    clearMyBoard()
    chat.set([])
    resetTimer()

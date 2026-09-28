@@ -254,6 +254,15 @@ fewer prizes, a deck with no Basic sets up, and Setup can be pressed mid-game. S
 is the only way to get a fresh board, and it is a *new game* rather than a rewind:
 the log keeps both games' lines.
 
+**Setup is one player's own move, and it is not the same thing as *New Game*.** Setup
+deals *your* board from the deck you already imported and leaves the log, the clock and
+the other player alone; **New Game** — the settings menu entry — puts the whole room back
+to how it was when it was created, which the other player has to accept and which throws
+the decklists and the log away with the game
+([rooms.md](rooms.md#starting-again-inside-the-same-room)). A player who wants a
+differently shuffled opening wants Setup; a table that has finished a game — or wants to
+play a different one — wants New Game.
+
 In solo, Setup deals both halves — seven cards and six prizes to each — from the two
 imported decks.
 
