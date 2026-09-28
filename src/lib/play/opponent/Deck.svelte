@@ -8,7 +8,7 @@
    import { solo, soloDraw, soloShuffleDeck } from '$lib/stores/solo.js'
    import { canReveal, revealTop, lookTop } from '$lib/stores/reveal.js'
    import { discardTopOfTheirDeck } from '$lib/stores/oppAction.js'
-   import { numberPrompt } from '$lib/util/prompts.js'
+   import { askForNumber } from '$lib/util/asks.js'
 
    const { openOppPile } = getContext('boardActions')
 
@@ -43,8 +43,8 @@
    }
 
    /* in solo the other half is yours, so its deck can be drawn from as well */
-   function drawX () {
-      const x = numberPrompt('draw', { theirs: deck.get().length })
+   async function drawX () {
+      const x = await askForNumber('draw', { theirs: deck.get().length })
       if (x) soloDraw(x)
    }
 
@@ -54,10 +54,10 @@
       The whole of the gesture is `revealTop` in the store: which cards "the top"
       means, which half owns the deck, and the event that tells the other player.
       What is here is the question, which every "X" on this board asks through
-      `util/prompts.js` (Draw X, View Top X, Order Top X).
+      `util/asks.js` (Draw X, View Top X, Order Top X).
    */
-   function revealTopX () {
-      revealTop(deck, numberPrompt('revealTop', { theirs: deck.get().length }))
+   async function revealTopX () {
+      revealTop(deck, await askForNumber('revealTop', { theirs: deck.get().length }))
    }
 
    /*
@@ -67,8 +67,8 @@
       state instead of shared - which is the whole of the difference between the
       two entries, and the reason they are separate functions in one module.
    */
-   function lookAtTopX () {
-      lookTop(numberPrompt('lookTop', { theirs: deck.get().length }))
+   async function lookAtTopX () {
+      lookTop(await askForNumber('lookTop', { theirs: deck.get().length }))
    }
 
    /*
@@ -83,7 +83,7 @@
       and why the first does not need to ask, while the second does.
 
       The question is the player's own deck's question seen from the other side of the
-      table: both rows are in `util/prompts.js`, one asked "from the top of your deck"
+      table: both rows are in `util/asks.js`, one asked "from the top of your deck"
       and this one "from the top of the opponent's deck", because each is asked by the
       player whose reading of the deck it is.
 
@@ -91,8 +91,8 @@
       and the discard is face up, so the *owner* sees what they lost, which is what a
       discard is. The player who asked sees the deck get shorter.
    */
-   function discardTopX (ask = true) {
-      const count = ask ? numberPrompt('discardTheirTop', { theirs: deck.get().length }) : 1
+   async function discardTopX (ask = true) {
+      const count = ask ? await askForNumber('discardTheirTop', { theirs: deck.get().length }) : 1
 
       if (!count) return
 

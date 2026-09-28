@@ -1,5 +1,5 @@
 /*
-   The numbers the board asks for, and one way to ask for them.
+   The numbers the board asks for: what each question is, and what it will accept.
 
    A dozen gestures need a count from the player before they can happen - how many
    cards to draw, to look at, to reveal, to reorder, to discard - and each of them
@@ -17,7 +17,7 @@
      - the bounds were written four different ways: `if (x)`, `if (!asked || asked
        < 1) return`, `if (!x || x < 1) return`, and one call site with no check at all.
 
-   So this module is the one place a question is stated, and `numberPrompt` is the
+   So this module is the one place a question is stated, and `askForNumber` is the
    one place it is put to the player.
 
    **The table holds the question; the caller keeps its own destination.** What
@@ -99,7 +99,7 @@ const EITHER_DECK = 'eitherDeck'
 */
 const DAMAGE_MAX = 999
 
-export const NUMBER_PROMPTS = {
+export const NUMBER_ASKS = {
    draw: { question: 'Draw how many cards?', type: 'cards', min: 1, max: EITHER_DECK, maxHint: false },
    /* *View Top X* on the player's own deck: a private pick off the top, into the selection */
    viewTop: { question: 'Look at how many cards?', type: 'cards', min: 1, max: OWN_DECK, maxHint: false },
@@ -129,9 +129,9 @@ export const DECK_MAX = { OWN_DECK, THEIR_DECK, EITHER_DECK }
    the deck holds: "reveal 10" on a deck of three is a request the deck cannot answer,
    and the table says so before the store has to refuse it.
 */
-export function maxFor (id, decks = {}) {
-   const row = NUMBER_PROMPTS[id]
-   if (!row) throw new Error(`no number prompt is registered as "${id}"`)
+export function maxForAsk (id, decks = {}) {
+   const row = NUMBER_ASKS[id]
+   if (!row) throw new Error(`no number ask is registered as "${id}"`)
 
    if (row.max === null) return Infinity
    if (row.max === OWN_DECK) return decks.own ?? Infinity
@@ -175,21 +175,71 @@ export function maxFor (id, decks = {}) {
    "nothing was asked" would hide it: a `{ question: undefined }` prompt is a dialog
    that says `undefined` and a gesture that silently does nothing.
 */
-export function numberPrompt (id, decks = {}) {
-   const prompt = NUMBER_PROMPTS[id]
-   if (!prompt) throw new Error(`no number prompt is registered as "${id}"`)
+/*
+   The dialog that asks, registered by `NumberPrompt.svelte` rather than imported.
 
-   const answer = window.prompt(prompt.question)
+   The same direction `reveal.js` uses for the piles it must not import, and for the
+   same reason: this module holds the questions and their bounds, and that is data
+   worth being able to test with no component and no browser (`tools/ask-check.mjs`
+   does exactly that). Importing the component here would make a table of data depend
+   on Svelte, a stylesheet and a browser.
+*/
+let dialog = null
+
+export function registerNumberDialog (next) {
+   dialog = next
+}
+
+/*
+   Ask for one of those numbers, and answer with a number the gesture can use or with
+   `null` for "there is nothing to do".
+
+   It is `async` because the question is put by a dialog of ours rather than by the
+   browser, and a dialog is a thing that comes back later. Every caller awaits it.
+
+   `decks` is what answers a row's `max`, and it is the caller's to give because only
+   the caller knows which stores it is holding: `{ own: 47, theirs: 12 }` from the two
+   halves. A row with no ceiling ignores it, and so does a call site that does not pass
+   it - the bound is then absent rather than wrong.
+
+   One answer for the ways a prompt comes back without a number, and they are the
+   reason this exists rather than a table alone:
+
+     - **cancel** is refused, and it is the one that has to be read deliberately: a
+       floor of 0 - the damage row - must not take "nothing was asked" as "set the
+       damage to zero". Nothing was asked is not a value.
+     - **anything unreadable** is refused. It used to travel straight into
+       `slot.damage.set(NaN)` and onto the relay, where the other board drew it. The
+       dialog no longer lets it be typed at all, so this is the second line of it.
+
+   A number above the ceiling is **brought down to it** rather than refused, and that is
+   a judgement worth stating: asking to reveal 10 of a 3-card deck is a player reaching
+   past the end of the deck, and the honest reading of that gesture is "all of them" -
+   which is what the stores already did quietly (`draw` stops when the deck runs out,
+   `topCount` takes `Math.min`). What the ceiling adds is that the number the *log line*
+   reports is the number that happened, instead of a count nobody drew.
+
+   So an unknown id is the only thing here that throws. It is a typo in this repository
+   rather than anything a player can do, and other spellings of "nothing was asked"
+   would hide it: a `{ question: undefined }` prompt is a dialog that says `undefined`
+   and a gesture that silently does nothing.
+*/
+export async function askForNumber (id, decks = {}) {
+   const prompt = NUMBER_ASKS[id]
+   if (!prompt) throw new Error(`no number ask is registered as "${id}"`)
 
    /*
-      Cancel and an empty box are told apart, and they have to be. `Number(null)` is
-      **0**, so the damage row - whose floor is 0 - would have read a cancelled prompt
-      as "set the damage to zero", which is a value it is willing to accept. Cancel
-      means nothing was asked; a blank box means nothing was typed, and for a count
-      that is also nothing. Both answer `null` for a count, and for damage a blank box
-      stays 0, which is what it did before there was a table.
+      A missing dialog is a wiring fault, not a player's - and it is worth throwing for
+      rather than answering `null`, which would be every count on the board silently
+      doing nothing with the page looking perfectly healthy.
    */
-   if (answer === null) return null
+   if (!dialog) throw new Error('no number dialog is registered - is NumberPrompt mounted?')
+
+   const max = maxForAsk(id, decks)
+   const answer = await dialog.ask({ ...prompt, max })
+
+   /* cancel, or a dialog that closed without an answer */
+   if (answer === null || answer === undefined) return null
 
    const parsed = Number(answer)
 
@@ -199,13 +249,11 @@ export function numberPrompt (id, decks = {}) {
    /* half a card is not a card: a count is a whole number, and 2.5 becomes 2 */
    const value = prompt.type === 'cards' ? Math.trunc(parsed) : parsed
 
-   const max = maxFor(id, decks)
-
    /*
-      The floor is checked before the ceiling, and the order matters: a cleared deck
-      has a ceiling of zero, and clamping "draw 5" up against it would answer 0 - a
-      gesture the caller would then run, doing nothing. Asking for more cards than a
-      deck holds is "all of them"; asking anything of an empty deck is nothing to do.
+      The floor is checked before the ceiling, and the order matters: a cleared deck has
+      a ceiling of zero, and clamping "draw 5" up against it would answer 0 - a gesture
+      the caller would then run, doing nothing. Asking for more cards than a deck holds
+      is "all of them"; asking anything of an empty deck is nothing to do.
    */
    if (value < prompt.min) return null
 

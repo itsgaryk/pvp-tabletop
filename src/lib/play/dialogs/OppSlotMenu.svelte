@@ -3,7 +3,7 @@
    import ContextMenu from '$lib/components/ContextMenu.svelte'
    import ContextMenuOption from '$lib/components/ContextMenuOption.svelte'
    import { STATUSES, statusById, statusesOn, normalizeStatus, toggleStatus, emptyStatus } from '$lib/util/status.js'
-   import { numberPrompt } from '$lib/util/prompts.js'
+   import { askForNumber } from '$lib/util/asks.js'
    import { logStatus, logStatusCleared } from '$lib/stores/logger.js'
 
    import { share, spectating } from '$lib/stores/connection.js'
@@ -30,8 +30,8 @@
       menu.open(x, y)
    }
 
-   function setDamage () {
-      const x = numberPrompt('damage')
+   async function setDamage () {
+      const x = await askForNumber('damage')
       if (x === null) return
 
       slot.damage.set(x)
