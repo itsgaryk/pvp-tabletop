@@ -200,3 +200,21 @@ anyone else.
   and stand-ins on 6398/6399 (that work is merged, so the worktree can be removed); this
   branch used session A's block, 9222-9224 with the app on 3005/3006 and 6390/6391.
 
+**Addendum, for whoever picks this up (including me tomorrow).** `tools/dev-servers.ps1`
+reuses an app port that is *already listening*, and its readiness loop then asks whatever
+holds that port to answer `/api/relay/health`. If a stale vite from another worktree owns
+it, the script prints "already up", the health check passes, and the browsers it starts
+are pointed at `BASE=3005` — a server serving **somebody else's tree**. That is exactly
+what happened here: 3005 was an older `new-game` vite, this worktree's code was on 3006,
+and every check run against 3005 answered for the wrong branch. Before running anything,
+confirm which port is serving *this* worktree:
+
+```powershell
+(Invoke-WebRequest 'http://localhost:3005/src/lib/stores/newGame.js' -UseBasicParsing).Content.Contains('opponentHere')
+```
+
+`True` on the port you are about to use, a 404 on a stale one. And the stack does not
+survive the end of a sandboxed turn here: bring up `tools/dev-servers.ps1`, run the check,
+and expect to bring it up again next time rather than finding it running.
+
+
