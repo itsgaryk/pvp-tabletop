@@ -506,9 +506,9 @@ On screen a spectator gets the whole board and none of the play:
   in `opponent.js`) and seated from the relay's `seated` event. The normal single
   mirror is switched off while spectating rather than unmounted, because it would
   otherwise quietly collect both players' cards into one set of slots.
-- **No game actions.** The Game Setup button, the turn row's ends and the action row
-  are not rendered and the shortcuts are not bound, so End Turn and New Game are not
-  one keystroke away for somebody who is only watching.
+- **No game actions.** The Game Setup row and the turn row's `−` / `+` are not
+  rendered and the shortcuts are not bound, so End Turn and Flip Coin are not one
+  keystroke away for somebody who is only watching.
 - **Both hands and both sets of prizes are face up** (`$spectating` reveals them
   outright), which is the deliberate difference from a player, who sees a hidden hand
   and hidden prizes.
@@ -520,54 +520,34 @@ On screen a spectator gets the whole board and none of the play:
 
 ## Keyboard shortcuts
 
-Two document-level listeners, and both refuse while somebody is typing
-(`$lib/util/typing.js`, which also keeps Enter and Space for a focused button). No
-board shortcut uses the command modifier, on purpose: that combination belongs to the
-browser and the clipboard, so `Ctrl+V` / `Cmd+V` pastes a room code or a message and
-View All is `V` and only `V`.
+Two document-level listeners — `src/lib/play/Board.svelte` for the board and
+`src/lib/play/GameActions.svelte` for the game actions — and both refuse while
+somebody is typing (`$lib/util/typing.js`, which also keeps Enter and Space for a
+focused button). No board shortcut uses the command modifier, on purpose: that
+combination belongs to the browser and the clipboard, so `Ctrl+V` / `Cmd+V` pastes a
+room code or a message and View All is `V` and only `V`.
 
-The board's own shortcuts, from `Board.svelte`:
+**Every key, what it does, and which of them a spectator does not get, is in
+[shortcuts.md](shortcuts.md).** That file is the sheet; this section is the reason the
+sheet is shaped the way it is. Three rules run through it:
 
-| Key | Does |
-| --- | --- |
-| `1`–`9` | draw that many cards |
-| `Alt`+`1`–`9` | look at that many from the top of the deck (the deck menu's *View Top X*) |
-| `D` `H` `L` `P` | the selection to discard / hand / lost zone / prizes |
-| `B` `A` | the selected Pokémon to the bench / the active spot |
-| `G` | the selection to the stadium, or what is in the stadium already |
-| `S` | shuffle: the selection into the deck, or the deck itself |
-| `T` `M` | the selection to the top / bottom of the deck |
-| `Q` `E` | attach / evolve with the selected card |
-| `U` | mark the selected Pokémon's ability used, or take that back |
-| `Space` | the selected card's details, and again to put them away — a face-down prize is written to the log |
-| `V` `W` | View All of the deck (written to the log) / of the table |
-| `X` | the selection to the table; with nothing selected, the whole table back into the hand (a move, not a selection — see [selection.md](selection.md#select-all-and-the-one-zone-that-does-not-answer-it)) |
-| `Esc` | clear the selection |
-
-`Space` and `V` are the menu entries they stand for, key for key, and that includes
-what those entries write in the log: the details of a **face-down prize** are recorded
-as *Viewed prize card* (a prize already turned face up is readable across the table and
-says nothing), and View All is recorded as *Viewed deck*, the one pile the opponent
-cannot see. The keyboard reaching the same look by another route is not a reason for it
-to go unrecorded. See [gotchas.md](gotchas.md) for what happened when `V` did.
-
-**`Ctrl+A` is not in that table, and it is not a board shortcut**: it is a pile's own
-gesture, listened for on the zone itself, and it fills the selection with the whole
-pile. The piles answer it and the table does not, because the table's cards are picked
-up one at a time ([selection.md](selection.md#select-all-and-the-one-zone-that-does-not-answer-it)).
-
-The game actions, from `GameActions.svelte`, which a spectator does not get at all:
-`Enter` ends the turn, `C` starts the next one, `F` flips a coin, `Z` shows or hides
-Pokémon. **The deal has no key**: it is *Game Setup* in a room and *Setup* in solo, and
-neither has a shortcut. In a room the keys are the *only* way to reach Flip Coin and End
-Turn — the row they used to be on is hidden, not removed — and `Z` is the only way to the
-hidden Pokémon in either mode. The room's one button is **Game Setup**, on a row of its
-own above the turn and the full width of it; the turn row keeps its own `−` and `+`. See
-[Setup](mechanics.md#setup) for what Game Setup does and does not write to the log.
+- **A shortcut is its menu entry, key for key**, including what that entry writes in the
+  log. `Space` and `V` reach the same looks their menu entries do, so a face-down prize
+  read with `Space` is recorded as *Viewed prize card* and View All as *Viewed deck*.
+  The keyboard reaching a look by another route is not a reason for the look to go
+  unrecorded — see [gotchas.md](gotchas.md) for what happened when `V` did not.
+- **A shortcut goes wherever its zone goes**, which the format decides: a room with no
+  Lost Zone has no *To Lost Zone* entry and no `L`
+  ([The format, and the zones it can take away](#the-format-and-the-zones-it-can-take-away)).
+- **`Ctrl+A` is not in the sheet and is not a board shortcut**: it is a pile's own
+  gesture, listened for on the zone itself, which is why the piles answer it and the
+  table does not
+  ([selection.md](selection.md#select-all-and-the-one-zone-that-does-not-answer-it)).
 
 In solo both halves are playable, so every key that moves a selection first asks which
 board it is meant for (`farSelected()`): the same key moves the far half's own cards
 into the far half's own zones, and never carries a card across the table into yours.
+See [shortcuts.md](shortcuts.md#moving-a-selection).
 
 ## What the browser remembers
 
