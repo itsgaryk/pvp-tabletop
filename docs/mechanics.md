@@ -222,8 +222,10 @@ button, but the button is never disabled in play.
 
 ### Setup
 
-*Setup* — the button, or the `N` key after a confirmation — deals a fresh game in
-this order:
+*Setup* deals a fresh game in this order. In a room it is **Game Setup**, the room's
+one button, on its own row above the turn; in solo it is the *Setup* button of the row
+solo keeps; and `N`, after a confirmation, is either one. The shortcuts and the buttons
+call one function, and the only thing that differs between them is the log line below.
 
 1. **The board is reset.** Deck rebuilt from the imported list, and hand, prizes,
    discard, lost zone, bench, active spot, stadium, table and pickup cleared. Both the
@@ -242,12 +244,19 @@ this order:
 4. **Six prizes are dealt face down**, off the top of the deck, *after* the draw.
    A 60-card deck is therefore 53 after the hand and 47 after the prizes.
 5. **The turn counter is set to 0.**
-6. **Your Pokémon are hidden** (in a room, not in solo) — the same action the *Hide
-   Pokémon* button takes. The button then glows until it is pressed, because the glow
-   is the only thing that says the board is hidden and it points at the control that
-   brings them back.
-7. **`Setup` goes in the game log** — or `Setup - 3 Mulligans` when auto-mulligan is
-   on, which it no longer is. The board state is then published to the room.
+6. **Your Pokémon are hidden** (in a room, not in solo) — the same action `Z` takes.
+   In solo the *Setup* button glows until it is pressed, because the glow is the only
+   thing that says the board is hidden and it points at the control that brings them
+   back; **a room has no such button and nothing glows**, so `Z` is the way back
+   ([Hiding your board](#hiding-your-board)).
+7. **`Setup` goes in the game log — but not on *Game Setup*.** The room's button deals
+   the opening hand and writes nothing: it is what a room does with a fresh deck rather
+   than something a player did at the table, and the board it deals already says so
+   (the hand, the prizes, turn 0). `N` is a player saying out loud that they are
+   starting again, so *that* writes the line — *Setup*, or `Setup - 3 Mulligans` when
+   auto-mulligan is on, which it no longer is. Solo's own button logs either way: its
+   row is the solo player's alone and its one button is the deal. The board state is
+   published to the room in every case.
 
 Nothing is refused for being unusual: a deck that is short deals a short hand and
 fewer prizes, a deck with no Basic sets up, and Setup can be pressed mid-game. Setup
@@ -758,7 +767,10 @@ and what the opponent gets is the log line *Viewed deck* — nothing about the c
 
 *Hide Pokémon* (`Z`) turns your Pokémon in play — the Active spot and the Bench —
 into card backs for the other player. It is about what the other player can see, so
-**solo has no Hide button**: there is nobody to hide them from.
+**solo has no Hide Pokémon button**: there is nobody to hide them from. **A room has
+no button for it either** — the only button in a room is *Game Setup* — so in both
+modes the action is the `Z` key, and the store and the sharing behind it are
+unchanged (see `switchVisibility` in `GameActions.svelte`).
 
 Three things about it are worth knowing, because they are not what "hide" sounds
 like:
@@ -775,9 +787,11 @@ like:
   active moves are *counted* rather than named, which is the visibility rule below
   doing its work.
 
-**Setup hides your Pokémon for you**, and the button then glows until you press it,
-since the glow is the only thing on screen that says your own board is hidden. (The
-log line is written by the button; the glow is what the log does not say.)
+**Setup hides your Pokémon for you.** In solo the *Setup* button then glows until you
+press it, since the glow is the only thing on screen that says your own board is
+hidden — and in a room nothing glows, because the button that would bring them back is
+gone from the row: `Z` is the way out, and it is the reason the action is still bound
+at all.
 
 ### Reveal, Look and Reveal Hand
 
