@@ -1567,6 +1567,84 @@ try {
       afterDrag.theirDiscard === beforeDrag.theirDiscard,
       `alice's own discard ${beforeDrag.theirDiscard} -> ${afterDrag.theirDiscard}`)
 
+   /* --------------------- 3b-ii. the owner moving a card this player put into play -- */
+
+   /*
+      **A card this player puts into play on the owner's board has to stay a card that
+      board can follow.**
+
+      A card dropped on the owner's bench is the one gesture whose result the acting board
+      cannot name in advance: a Pokemon in play *is* a slot, the slot is created by the
+      owner's own move, and every event about it afterwards addresses it by **the owner's**
+      id - `slotsMoved` when it is discarded, `damageUpdated`, `cardsAttached`,
+      `cardPromoted`. The placement is made at once (`optimisticMove` in oppAction.js), so
+      the acting board invents a slot id to get the card on screen; the owner's
+      `cardsBenched` is what is supposed to trade that invention for the real id.
+
+      It did not, and this is the report: *a card placed on the opponent's bench from a
+      Look window does not leave the bench when its owner discards it*. `cardsBenched`
+      looked the card up in the pile the event named - and the acting board had already
+      taken it out of that pile, which is the whole point of the optimistic move - so the
+      handler dropped the owner's slot id and kept its own invention. Every later event
+      about that Pokemon named an id the board had never heard of, and nothing the owner
+      did with the card reached the player who had placed it. The mirror's handler now
+      takes the card out of the slot it invented and installs the owner's slot in its place
+      (`removeCardInPlay` in opponent.js).
+
+      This is the half of the feature the drag sections above cannot see: they assert that
+      the card **arrives** on the owner's board, which the optimistic move makes true on
+      its own. What is asserted here is that the Pokemon is the owner's to move - discarded
+      from their own bench, with their own menu - and that the acting board follows it.
+   */
+   console.log('\na card placed on the owner\'s bench, and the owner discarding it\n')
+
+   /* the far half's bench, counted by slot, which is the only thing that draws it */
+   const farBench = (page) => page.evaluate(`document.querySelectorAll('.gameboard > .bench2 .slot').length`)
+
+   const beforePlaced = {
+      mirrorBench: await farBench(alice),
+      ownerBench: (await badges(bob)).myBench,
+      ownerDiscard: (await badges(bob)).myDiscard,
+      mirrorDiscard: (await badges(alice)).theirDiscard
+   }
+
+   await lookAtThree()
+   const placed = await dragBetween(alice, lookCardExpr, `document.querySelector('.gameboard > .bench2 .bench-zone')`)
+
+   const onMirror = await waitForCount(alice, farBench, beforePlaced.mirrorBench + 1)
+   const onOwner = await waitForCount(bob, (p) => badges(p).then((b) => b.myBench), beforePlaced.ownerBench + 1)
+
+   check('a window\'s card dropped on the owner\'s bench is drawn on the acting board\'s mirror',
+      onMirror === beforePlaced.mirrorBench + 1,
+      `${placed.why}, the acting board's far bench ${beforePlaced.mirrorBench} -> ${onMirror}`)
+   check('and the owner\'s own board has the Pokemon',
+      onOwner === beforePlaced.ownerBench + 1,
+      `the owner's bench ${beforePlaced.ownerBench} -> ${onOwner}`)
+
+   /*
+      Now the owner moves it, on their own board and with their own menu: the slot's
+      *Discard All*, which is `slotsMoved` naming the slot id **they** gave it. The slot
+      is the last of their row, because a new Pokemon joins the bench at its end.
+   */
+   await bob.rightClick(`.gameboard > .bench .bench-row .slot:nth-child(${onOwner})`)
+   const discarded = await clickMenuItem(bob, 'Discard All')
+   check('the owner can discard the Pokemon this player placed, from their own bench',
+      discarded, `the slot menu of the last of the owner's ${onOwner} benched Pokemon`)
+
+   const offMirror = await waitForCount(alice, farBench, beforePlaced.mirrorBench)
+   const afterOwner = await badges(bob)
+   const afterMirror = await badges(alice)
+
+   check('and the owner discarding it takes it off the acting board\'s mirror too',
+      offMirror === beforePlaced.mirrorBench,
+      `the acting board's far bench ${onMirror} -> ${offMirror}`)
+   check('and the card is in the owner\'s discard, as the acting board draws it',
+      afterMirror.theirDiscard === beforePlaced.mirrorDiscard + 1,
+      `the acting board's copy of their discard ${beforePlaced.mirrorDiscard} -> ${afterMirror.theirDiscard}`)
+   check('and in the owner\'s own discard',
+      afterOwner.myDiscard === beforePlaced.ownerDiscard + 1,
+      `the owner's discard ${beforePlaced.ownerDiscard} -> ${afterOwner.myDiscard}`)
+
    /*
       **Who the log tells, which is the second thing a Look's audience decides.**
 

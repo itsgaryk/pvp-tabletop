@@ -1251,15 +1251,32 @@ The tell is a drag that *starts* inside a panel: **ask what `elementFromPoint` s
 aimed, not what the zone's own box says.** The two disagree here, and the zone's box is the one that
 lies - a check that measures the target's rectangle is measuring the thing that is covered.
 
-**An optimistic move that lands a card in play has to be de-duplicated on the way back.** A card put on
-the Bench has to appear at once, so the acting board makes a slot for it - but a Pokemon in play *is* a
-slot, and the owner's own `cardsBenched` carries **its** slot id, which the acting board cannot know in
-advance. The mirror's handler adds a slot for whatever id the event names without looking for the card
-first, so the board drew two Pokemon holding one card, side by side, until the next full board state.
-The owner's handler now takes the mirror's copy of the card out of play before it adds the owner's slot:
-the stand-in is what makes the move feel instant, and the owner's event is what makes it true. The
-general shape - **an optimistic move that must invent an identity the authority has not sent yet needs
-the authority's handler to be able to recognise and replace its own invention.**
+**An optimistic move that lands a card in play has to be de-duplicated on the way back, and the
+authority's identity is the half that has to survive.** A card put on the Bench has to appear at
+once, so the acting board makes a slot for it - but a Pokemon in play *is* a slot, and the owner's
+own `cardsBenched` carries **its** slot id, which the acting board cannot know in advance. So the
+owner's handler has to recognise the slot this board invented and replace it, and "replace" is the
+load-bearing word: the card comes out of the stand-in and the owner's slot goes in **under the
+owner's id**, because every later event about that Pokemon - `slotsMoved` when it is discarded,
+`damageUpdated`, `cardsAttached`, `slotPromoted` - names that id and nothing else.
+
+The first version looked right and followed nothing. The de-duplication was written, but behind a
+guard that made it unreachable in exactly the case it existed for: the handler looked the card up
+in the pile the event names and gave up when it was not there - and the optimistic move is
+precisely what took it out of that pile, one poll cycle earlier. So the stand-in stayed, wearing a
+slot id the owner had never heard of, and every event about that Pokemon afterwards arrived naming
+an id this board could not resolve and was dropped without a word. Reported as *a card placed on
+the opponent's bench from a Look window does not leave the bench when its owner discards it* - and
+the board is perfect at the moment of the placement (one Pokemon, one card), which is why nothing
+about the symptom pointed at the handler. The tell is a fallback path that means *the thing I was
+told to change is not where I expected it*: **ask which side of the round trip moved it, and
+whether the authority's own answer is the thing that identifies it.**
+
+The same shape is why a watcher is easy to leave behind here: a spectator's mirror makes no
+optimistic move, so its copy of the card is still in the pile the owner's event names and it takes
+the owner's slot id first time. A fault in this seam shows up on **one** board - the acting
+player's - and looks like the relay not delivering, on a board where everything the owner did
+*was* delivered.
 
 **A batch that is a copy of a list keeps offering cards that have already left.** The window a
 Reveal opens is a view of the top of a deck, so the obvious implementation is to take the cards

@@ -190,6 +190,12 @@ everything that can go wrong with them needs *two* boards to see:
   empty window that still renders
 - a card acted on from a reveal lands on its **owner's** board: the acting player's own
   discard must not move, and their mirror of the owner's discard must
+- and a card put **into play** on the owner's board stays the owner's to move: the card is
+  dropped on the owner's bench, the owner discards that Pokemon from their own bench with
+  their own menu, and the acting board's mirror has to follow it off the bench and into the
+  owner's discard. This is the half the drag sections cannot see — they assert that the card
+  *arrives*, which the acting board's own optimistic move makes true on its own — and it is
+  the reported fault the section was added for (see [gotchas.md](gotchas.md))
 - and the batch is a *view*: the card leaves both windows the moment it leaves the deck
 
 Three of the assertions in that set are about faults reported from play rather than about the
@@ -203,7 +209,11 @@ It is the check that found the two faults this feature shipped with, and neither
 reachable from a single board: the window was gathered off the wrong deck (so the
 opponent's window never opened), and an action taken on another player's card was
 performed against the wrong board's stores (so the card landed nowhere while both logs
-said it had moved). Both are written up in [gotchas.md](gotchas.md).
+said it had moved). Both are written up in [gotchas.md](gotchas.md). The third it found -
+a card put into play that only *that* board could not follow, reported from play as a
+Pokemon its owner discarded and nothing happening - is the same one-board shape from the
+other side: the acting player's mirror is the only board holding a slot id it invented
+itself, so it is the only board that can fail to recognise the owner's.
 
 **Give it a quiet tree and a room it keeps alive.** Two things will otherwise fail in
 a way that looks like the code, and they need opposite fixes:

@@ -231,10 +231,23 @@ cannot know in advance. The first version of the optimistic move left those two 
 round trip for exactly that reason, and the result was a menu where *To Discard* was
 instant and *To Bench*, one line below it, took two seconds. So the acting board now
 makes the same move with a slot id of its own, and the seam that opens is closed on the
-other side: the owner's `cardsBenched` / `cardPromoted` handler takes the mirror's copy of
-the card out of play before it adds the owner's slot, so the board never draws two Pokemon
-holding one card. The owner's events stay the authority for what is on the board; the
-optimistic slot is a stand-in that the owner's own answer replaces.
+other side: the owner's `cardsBenched` / `cardPromoted` handler takes the mirror's
+stand-in out of play and installs the owner's slot in its place, so the board never draws
+two Pokemon holding one card. The owner's events stay the authority for what is on the
+board; the optimistic slot is a stand-in that the owner's own answer replaces.
+
+**The owner's id is the point, and de-duplication is only half of it.** Every event about
+a Pokemon in play addresses it by that id and nothing else — `slotsMoved` when it is
+discarded, `damageUpdated`, `cardsAttached`, `cardPromoted`, `slotPromoted` — so a handler
+that built the owner's slot but left the stand-in's id on it would look perfectly right at
+the moment of the placement, one Pokemon holding one card, and then follow nothing its
+owner did with it. That is what a card placed on the owner's bench out of a window did: it
+stayed on the acting board when its owner discarded it. The card is looked for *in the slot
+this board invented*, because the optimistic move is the thing that took it out of the pile
+the owner's event names — a handler that insisted on finding it in that pile dropped the
+owner's id on the floor. See `removeCardInPlay` in
+[opponent.js](../src/lib/stores/opponent.js), and
+[gotchas.md](gotchas.md) for the shape of the mistake.
 
 *Attach* is the one entry still left to the round trip, and it is the one that has to be:
 the card goes *under* a Pokemon of theirs whose attachments are the owner's to order, and
