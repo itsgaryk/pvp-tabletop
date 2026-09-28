@@ -5,7 +5,7 @@
    import Board from '$lib/play/Board.svelte'
    import Controls from '$lib/play/Controls.svelte'
    import IdlePrompt from '$lib/play/dialogs/IdlePrompt.svelte'
-   import NewGamePrompt from '$lib/play/dialogs/NewGamePrompt.svelte'
+   import ConsentPrompt from '$lib/play/dialogs/ConsentPrompt.svelte'
    import GameClosed from '$lib/play/dialogs/GameClosed.svelte'
    import NumberPrompt from '$lib/play/dialogs/NumberPrompt.svelte'
    import Connection from './Connection.svelte'
@@ -83,7 +83,7 @@
    somebody was still in it.
 -->
 <IdlePrompt />
-<NewGamePrompt />
+<ConsentPrompt />
 <GameClosed />
 
 <!--

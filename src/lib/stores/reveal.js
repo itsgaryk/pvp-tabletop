@@ -1,6 +1,7 @@
 import { derived } from 'svelte/store'
 import { writable } from './custom/writable.js'
 import { share, react, publishLog, publishLogTo, spectating, myId, seatedPlayers as seated, onBoardCleanup } from './connection.js'
+import { askConsent, onConsent } from './consent.js'
 import { solo } from './soloState.js'
 
 /*
@@ -868,10 +869,11 @@ export function closeLook () {
    pile the opponent is not shown. Their copy of the gesture is the log line, which is what
    they are entitled to: that it happened.
 
-   Taking the gesture is unilateral - there is no request to answer and no *Allow* - which
-   was asked for in as many words: *when the player performs this action it should just
-   happen and add to the game log*. That is also why the line is written here rather than
-   by the owner's board when it acts on it.
+   **The hand's owner is asked first** (see the note over `askFor`). It used to be
+   unilateral - *when the player performs this action it should just happen and add to the
+   game log* - and that is what changed: a hand is the pile its owner is not shown, so
+   turning it up is a thing done to them rather than a thing done by the player asking. The
+   log line and the window are unchanged; what is new is that the owner said yes.
 */
 export function revealHand () {
    if (!canReveal()) return false
@@ -879,15 +881,34 @@ export function revealHand () {
    const pile = theirPileFor(null, 'hand')
    if (!pile) return false
 
-   const ids = pile.get().map((card) => card._id)
    /*
       An empty hand is nothing to look at, and a window over it would be a panel saying
       "0 cards" with a Close button - so the gesture is refused rather than half-made.
-      Nothing is logged for it either: nothing happened.
+      Nothing is logged for it either: nothing happened. And it is refused *before* the
+      owner is asked, because asking them to show a hand that is not there is not a
+      question anybody can answer usefully.
    */
+   if (!pile.get().length) return false
+
+   return askFor('revealHand', { count: pile.get().length }, () => showHand())
+}
+
+/* the reveal itself, once the hand's owner has allowed it */
+function showHand () {
+   const pile = theirPileFor(null, 'hand')
+   if (!pile) return false
+
+   const ids = pile.get().map((card) => card._id)
    if (!ids.length) return false
 
-   if (applyHandReveal({ reader: null, pileName: pile.name, cards: ids }, false)) {
+   /*
+      `reader` is this player's own member id rather than null, and that is what lets a
+      *watcher's* board find the hand the batch is about: a batch names the member whose pile
+      it reads, and this one is read off the reader's own board (`theirPileFor` above), where
+      "the hand" is the far half's - so the two agree here, and on a spectator's board the id
+      is what picks which of its two mirrors to read (`theirPileFor` in opponent.js).
+   */
+   if (applyHandReveal({ reader: myId.get(), pileName: pile.name, cards: ids }, false)) {
       handRevealOpen.set(true)
    }
 
@@ -1147,6 +1168,77 @@ export function topCount (pile, asked) {
 }
 
 /*
+   -------------------------------------------------------------------------
+   Asking the other player before reading their cards
+   -------------------------------------------------------------------------
+
+   A Reveal of their cards, a Look at their deck and a Reveal Hand are all *their* cards, so
+   all three now ask first: the owner is shown the consent dialog (see stores/consent.js) and
+   the gesture happens only on a yes. This player's own cards are not asked about - revealing
+   your own is yours to do - which is the distinction `revealTop` makes.
+
+   **Every gesture asks**, which was asked for in as many words: a player searching their deck
+   may look several times in a turn, and each of those is a separate reading of somebody else's
+   pile. There is no "remembered" consent to expire, and a *No* is per gesture for the same
+   reason.
+
+   The pending gesture is **one slot**, and the consent handshake allows one outstanding ask,
+   so there is nothing to match up: `askFor` stashes what a yes would do, the ask goes out, and
+   the answer either runs it or drops it. A second gesture asked while one is in the air
+   replaces the slot and the ask, exactly as the reveal batches replace each other - there is
+   one player to ask, one question to put, and one answer to give between them.
+
+   What travels in the ask is the **words**, not the gesture: a count is what the owner needs to
+   understand the question ("the top 3 of your deck"), and everything needed to *perform* it -
+   the pile, the ids - is this board's own and is read again at the moment it runs. That is
+   deliberate: a payload carrying ids would be a second copy of the deck's contents sent to the
+   one client that must not have it.
+*/
+let pendingGesture = null
+
+/*
+   One ending per kind, registered for every kind that has a pending gesture - and the
+   registration is registered **once** per kind. `onConsent` keeps one ending per kind, so a
+   second call for the same kind replaces the first: written as two calls (a `yes` one and a
+   `no` one) the `no` silently took the `yes`'s place and a granted look ran nothing at all.
+*/
+for (const kind of [ 'reveal', 'look', 'revealHand' ]) {
+   onConsent(kind, {
+      /* only the board that asked has a gesture waiting, so only that board runs it */
+      yes: (_payload, { mine }) => { if (mine) runPending() },
+      no: () => dropPending()
+   })
+}
+
+/*
+   Ask the owner, and remember what a yes would do.
+
+   The `no` ending is registered as well as the `yes` one and does the same thing for every
+   kind - put the gesture down - so it lives here beside the slot rather than in each of the
+   three callers.
+*/
+function askFor (kind, payload, run) {
+   pendingGesture = run
+   if (askConsent(kind, payload)) return true
+
+   /* nothing was asked - no room, or a spectator - so there is nothing pending either */
+   pendingGesture = null
+   return false
+}
+
+/* the answer was yes: do the thing that was asked about */
+function runPending () {
+   const run = pendingGesture
+   pendingGesture = null
+   if (run) run()
+}
+
+/* the answer was no, or the ask was replaced: the gesture is not this player's to make */
+function dropPending () {
+   pendingGesture = null
+}
+
+/*
    Reveal the top X cards of a deck, to both players.
 
    The cards are read off the deck top-first - the order a deck is read in, which
@@ -1160,6 +1252,10 @@ export function topCount (pile, asked) {
    Close &amp; Shuffle action and both windows are about, so it is derived from the
    pile rather than passed in beside it - two arguments that have to agree are two
    arguments that can disagree.
+
+   **The other player's deck is asked about first** (see the note over `askFor`), and this
+   player's own is not: revealing your own cards is yours to do. Which of the two this is
+   is the same question the owner is derived from, so it is asked once.
 */
 export function revealTop (pile, asked) {
    if (!pile || !canReveal()) return false
@@ -1167,6 +1263,14 @@ export function revealTop (pile, asked) {
    const count = topCount(pile, asked)
    if (!count) return false
 
+   if (pile === myDeckStore) return showReveal(pile, count)
+
+   return askFor('reveal', { count }, () => showReveal(pile, count))
+}
+
+/* the reveal itself, once it is this player's to make */
+function showReveal (pile, count) {
+   if (!pile) return false
    shareReveal(pile === myDeckStore ? 'mine' : 'theirs', pile, topIds(pile, count))
    return true
 }
@@ -1187,6 +1291,12 @@ function topIds (pile, count) {
    them, so nothing else would show it. What it is *not* is `setBatch` alone: the
    ids are shared, because a Look is *reported* to the room's watchers as well as
    kept by the player who took it (see `shareLook`).
+
+   **The deck's owner is asked first** (see the note over `askFor`): the cards come out of a
+   pile they are not shown, and the whole of a face-down deck is that its owner does not have
+   to show it. A look is also the most private of the three gestures - its cards are the
+   looker's and the watchers', and the owner is told only that a look happened (see
+   `lookLine`) - which is exactly why it is the one worth asking about.
 */
 export function lookTop (asked) {
    const pile = pileFor('theirs', 'deck')
@@ -1195,7 +1305,18 @@ export function lookTop (asked) {
    const count = topCount(pile, asked)
    if (!count) return false
 
-   shareLook(pile, topIds(pile, count))
+   return askFor('look', { count }, () => showLook(count))
+}
+
+/* the look itself, once the deck's owner has allowed it */
+function showLook (count) {
+   const pile = pileFor('theirs', 'deck')
+   if (!pile) return false
+
+   const left = topCount(pile, count)
+   if (!left) return false
+
+   shareLook(pile, topIds(pile, left))
    return true
 }
 

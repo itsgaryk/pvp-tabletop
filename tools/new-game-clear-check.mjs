@@ -111,7 +111,7 @@ const startNewGame = async (page) => {
 
 const promptWhenUp = async (page) => {
    for (let i = 0; i < 40; i++) {
-      const seen = await page.evaluate(`Boolean(document.querySelector('.new-game-dialog'))`)
+      const seen = await page.evaluate(`Boolean(document.querySelector('.consent-dialog'))`)
       if (seen) return true
       await sleep(400)
    }

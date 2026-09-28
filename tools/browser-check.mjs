@@ -895,7 +895,7 @@ if (want('newgame')) {
    }
 
    const prompt = (page) => page.evaluate(`(() => {
-      const box = document.querySelector('.new-game-dialog')
+      const box = document.querySelector('.consent-dialog')
       if (!box) return null
       return {
          title: box.querySelector('.new-game-title')?.textContent.trim() || null,
