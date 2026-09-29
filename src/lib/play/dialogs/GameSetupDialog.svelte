@@ -43,9 +43,22 @@
       `mine` is the whole of what decides whether this player gets buttons: they are the one the
       room picked to call the coin, or the one who called it right. Everybody else - the other
       player, and every watcher - is told what is happening and given nothing to press.
+
+      **Both read `state` rather than only asking the store, and that is not tidiness.** Svelte 4
+      hoists a `$:` statement with no *reactive* dependency out of the component's update function
+      entirely - it becomes a plain assignment that runs once, at instance creation, and never
+      again. `calling = callsCoin()` names no store and no reactive variable: `callsCoin` reads
+      `gameSetup.get()` and `myId.get()` *inside itself*, which the compiler cannot see. So it was
+      compiled to two bare statements after `$$self.$$.update` - measured on the running app, the
+      dialog came up for the coin with `calling` stuck at its first value of `false`, so **neither
+      player was ever offered Heads or Tails** and both were told the other one was calling.
+
+      Passing the phase in is what makes the dependency visible, so the answer is re-read every
+      time the flow moves. The same rule is written up in docs/gotchas.md; it is the second time
+      in this feature that a correct-looking read of a store was frozen by the compiler.
    */
-   $: calling = callsCoin()
-   $: ordering = choosesOrder()
+   $: calling = callsCoin(state.phase)
+   $: ordering = choosesOrder(state.phase)
    $: open = !$solo && !$spectating && (state.phase === 'coin' || state.phase === 'order')
 
    /* the face the coin came up, in the words the log used for it */

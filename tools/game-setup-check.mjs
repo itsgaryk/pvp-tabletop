@@ -112,7 +112,8 @@ check('and that value names a store, or it would be frozen in the same way',
    /^\s*\$: canSetup = \$decksReady && \$gameSetup\.phase/m.test(actions),
    'the expression has to read a store for Svelte to re-run it')
 check('and the Ready button\'s own state is bound the same way',
-   /^\s*\$: waiting = isReady\(\)$/m.test(actions))
+   /^\s*\$: waiting = /m.test(actions) && /\$gameSetup\.ready/.test(actions),
+   'and it reads the ready list itself, because the store read inside `isReady()` is invisible to the compiler')
 check('and neither call is left in the markup beside it',
    !/disabled=\{[^}]*canStartSetup\(\)/.test(markup) && !/isReady\(\)/.test(markup),
    'the markup reads the named values, so there is one answer to re-run rather than two')
@@ -240,7 +241,16 @@ check('starting takes the veil off', /setVisibility\(false\)/.test(startGame))
 check('and sets it rather than toggling it', !/switchVisibility/.test(startGame),
    'a toggle hides the board of whichever player arrives second')
 check('and starts the clock', /setTimer\(\{ running: true, remaining: DEFAULT_TIMER_MS \}\)/.test(startGame))
-check('and moves the turn on by one', /setTurn\(\$turn \+ 1\)/.test(startGame))
+/*
+   **The opening turn is stated, not counted.** `setTurn($turn + 1)` is right for one board and
+   wrong for two: each board applies the clock and the turn for itself, and a second entry into
+   the start advanced the counter again - measured on two browsers, the game started, the log
+   said so once, and the turn row read *Turn 2*. Setting it in two steps is how the counter is
+   forced rather than nudged, since `setTurn` ignores a value it already holds.
+*/
+check('starting states the opening turn rather than counting to it',
+   /setTurn\(0\)[\s\S]*setTurn\(1\)/.test(startGame),
+   'a relative turn is one more for every board that reaches the start')
 check('and the row is drawn only before the game is live',
    /\$gameSetup\.phase === 'deal'/.test(actions) && !/phase === 'live'/.test(actions),
    'a live game draws neither the button nor the row')

@@ -353,6 +353,23 @@ list. *Your own deck is the one thing the replay does not bring back*
 Import Deck window again and deals when it has a deck — which is why the deal hangs off
 the *phase* rather than off the press that caused it.
 
+**The opening turn is stated, not counted.** A game begins at turn 1, so the start says
+`setTurn(0)` and then `setTurn(1)` rather than adding one to whatever the counter holds.
+Both boards reach the start independently, each applying the turn for itself, and counting
+from the current value went wrong the moment one of them got there twice: measured on two
+browsers, the game started, the log said so once, and the turn row read **Turn 2**.
+
+**A second game in the same room does not bring the setup back — known, and not yet
+fixed.** *New Game* goes through (the other player accepts, both boards are cleared, both
+import a deck again), but the room does not return to a phase where *Game Setup* is
+offered, so the second game cannot be started at all. Instrumented on the running app, the
+reset runs on both boards and leaves the phase at **`live`** with the previous game's ready
+list still in it, so something puts the flow back after the reset — the replay of the room's
+log is the first thing to look at, since a board that takes the log again re-applies every
+`setupReady` carrying `ready: [...]`, and the ready-union would then satisfy `bothReady()`
+again. The section of `tools/game-setup-browser-check.mjs` that drives it is written and
+skipped behind a `SECOND_GAME_KNOWN_BROKEN` flag.
+
 ### Mulligans
 
 **A room has a manual mulligan.** It is the *Mulligan* button beside *Ready*, and it is
@@ -1166,7 +1183,7 @@ worth knowing by name, because a change to a mechanic usually belongs in one of 
 | The clock: two real browsers counting, and a wall clock moved underneath one | `tools/clock-check.mjs` |
 | The zones' names, and that the log can judge every zone it can name | `tools/zone-vocabulary-check.mjs` |
 | A room's joins, waits, leaves and closed games | `tools/relay-check.mjs` |
-| The room's opening: the gate, the toss, the order, and what starts the game | `tools/game-setup-check.mjs` (the rules, read from the source) and `tools/game-setup-rule-check.mjs` (the same store, run) |
+| The room's opening: the gate, the toss, the order, and what starts the game | `tools/game-setup-check.mjs` (the rules, read from the source), `tools/game-setup-rule-check.mjs` (the same store, run) and `tools/game-setup-browser-check.mjs` (both boards, on screen) |
 
 **What is not checked is most of what this document says.** Nothing asserts the damage
 and status rules, evolution, the turn counter, the visibility rules, the mulligan

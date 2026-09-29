@@ -328,10 +328,19 @@ export function flipCoin () {
    return Math.floor(Math.random() * 2) ? 'heads' : 'tails'
 }
 
-/* whether this board is the one being asked to call the coin */
-export function callsCoin () {
+/*
+   Whether this board is the one being asked to call the coin.
+
+   `phase` is passed in by the dialog rather than read here, because a caller inside a
+   **component's** reactive statement needs the phase to be a dependency of its own expression -
+   Svelte hoists a `$:` with no reactive dependency out of the component's update function and
+   runs it once, so `calling = callsCoin()` was answered at instance creation and never again (see
+   the note in GameSetupDialog.svelte). Called with nothing, it reads the store, which is what the
+   check tools and any non-component caller want.
+*/
+export function callsCoin (phase = gameSetup.get().phase) {
    const state = gameSetup.get()
-   return state.phase === 'coin' && Boolean(state.chooser) && state.chooser === myId.get()
+   return phase === 'coin' && Boolean(state.chooser) && state.chooser === myId.get()
 }
 
 /*
@@ -369,10 +378,10 @@ export function callCoin (call) {
 
 /* ------------------------------------------------ first or second, and the deal --- */
 
-/* whether this board is the one choosing to go first or second */
-export function choosesOrder () {
+/* whether this board is the one choosing to go first or second (see `callsCoin` for `phase`) */
+export function choosesOrder (phase = gameSetup.get().phase) {
    const state = gameSetup.get()
-   return state.phase === 'order' && Boolean(state.winner) && state.winner === myId.get()
+   return phase === 'order' && Boolean(state.winner) && state.winner === myId.get()
 }
 
 /*

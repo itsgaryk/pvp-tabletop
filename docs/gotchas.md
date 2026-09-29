@@ -1661,39 +1661,56 @@ nothing but `browser`. The tidier shape, if a second retired setting ever needs 
 treatment, is a named one-shot beside `storable()` in `custom/storable.js` rather than growing
 `settings.js` into a module that acts when read.
 
-**A plain function call in a Svelte attribute is evaluated once, and nothing says so.** "Game
-Setup" is greyed out until two players are seated and both have imported a deck, and the first
-version asked its rule where every other rule in that row is asked:
+**A plain function call in a Svelte attribute or `$:` naming no store is answered once, and
+nothing says so.** This one mistake cost the setup flow three separate faults in one afternoon,
+and the shape is identical every time: the expression calls a function that reads stores *inside
+itself*, so the compiler sees a call and no dependency.
+
+The first version asked its rule where every other rule in that row is asked:
 
 ```svelte
 <button disabled={!canStartSetup()}>Game Setup</button>
 ```
 
-That is `disabled={…}` over a call to a function that reads stores, and **Svelte 4 compiles the
-call, not the stores.** The expression names no store, so nothing is subscribed on its behalf and
-no `p()` branch is emitted for it — the compiler's output is `button.disabled = !canStartSetup()`
-inside `c()`, with the block's update function untouched. The button is therefore whatever it was
-when the block was *created*, for the life of the page. Against the app: a player who joined a
-room that already had somebody in it saw a permanently greyed-out *Game Setup* and could not
-start the setup at all, and once the button had been created enabled it never greyed again — a
-pressable button that silently does nothing, since the function it calls re-checks its own rule
-and returns `false`. Four things on the room's *Ready* button (`class:glow`, `disabled`, `title`
-and the `Ready ✓` label) were frozen by the same mistake, so a player who pressed it got no
-feedback of any kind.
+The compiler's output is `button.disabled = !canStartSetup()` inside `c()`, with the block's update
+function untouched — no `p()` branch mentions it. The button is therefore whatever it was when the
+block was *created*, for the life of the page. Against the app: a player who joined a room that
+already had somebody in it saw a permanently greyed-out *Game Setup* and could not start the setup
+at all, and once the button had been created enabled it never greyed again — a pressable button
+that silently does nothing, because the function it calls re-checks its own rule and returns
+`false`.
 
-The fix is a **named reactive value**, which subscribes to what the expression reads:
+The fix is a **named reactive value**:
 
 ```svelte
 $: canSetup = $decksReady && $gameSetup.phase === 'idle' && canStartSetup()
 ```
 
-and it has to *read a store* to be worth anything — `$: canSetup = canStartSetup()` compiles to a
-`$:` whose dependencies are the variables in the expression, and a bare call still names none.
-The check is readable rather than empirical: compile the component and look for a `p()` branch
-that mentions the value. `tools/game-setup-check.mjs` asserts the named form and that no bare call
-is left in the markup beside it. The general rule: **an attribute, a `class:` directive or a text
-interpolation that calls a function reading `.get()` is a snapshot**, and the reason the same code
-is correct elsewhere in this app is that it reads `$store` rather than `store.get()`.
+and it has to *read a store* to be worth anything — `$: canSetup = canStartSetup()` is the same
+frozen call with a name on it, because the dependencies of a `$:` are the variables **in the
+expression** and a call names none. That is the trap: the code reads correctly, `canStartSetup()`
+answers correctly when you call it by hand, and only the compiled output disagrees.
+
+**Naming the store is not enough on its own, and the third symptom is the one that proves it.**
+`$: waiting = Boolean($myId) && isReady()` *does* name a store — and it was still frozen, because
+the value it wanted was `$gameSetup.ready` and that store was reachable only through `isReady()`.
+The button went on drawing "Ready" with no glow after the press that put the player in the ready
+list, while `isReady()` answered `true` when asked from the same handler:
+
+```svelte
+$: waiting = Boolean($myId) && $gameSetup.ready.includes($myId)
+```
+
+So the rule is not "name a store", it is **name the store the answer is actually about** — and when
+two stores are involved, name both. The general form: *an attribute, a `class:` directive, a text
+interpolation or a `$:` whose only store reads are inside a function it calls is a snapshot.*
+
+**And nothing short of running it finds this.** `tools/game-setup-check.mjs` reads the source and
+found the expression correct; `tools/game-setup-rule-check.mjs` runs the store and was told the
+truth by every function involved; the compiled output reads perfectly. What caught all three was
+`tools/game-setup-browser-check.mjs`, looking at what two real boards were *drawing* — the button
+that never came alive, and the player who was told the *other* one was calling the coin while
+neither of them was offered Heads or Tails.
 
 **And a module-level `let` written from a subscriber that runs during the module's own evaluation
 is a temporal dead zone.** The setup flow keeps its "this has already happened" guards as module

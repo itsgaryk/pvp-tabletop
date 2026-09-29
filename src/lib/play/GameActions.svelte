@@ -60,27 +60,32 @@
    $: deckValid = hasBasic($cards)
 
    /*
-      What the room's row asks of the flow, read as **reactive values rather than calls in the
-      markup**.
+      **A `$:` is only as reactive as the stores the expression itself names.** Svelte decides a
+      statement's dependencies from the identifiers in it, so a store read *inside a function the
+      expression calls* is invisible: `disabled={!canStartSetup()}`, `class:glow={isReady()}` and
+      `waiting = isReady()` named no store at all, and the compiler emitted each as a bare
+      assignment **outside** the component's update function - answered once, at instance creation,
+      and never again. Three symptoms came from that one mistake, all reproduced on the running app:
 
-      This is not a tidy-up. `canStartSetup()` and `isReady()` inside `disabled={…}`,
-      `class:glow={…}` or a `title={…}` are plain function calls in an expression that does not
-      name a store, so Svelte 4 evaluates them **once**, when that block is first created, and
-      emits no update for them - the compiler turns `disabled={!canStartSetup()}` into
-      `button.disabled = !canStartSetup()` with no `p()` branch beside it. Verified against the
-      emitted code before this was written, both ways round: a player who entered a room before a
-      deck existed got a *Game Setup* button that was greyed out for the life of the page, and a
-      player who had pressed *Ready* got no glow, no "waiting for the other player" and no
-      *Ready ✓*.
+         the button    a player who entered a room before a deck existed had a *Game Setup* that
+                       was greyed out for the life of the page, and could not start the setup at all
+         the gate      once enabled it never greyed again, so a pressable button silently did
+                       nothing - `startSetup` re-checks the rule and returns false
+         the row       pressing *Ready* put the player in the room's ready list, `isReady()`
+                       answered `true` when asked from the handler, and the button went on drawing
+                       "Ready" with no glow, because the value it drew was frozen before `myId`
+                       had even arrived
 
-      So each is a `$:` value, and each names the stores it is about: `$decksReady` and
-      `$gameSetup` for the button - the two things that change while it is on screen, since the
-      seats only ever change when the flow is reset anyway - and `$gameSetup` again for the row.
-      The rule itself stays in the store (`canStartSetup`), so the gating is still stated once;
-      what is here is what makes the *read* of it happen again.
+      So both name the stores they are about. The rule itself stays in the store - `canStartSetup`
+      is still the one place the gate is stated, and `startSetup` still enforces it - and these two
+      lines exist so the compiler can see what each answer depends on. `waiting` asks the ready
+      list directly rather than through `isReady()`, because "have *I* pressed it" is a question
+      about `$myId` as much as about the list.
    */
    $: canSetup = $decksReady && $gameSetup.phase === 'idle' && canStartSetup()
-   $: waiting = isReady()
+
+   /* and this one asks the list directly, for the reason above */
+   $: waiting = Boolean($myId) && $gameSetup.ready.includes($myId)
 
    function draw7andPutPrizes () {
       resetBoard()
@@ -213,7 +218,26 @@
 
       setTimer({ running: true, remaining: DEFAULT_TIMER_MS })
 
-      setTurn($turn + 1)
+      /*
+         **The opening turn is stated, not counted.** A game begins at turn 1, so this says so -
+         and it is deliberately not `$turn + 1`.
+
+         Two things are wrong with counting from wherever the counter happens to be. A deal leaves
+         it at 0 (see `setup` below), so `+1` is *usually* right; but the two boards reach `live`
+         independently and each applies the clock and the turn for itself, and a single extra
+         entry into this function - the second player's `setupReady` arriving at a board that had
+         already begun - advanced it again. Measured on two browsers: the game started, the log
+         said so once, and the turn row read **Turn 2**. The guard that makes a start once per
+         phase is above; this is the half that does not depend on it being airtight.
+
+         Setting it in two steps is how the counter is *forced* rather than nudged: `setTurn`
+         ignores a value it is already holding, so this resets to zero whatever the last game left
+         behind - or a stray `+` press during the opening - and then states the opening turn. Both
+         calls are shared like any other turn change, and the second is the one that reaches the
+         other board.
+      */
+      setTurn(0)
+      setTurn(1)
    }
 
    /* the flow asks for the deal, the redraw and the start; this module owns what they do */
