@@ -88,17 +88,20 @@ for it at all** — its opening finishes by itself and deals the game. The `N` k
 in the settings menu, which asks the other player
 ([mechanics.md](mechanics.md#setup)).
 
-In a **room**, `F` and `Z` have no button while the opening is under way: the row above the
-turn is the **Ready** and **Mulligan** pair, and then *Flip Coin* and *End Turn* are added to
-it once the game starts — so a room has no *Flip Coin* button until there is a game to flip
-for. **There is no *Game Setup* button at all**: the opening starts by itself once both
-players have imported a deck ([mechanics.md](mechanics.md#opening-a-rooms-game)). `Z` never
+In a **room**, `F` and `Z` have no button while the opening is under way: *Flip Coin* and
+*End Turn* arrive under the log once the game starts, so a room has no *Flip Coin* button
+until there is a game to flip for. **There is no *Game Setup* button at all**: the opening
+starts by itself once both players have imported a deck
+([mechanics.md](mechanics.md#opening-a-rooms-game)). `Z` never
 gets a button in a room — hiding is a keyboard action there — and `C` is the turn row's `+`.
 **Solo** keeps the whole row throughout — Setup, Flip Coin and End Turn — with `Z` and its
 button both gone, because both halves are one person's and there is nobody to hide from.
 
-**The row fills up twice during a room's game**: *Ready* and *Mulligan* once the boards deal,
-and *Flip Coin* and *End Turn* under them once the game starts. Nothing in the opening is on a
+**The row fills up once during a room's game**: *Flip Coin* and *End Turn* arrive under the
+log when the game starts. The two controls of the opening — *Ready* and *Mulligan* — are
+**not on this row at all**: they are a prompt in the middle of the window, over the hand they
+are about, and they go when both players have pressed *Ready*
+([mechanics.md](mechanics.md#opening-a-rooms-game)). Nothing in the opening is on a
 key — it waits on the two decks rather than on a press, and a coin toss and an opening hand
 are decisions rather than shortcuts, so the dialog takes the screen while it asks.
 

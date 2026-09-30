@@ -277,26 +277,96 @@ check('starting states the opening turn rather than counting to it',
    /setTurn\(0\)[\s\S]*setTurn\(1\)/.test(startGame),
    'a relative turn is one more for every board that reaches the start')
 /*
-   The row above the turn is the **game's own**, and it is up for everything from the deal onwards:
+   The opening hand is asked for in a **prompt in the middle of the window**, and it is up for the
+   `deal` phase alone:
 
-      deal    *Ready* and *Mulligan*
-      live    the same two, with *Flip Coin* and *End Turn* added under them
+      deal    *Ready* and *Mulligan*, centred, over a board the player can still reach
+      live    gone, with the game's own row - *Flip Coin* and *End Turn* - under the log
 
-   The *Game Setup* button that used to be the third state is gone: the opening starts by itself,
-   so the row has nothing to say about it and is simply absent until there is a hand to decide.
-   Both halves are asserted, because either alone is a fault - a row drawn while the opening is
-   asking for decks is a button over a locked board, and a game that has begun with no row at all
-   is the room as it looked before this change.
+   All three halves are asserted, because any one alone is a fault. A row left in the sidebar is the
+   two buttons at the opposite end of the screen from the seven cards they are about; a prompt drawn
+   while the opening is still asking for decks is a button over a locked board; and a prompt that
+   outlives the start is a "Ready" nobody can be un-ready from.
+
+   **And it must not be a lock.** Every other centred dialog in a room is `position: fixed; inset: 0`
+   with a backdrop that answers the pointer; this one is over a hand the player has to read to decide
+   what the two buttons are for, so the layer takes no clicks and only the card does. That is the
+   assertion `pointer-events` is here for - a prompt that swallowed the board would leave a player
+   deciding whether to mulligan without being able to count their own cards.
 */
-check('the row is drawn from the deal onwards and not before it',
-   /!\$solo && \$gameSetup\.phase !== 'idle' && \$gameSetup\.phase !== 'coin' && \$gameSetup\.phase !== 'order'/.test(actions),
-   'nothing of it is drawn while the opening is still asking for decks')
+check('the opening hand is a prompt of its own rather than a row in the panel',
+   /\{#if !\$solo && \$gameSetup\.phase === 'deal'\}/.test(actions) &&
+   /class="setup-prompt"/.test(actions) && /class="setup-card"/.test(actions),
+   'the two buttons belong where the hand is, not at the foot of the sidebar')
+check('and it is drawn for the deal alone, so both Ready presses take it away',
+   !/\$gameSetup\.phase !== 'idle'/.test(actions) && !/\$gameSetup\.phase !== 'coin'/.test(actions) &&
+   !/\$gameSetup\.phase !== 'order'/.test(actions),
+   'the flow moves to live when the second name joins the ready list, and the prompt draws on the phase')
+check('and it is centred in the window',
+   /\.setup-prompt \{[\s\S]{0,200}position: fixed;[\s\S]{0,200}align-items: center;[\s\S]{0,80}justify-content: center;/.test(actions))
+check('and it does not take the board with it, because the hand is what the buttons are about',
+   /\.setup-prompt \{[\s\S]{0,300}pointer-events: none;/.test(actions) &&
+   /\.setup-card \{[\s\S]{0,300}pointer-events: auto;/.test(actions),
+   'a prompt that answered the pointer everywhere would leave the player unable to read the hand')
+check('and it is over the board and under the room\'s own dialogs',
+   /\.setup-prompt \{[\s\S]{0,120}z-index: 47;/.test(actions),
+   'over the board and the two opening windows (45 and 46), under the timer (52) and the room\'s prompts (55, 56, 60)')
 check('and a live game gets the game row as well',
    /!\$solo && \$gameSetup\.phase === 'live'/.test(actions) &&
    /class="game-actions"/.test(actions) && /on:click=\{flip\}/.test(actions) && /on:click=\{endTurn\}/.test(actions),
    'Flip Coin and End Turn come back when the game does')
 check('and no button is drawn for the opening itself',
    !/!\$solo && \$gameSetup\.phase === 'idle'/.test(actions) && !/class="game-setup"/.test(actions))
+
+/*
+   **The spacing under the log, which is one rule rather than three numbers.**
+
+   The column under the game log is the log, then the row of buttons, then the turn, then the clock -
+   and each of the three gaps between them is the same `mt-1`: the turn row and the clock already had
+   one, and the row of buttons had **none**, so the log sat hard against it while everything under it
+   was spaced. Reported as *"ensure the padding between the game log window and the first row of
+   buttons is the same as between that row and the turn row"*.
+
+   It is asserted on the row that is actually first in the panel, and the same margin is asked of the
+   turn row - one of the two alone would pass with the rule moved rather than fixed.
+*/
+check('the first row of buttons under the log is spaced like the turn row under it',
+   /\.game-actions \{[\s\S]{0,80}mt-1/.test(actions) &&
+   /\.turn-row \{[\s\S]{0,80}mt-1/.test(actions),
+   'the row had no margin of its own, so the log was hard against it and the stack read as two gaps')
+/*
+   And the same in solo, where the log is a window of its own rather than `Chat`: it carried an
+   `mb-2` as well, which doubled the gap on top of the row's margin - the two logs would otherwise be
+   spaced differently to the same row of buttons.
+*/
+check('and solo\'s own log does not add a second gap of its own',
+   /\.solo-log \{[\s\S]{0,140}@apply flex-1 p-2 border/.test(source('src', 'routes', 'Connection.svelte')),
+   'the row\'s own margin is the gap; an `mb-2` on the log doubled it in solo only')
+
+/*
+   **And the room's code is reachable while the game is being set up.** Both windows the opening
+   puts over the board are `position: fixed; inset: 0` - the Import Deck window at 45, the setup
+   dialog at 46 - and the code with its copy button has always lived in the panel beside the board,
+   which is behind them. So the two dialogs carry the same component, and the component is the only
+   place the copy lives.
+*/
+const code = source('src', 'lib', 'components', 'RoomCode.svelte')
+const deckInput = source('src', 'routes', 'DeckInput.svelte')
+check('the room code and its copy button are one component',
+   /navigator\.clipboard\.writeText/.test(code) && /Copy room code/.test(code),
+   'three places draw it, so a copy in each of them is three copies to keep in step')
+check('and it draws nothing outside a room',
+   /\{#if \$room\}/.test(code),
+   'solo opens the same Import Deck window, where a room code does not exist')
+check('and the Import Deck window carries it, which is what covers the board first',
+   /<RoomCode label="Room code" \/>/.test(deckInput) && /import RoomCode from '\$lib\/components\/RoomCode\.svelte'/.test(deckInput),
+   'a room opens this window itself and will not let it be dismissed until a deck lands')
+check('and so does the setup dialog, for the lock and both questions of the toss',
+   /<RoomCode label="Room code" \/>/.test(dialog) && /import RoomCode from '\$lib\/components\/RoomCode\.svelte'/.test(dialog),
+   'it is at 46, over the import window at 45, so between them the whole setup covers the panel')
+check('and the panel beside the board draws the same component rather than a copy of it',
+   /<RoomCode \/>/.test(source('src', 'routes', 'Connection.svelte')),
+   'one control in three places, so the tick after a copy cannot be true in one and not the others')
 
 /* the deal, the redraw and the start are registered by the module that owns the board */
 check('the board hands the deal, the redraw and the start to the flow',

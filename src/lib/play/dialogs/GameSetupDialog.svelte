@@ -68,6 +68,7 @@
    import { spectating, seatedPlayers, myId, room } from '$lib/stores/connection.js'
    import { cards } from '$lib/stores/player.js'
    import { solo } from '$lib/stores/solo.js'
+   import RoomCode from '$lib/components/RoomCode.svelte'
 
    $: state = $gameSetup
 
@@ -219,6 +220,23 @@
                <button on:click|stopPropagation={() => chooseOrder('second')}>Second</button>
             </div>
          {/if}
+
+         <!--
+            **The room's code, under whichever question this dialog is asking.**
+
+            It is here because this is the lock: it is `position: fixed; inset: 0` at `z-index: 46`,
+            so the copy button in the panel beside the board - the one place the code has always
+            been - is behind it and cannot be clicked. Setting a game up is exactly when a player
+            wants the code: their opponent has not arrived, or has, and the code is what gets them
+            to the same table. Reported from play as *"during game setup the game room code cannot
+            be copied"*.
+
+            It draws nothing on the main menu or in solo, which is the component's own rule rather
+            than a condition here (see components/RoomCode.svelte).
+         -->
+         <div class="setup-room">
+            <RoomCode label="Room code" />
+         </div>
       </div>
    </div>
 {/if}
@@ -277,5 +295,16 @@
    .setup-buttons button {
       @apply px-6 py-2 font-bold text-white rounded-lg;
       background: var(--primary-color);
+   }
+
+   /*
+      The room's code at the foot of the dialog, under a hairline. It is not part of the question
+      above it - it belongs to the room rather than to this step of the opening - and the rule is
+      what says so, rather than another sentence of prose at the one moment a player is being asked
+      to decide something.
+   */
+   .setup-room {
+      @apply w-full pt-2;
+      border-top: 1px solid var(--bg-color-three);
    }
 </style>

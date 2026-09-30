@@ -1839,3 +1839,44 @@ recipe for anybody porting an older room check onto it: import both decks, answe
 *First*, wait for **both** boards to hold seven cards, and press *Ready* on both if the check
 touches the Pokemon zones — the veils stay up until the game starts.
 
+**A `hover:` inside an `@apply` builds perfectly and fails the render check with no file named.**
+Moving the room code's copy button out of `Connection.svelte`'s markup and into a component of its
+own meant its classes had to become a `<style>` rule, and the obvious translation of
+`class="rounded p-0.5 hover:bg-[var(--bg-color-two)]"` is
+`@apply rounded p-0.5 hover:bg-[var(--bg-color-two)];` — which is what it was written as. `npm run
+build` succeeded. `tools/render-check.mjs` failed with
+
+```
+✘ [ERROR] Semicolon or block is expected [plugin svelte]
+```
+
+and the first file it named was *the component that imports the broken one*, because esbuild reports
+the importer's stack: the failing file was the new component, and the position inside it
+(`RoomCode.svelte`, line of the rule) was three levels down in the error object. The reason the two
+disagree is the order they compile in: **under Vite the Windi preprocessor rewrites every `@apply`
+before Svelte's own parser ever sees the `<style>` block**, while `render-check.mjs` compiles the
+source with `svelte/compiler` directly — so a variant syntax the plugin expands is a syntax error to
+the parser that runs second. Nothing else in `src/` writes a variant inside an `@apply`, and that is
+why this had never come up. The answer is a rule of its own
+(`.room-code-copy:hover { background: var(--bg-color-two); }`), which needs no preprocessor and
+compiles the same both ways. The general rule: **`npm run build` is not the render check's compiler,
+so "it builds" says nothing about whether the source parses** — and when a compile error names an
+importer, read the *innermost* `filename` in the error object rather than the first one printed.
+
+**A lock that covers the window covers the room's own header, and the header is where the one thing
+that gets somebody else into the room lives.** The room code and its copy button have always been at
+the top of the panel beside the board. Setting a game up puts two `position: fixed; inset: 0` windows
+over the board in turn — the Import Deck window at `z-index: 45`, the setup dialog at `46` — and each
+of them covers that header completely: not dimmed, not partly reachable, but behind a backdrop that
+answers the pointer first. So for the whole of a game's setup the code cannot be clicked, which was
+reported from play as *"during game setup the game room code cannot be copied"*. It is the worst
+possible stretch for it, because that is when the second player has not arrived yet and the code is
+the only thing that brings them. **The two windows were both added deliberately, and each of them was
+checked for what it must not cover — the import window's buttons, the board behind the lock — and
+neither was checked for what it covers that is *useful* rather than blocked.** The fix is one
+component drawn in three places (`src/lib/components/RoomCode.svelte`): the panel, the import window
+and the setup dialog, with the copy and its tick inside it so the three cannot drift. The general
+rule: **a full-screen dialog's checklist is not only "what must it not block" but "what does it now
+cover that somebody still needs"** — and anything that covers the window should be walked from the
+top of the DOM rather than from the board it was written for.
+

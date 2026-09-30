@@ -1329,9 +1329,23 @@ check('and it says the game is being set up',
 check('and asks for a deck from each of them',
    Boolean(lockedDialog) && lockedDialog.includes('Both players need to import a deck before the game can begin'),
    'the wording is the request, because there is no button to press')
-check('and it offers nothing to press at all',
-   Boolean(lockedDialog) && !lockedDialog.includes('<button'),
-   'the opening is not gated on a press, so this is not a prompt')
+check('and it offers nothing to press about the opening itself',
+   Boolean(lockedDialog) && !/>Game Setup</.test(lockedDialog) &&
+   (lockedDialog.match(/<button/g) || []).length === 1 &&
+   lockedDialog.includes('aria-label="Copy room code"'),
+   'the opening is not gated on a press; the one button here is the room code\'s, which is not about the opening')
+/*
+   **And the room's code is on it, which is the point of the one button.**
+
+   This dialog is `position: fixed; inset: 0` at `z-index: 46`, so the code and its copy button in
+   the panel beside the board are behind it - and setting a game up is exactly when a player wants
+   to pass the code on. Reported from play as *"during game setup the game room code cannot be
+   copied"*. It is drawn by `components/RoomCode.svelte`, which is why the same assertion holds for
+   the Import Deck window (see the note in that component).
+*/
+check('and the room\'s code is on it, with something to copy it',
+   Boolean(lockedDialog) && lockedDialog.includes('Room code') && lockedDialog.includes('ABCDEF'),
+   'the code in the panel is behind this dialog, and this is the stretch of a game where it is wanted')
 
 /*
    **And it stays down while this player still has to import.** That is the reported fault: the lock

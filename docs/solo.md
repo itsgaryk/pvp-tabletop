@@ -11,8 +11,8 @@ what the other player can see. The spectator-style **flip** is available, and
 swaps your own board with the other side's.
 
 Solo also keeps the action row a room no longer has: *Setup*, *Flip Coin* and *End
-Turn*, all three on buttons. A room's row above the turn is **Ready** and **Mulligan**,
-with *Flip Coin* and *End Turn* added under them once the game starts — and no button to
+Turn*, all three on buttons. A room's own row is *Flip Coin* and *End Turn*, arriving under
+the log once the game starts — and no button to
 begin with, because a room's opening starts by itself
 ([mechanics.md](mechanics.md#opening-a-rooms-game)). Its other actions are keyboard only
 ([shortcuts.md](shortcuts.md#game-actions)).

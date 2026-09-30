@@ -218,3 +218,30 @@ anyone else.
   pids found by their own listening ports (9230-9232, 3006, 6392, 6393) closed this block and
   nothing else, and the three `%TEMP%\pvp-chrome-923x` profiles went with it. The profile removal
   in the script *is* scoped now; the browser matcher is the one that is not.
+## 2026-09-30 — `feat/setup-ready-prompt` (PR #194) took block C, and `-Stop` took everybody's browsers again
+
+- **Block C (9238) is the one this session used**: app 3007, store 6394/6395, browsers
+  9238-9239. It is free again now — the app and the stand-ins were closed by pid and the
+  CDP ports are quiet.
+- **`-Stop -BasePort 9238` reported `closed 56 process(es)`, and my block is five of
+  them.** `isOurBrowser` in `tools/dev-servers.lib.mjs` still matches any
+  `--user-data-dir=...pvp-chrome-<port>` with no reference to the run's own block, so
+  `findOurs` collected every session's Chrome and `-Stop` closed them. Measured before
+  and after: 9222-9224 and 9230-9232 were listening when I started and are gone now, and
+  9246-9248 are gone with them. **So if a `browser-check` / `reveal-check` / `solo-check`
+  run died just now on "no page on 9222" (or on any block), that was this command rather
+  than a crash in your work.** Restart your block with
+  `tools/dev-servers.ps1 -BasePort <yours>`; nothing else was touched — the apps on 3005
+  and 3006 and the stand-ins on 6390-6393 were left alone and are still up.
+- This is the second, deliberately-unfixed half of the 2026-09-27 entry above, and it is
+  the first time it has been triggered from a block *other* than the one that wrote the
+  note, which is what makes it worth a second entry rather than a comment on the first:
+  **the bug is not "session D's `-Stop` is dangerous", it is "any session's `-Stop` is".**
+- The fix is the one that entry already spells out — `isOurBrowser(line, { basePort })`
+  returning false outside `basePort .. basePort + 7`, and `dev-servers-check.mjs`
+  re-asserted against the block instead of the bare port. **I have deliberately not done
+  it**: it is a shared file, the existing check asserts the current behaviour on purpose,
+  and it is not what this branch is about. Whoever does take it wants the check that
+  would have caught this in the first place — start two blocks, stop one, assert the
+  other's browsers are still listening — because the current check passes on a matcher
+  this loose.

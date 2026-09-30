@@ -393,49 +393,71 @@
       players to confirm something nothing was waiting on. The board is held by the opening dialog
       until both have imported, and it is that dialog which says so.
 
-      What is left above the turn is the row the *game* uses: **Ready** and **Mulligan** while the
-      opening hands are being decided, and **Flip Coin** and **End Turn** once the game is under
-      way.
-
-      The Ready/Mulligan row is up for everything from the deal onwards, which is why it is drawn
-      from "not before the deal" rather than from the deal alone: a player who has pressed Ready
-      keeps their tick and their mulligan count for the whole game, and both buttons mean the same
-      thing at turn 5 as they did at turn 0 - take another hand, or say you are done. They are the
-      room's own controls rather than the opening's, and taking them away when the game started left
-      a player with no way to mulligan a hand drawn mid-game.
-
-      **Ready carries a tick and no animation.** A press that sets a glowing button pulsing for as
-      long as the other player takes is a light nobody can turn off, and what it was saying - *this
-      one is done, and is waiting* - the tick says on its own.
+      What is left above the turn is the row the *game* uses: **Flip Coin** and **End Turn**, once
+      the game is under way. The opening's own two controls - *Ready* and *Mulligan* - are not in
+      this column at all; they are the prompt below.
    -->
-   {#if !$solo && $gameSetup.phase !== 'idle' && $gameSetup.phase !== 'coin' && $gameSetup.phase !== 'order'}
-      <div class="setup-row">
-         <button
-            class="ready"
-            disabled={waiting}
-            title={waiting ? 'Waiting for the other player' : 'Ready to start the game'}
-            on:click={ready}
-         >{waiting ? 'Ready ✓' : 'Ready'}</button>
+   {#if !$solo && $gameSetup.phase === 'deal'}
+      <!--
+         **The opening hand is asked for in the middle of the window, not in the panel.**
 
-         <!--
-            The mulligan, drawn with the count it is about to write: the button says how many
-            this player has taken rather than making them read the log to find out. Green, because
-            it is the one button here that is the player's own rather than the table's, and the
-            grey it had read as disabled.
-         -->
-         <button
-            class="mulligan"
-            title="Shuffle this hand back and draw a new one, keeping your prizes"
-            on:click={mulligan}
-         >{$myMulligans > 0 ? `Mulligan (${$myMulligans})` : 'Mulligan'}</button>
+         The two buttons are the pair that decides the hand the player is looking at, so they
+         belong where the hand is rather than in a corner beside the board: *Ready* and *Mulligan*
+         were the last row of the sidebar, at the opposite end of the screen from the seven cards
+         they are about.
+
+         **It is not a lock, and it must not become one.** Whether to keep a hand or shuffle it
+         back is a question about the cards in front of the player, so the board stays readable and
+         reachable while the prompt is up - the backdrop is transparent and takes no clicks, and
+         only the card itself answers the pointer. Every other centred dialog in a room covers the
+         window; this one is the one that must not.
+
+         **It stays until both players have pressed Ready**, and that is exactly what the phase
+         says: the flow moves to `live` when the second name joins the ready list (see `begin` in
+         stores/gameSetup.js), and this draws on nothing else - so the press that starts the game
+         is the same event that takes the prompt off both screens.
+
+         The order of the two is the one the row had: *Ready* first, *Mulligan* beside it.
+      -->
+      <div class="setup-prompt">
+         <div class="setup-card" role="dialog" aria-labelledby="opening-hand-title">
+            <p class="setup-title" id="opening-hand-title">Your opening hand</p>
+            <p class="setup-hint">
+               {waiting
+                  ? 'Ready - waiting for the other player.'
+                  : 'Keep this hand and press Ready, or shuffle it back and draw a new one.'}
+            </p>
+
+            <div class="setup-row">
+               <button
+                  class="ready"
+                  disabled={waiting}
+                  title={waiting ? 'Waiting for the other player' : 'Ready to start the game'}
+                  on:click={ready}
+               >{waiting ? 'Ready ✓' : 'Ready'}</button>
+
+               <!--
+                  The mulligan, drawn with the count it is about to write: the button says how many
+                  this player has taken rather than making them read the log to find out. Green,
+                  because it is the one button here that is the player's own rather than the
+                  table's, and the grey it had read as disabled.
+               -->
+               <button
+                  class="mulligan"
+                  title="Shuffle this hand back and draw a new one, keeping your prizes"
+                  on:click={mulligan}
+               >{$myMulligans > 0 ? `Mulligan (${$myMulligans})` : 'Mulligan'}</button>
+            </div>
+         </div>
       </div>
    {/if}
 
    <!--
       And the row the game itself runs on: **Flip Coin** and **End Turn**, the two actions a room
-      has always had. They sit under the setup row rather than replacing it, and they are keyboard
-      only until the game starts - `F` and `Enter` - because there is no turn to end and no reason
-      to flip a coin while the opening hands are still being chosen.
+      has always had and had no button for at all while the opening was the only thing above the
+      turn. They arrive with the game, in the place the log has been feeding all along, and during
+      the opening they are on `F` and `Enter` alone - there is no turn to end and no reason to flip
+      a coin while the opening hand is still being decided.
    -->
    {#if !$solo && $gameSetup.phase === 'live'}
       <div class="game-actions">
@@ -488,14 +510,57 @@
 
 <style>
    /*
-      The row above the turn: **Ready** and **Mulligan**, side by side and sharing the width. It is
-      the only row above the turn now - the *Game Setup* button it used to replace is gone, because
-      the opening starts on its own (see the markup above) - so this is what keeps the turn row and
-      the clock under it from moving: the row a player is watching changes, not its place on the
-      screen.
+      The opening hand, centred in the window.
+
+      `pointer-events: none` on the layer and `auto` on the card is the whole of "this is not a
+      lock": the layer is the size of the window, so a click meant for a card, a pile or the chat
+      passes through it, and only the two buttons and the card's own text take the pointer.
+
+      `z-index: 47` puts it over the board and everything the board opens - cards are 9-15, a card
+      being dragged 30, the settings cog 20, the clock's time-up banner 40 - and over the two windows
+      the opening itself uses, the Import Deck window at 45 and the setup dialog at 46. It stays
+      under the room's own dialogs: the timer prompt's 52, the idle prompt's 55, a consent prompt's
+      56 and a closed room's 60. Those are about the room rather than about this hand, and they have
+      to be readable over it.
+   */
+   .setup-prompt {
+      position: fixed;
+      inset: 0;
+      z-index: 47;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+   }
+
+   .setup-card {
+      @apply flex flex-col items-center gap-3 p-6 rounded-lg text-center;
+      pointer-events: auto;
+      min-width: min(20rem, 90vw);
+      max-width: min(26rem, 90vw);
+      background: var(--bg-color-two);
+      color: var(--text-color);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+   }
+
+   .setup-title {
+      @apply text-lg font-bold;
+   }
+
+   .setup-hint {
+      @apply text-sm;
+      color: var(--text-color-two);
+   }
+
+   /*
+      The pair itself: side by side and sharing the width of the card.
+
+      **Ready carries a tick and no animation.** A press that sets a glowing button pulsing for as
+      long as the other player takes is a light nobody can turn off, and what it was saying - *this
+      one is done, and is waiting* - the tick says on its own.
    */
    .setup-row {
-      @apply flex gap-1;
+      @apply flex gap-1 w-full;
    }
 
    .setup-row button {
@@ -526,8 +591,17 @@
       @apply opacity-100;
    }
 
+   /*
+      The row the game itself runs on, **Flip Coin** and **End Turn**.
+
+      `mt-1` is the spacing rule for the whole column under the log: this is the first row of
+      buttons under the game log, and it is the same distance from the log as the turn row below it
+      is from this one (`mt-1` there and on the clock). It had no margin of its own, so the log sat
+      hard against it while everything under it was spaced - the gap a player reads as one stack
+      was two different sizes.
+   */
    .game-actions {
-      @apply flex flex-wrap gap-1;
+      @apply flex flex-wrap gap-1 mt-1;
    }
 
    .game-actions button {

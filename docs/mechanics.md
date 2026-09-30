@@ -316,6 +316,15 @@ and the panel — and which of the two windows is up depends on *whose* deck is 
   import a deck before the game can begin*. Nothing to press; it says what the room is waiting
   for.
 
+**Both of those windows carry the room's code, and that is the point of them doing it.** Each is
+`position: fixed; inset: 0`, so the code and its copy button in the panel beside the board are
+behind whichever one is up — and setting a game up is exactly when the code is wanted: the other
+player has not arrived yet, or has, and the code is what gets them to the same table. Reported
+from play as *"during game setup the game room code cannot be copied"*. There is **one**
+component for it (`src/lib/components/RoomCode.svelte`), drawn in three places — the panel, the
+import window and the setup dialog — so the tick that follows a copy cannot be showing on one of
+them and not the others, and the code cannot be in one place and stale in another.
+
 **There is no *Game Setup* button, and no press to make.** The opening used to wait on a
 press from each player; it waits on the **two decks**, which the room can see for itself — so
 asking the players to confirm it was asking them to confirm something nothing was waiting on.
@@ -355,36 +364,47 @@ What the players are let back into is a board that is dealt but *veiled*, so it 
 cards they can reach first.
 
 **3. The deal, and the opening hand.** As soon as the order is settled both boards deal:
-seven cards each and six prizes, hidden as the deal always hides them. The row above the
-turn is **Ready** and **Mulligan**:
+seven cards each and six prizes, hidden as the deal always hides them. A prompt then comes up
+**in the middle of the window**, over the hand it is about:
 
 - **Ready** starts the game. A press that has been made shows a **tick** — *Ready ✓* — and
   the button stops answering. It does not glow: the tick says everything the glow was
   saying, and a light that pulses for as long as the other player takes is a light nobody
   can turn off.
-- **Mulligan** is drawn **green**, because it is the one button in the row that is this
+- **Mulligan** is drawn **green**, because it is the one button in the prompt that is this
   player's own — it buys another hand and changes nothing on the other board — and the grey
   it wore read as a disabled button beside a live one. Each press **adds one to this
   player's count** and writes two lines: `Player had N mulligans`, then `Hand: <the cards>`.
   The count is the player's own and is not sent to the other board; the opponent reads it
   from the log. The button shows the count as it goes.
 
-**4. The game starts when both are ready.** Then, together:
+**The prompt is not a lock, and that is the one thing it must not become.** Whether to keep a
+hand or shuffle it back is a question about the seven cards in front of the player, so the
+board stays readable and reachable while it is up: the layer takes no clicks and only the card
+answers the pointer. Every other centred dialog in a room — the Import Deck window, the
+opening's own toss, the idle prompt — covers the window on purpose; this is the one that would
+be covering the thing it is asking about.
+
+**4. The game starts when both are ready.** The prompt going is the same event as the game
+arriving: the flow moves to `live` when the second name joins the ready list, and the prompt
+draws on nothing but the phase. Then, together:
 
 - the **veil comes off** both boards — set as a state rather than toggled, so the second
   board to arrive cannot hide the first one's Pokémon by toggling it back on;
 - the **clock starts**, from the room's default of fifty minutes;
 - the **turn** is stated as **1** — see below;
-- **Flip Coin** and **End Turn** appear *under* the Ready/Mulligan row: the two actions a
-  room has always had and had no button for while the setup was the only row there was.
-  They were on `F` and `Enter` alone;
+- **Flip Coin** and **End Turn** appear under the game log: the two actions a room has always
+  had and had no button for while the opening was the only thing above the turn. They were on
+  `F` and `Enter` alone;
 - `Game started` goes in the log — **once**, written by the first seat, because both
   boards notice the same moment and a line from each would say it twice.
 
-**Ready and Mulligan stay for the whole game** rather than going with the opening. They are
-the room's own controls: a hand drawn mid-game can be mulliganed, and a player who has said
-they are ready keeps their tick. Taking them away at the start left a player with no way to
-mulligan a hand drawn at turn 5.
+**Ready and Mulligan are the opening's controls, and they go with it.** Both mean the same
+thing only while there is an opening hand to decide: *Mulligan* is about the seven cards just
+dealt — the game has not begun, the prizes are down and the turn is on — and *Ready* has
+already done its job, because both players pressing it is *why* the game started. Mid-game
+there is nothing for either to do, and a button that stays for the rest of the game is a
+button that means "start the game" at turn 5.
 
 **A board that reloads mid-setup replays into it.** The steps are room events, so a client
 that comes back arrives at the same phase with the same caller and the same ready list.
@@ -425,11 +445,14 @@ rather than fixed.** Leaving the room and making another one *is* checked there,
 
 ### Mulligans
 
-**A room has a manual mulligan.** It is the *Mulligan* button beside *Ready*, and it is
+**A room has a manual mulligan.** It is the *Mulligan* button beside *Ready*, in the
+opening-hand prompt, and it is
 the player's own: each press redraws the opening hand, counts up, and writes
 `Player had N mulligans` and `Hand: <the cards>` ([Opening a room's game](#opening-a-rooms-game)).
 The usual extra card per mulligan does not exist, and the count is a log line rather than
-a shared state — the opponent reads the number because the line is the room's.
+a shared state — the opponent reads the number because the line is the room's. **It is the
+opening's**, so it is gone once the game has started, along with the prompt it lives in: a
+hand drawn mid-game is kept or it is not, and there is no button that redraws one.
 
 **Auto-mulligan is off, and there is no longer a control for it.** The *Mulligans*
 block is gone from the settings menu, and the setting behind it (`autoMulligan`,
@@ -929,8 +952,9 @@ and what the opponent gets is the log line *Viewed deck* — nothing about the c
 *Hide Pokémon* (`Z`) turns your Pokémon in play — the Active spot and the Bench —
 into card backs for the other player. It is about what the other player can see, so
 **solo has no Hide Pokémon button**: there is nobody to hide them from. **A room has
-no button for it either** — its row is Ready and Mulligan, and then Flip Coin and End
-Turn — so in both modes the action is the `Z` key, and the store and the sharing behind it are
+no button for it either** — its row is Flip Coin and End Turn, and the opening's Ready and
+Mulligan are a prompt over the board rather than a row — so in both modes the action is the
+`Z` key, and the store and the sharing behind it are
 unchanged (see `switchVisibility` in `GameActions.svelte`).
 
 Three things about it are worth knowing, because they are not what "hide" sounds
