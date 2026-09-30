@@ -147,85 +147,88 @@ console.log(`the room's opening, against ${BASE}\n`)
 await lobby(alice)
 await lobby(bob)
 
+/*
+   Answer the room's "Still playing?" while the check works.
+
+   **This check takes about forty seconds and appends very little to the relay**, and the dev stack
+   runs the relay's idle window at eight seconds with a twelve-second prompt (`RELAY_IDLE_MS` in
+   `tools/dev-servers.ps1`) so the lifecycle can be tested at all. That is long enough for the room
+   to prompt and then to **close**, and a closed room is not a failed assertion three sections
+   later: it is a lobby, so the turn row, the clock, the game row and the log all read `null` and
+   every assertion after the start fails at once - measured, and it is what *"after the start,
+   alice: turn null ... Room closed: nobody answered the idle prompt"* was.
+
+   `reveal-check.mjs` and the panel section of `browser-check.mjs` answer the same prompt for the
+   same reason: those windows are the *room's* clock, not one check's.
+*/
+function keepAlive (pages) {
+   return setInterval(() => {
+      for (const page of pages) {
+         page.evaluate(`(() => { const go = document.querySelector('.idle-go'); if (go) go.click(); return true })()`).catch(() => {})
+      }
+   }, 1500)
+}
+
+const alive = keepAlive([ alice, bob ])
+
 const room = await alice.createRoom('Alice')
 await bob.joinRoom(room, 'Bob')
-await alice.importDeck()
-await bob.importDeck()
 console.log(`  room ${room}\n`)
 
-/* ------------------------------------------------------------- the lock, and the gate --- */
+/* ------------------------------------------------------------- the lock, and the start --- */
 
 /*
-   **The board is held from the moment a room has two players in it.** Nothing on the table is
-   anybody's to touch until both have said the game may begin, so the lock is up while the phase is
-   `idle` - before either has pressed - and it is the same element that later carries the toss.
-
-   The way out is *Game Setup* itself, which is in the panel beside the board and therefore behind
-   the backdrop: what is asserted is that the lock is up and that the button is still the one thing
-   that answers.
+   **The board is held from the moment a room has two players in it, until both have a deck.**
+   Nothing on the table is anybody's to touch while a deck is missing, and there is **no button to
+   press**: the opening starts by itself the moment the second deck lands, so what this section
+   asserts is the new wording, that the lock is up, and that nothing behind it answers.
 */
 await wait('the lock to come up', async () => (await board(alice)).dialog !== null)
 const locked = { alice: await board(alice), bob: await board(bob) }
 check('the board is locked as soon as there are two players',
    /Setting up the game/.test(locked.alice.dialog) && /Setting up the game/.test(locked.bob.dialog),
    JSON.stringify([ locked.alice.dialog, locked.bob.dialog ]))
-check('and both are told what to do',
-   /Both players need to press Game Setup/.test(locked.alice.dialog) &&
-   /Both players need to press Game Setup/.test(locked.bob.dialog))
+check('and it says what the room is waiting for: a deck from each of them',
+   /Both players need to import a deck before the game can begin/.test(locked.alice.dialog) &&
+   /Both players need to import a deck before the game can begin/.test(locked.bob.dialog),
+   JSON.stringify(locked.alice.dialog))
+check('and there is no button for either of them to press',
+   locked.alice.buttons.length === 0 && locked.bob.buttons.length === 0,
+   'the opening is not gated on a press any more')
+check('and no Game Setup button is drawn at all',
+   locked.alice.setupButton.present === false && locked.bob.setupButton.present === false)
 check('and the lock is the whole window, not the board',
    locked.alice.backdrop === true, 'a click meant for a card lands on the backdrop')
 
 /*
-   Both decks, and the button comes alive on **both** boards. The second half is the assertion
-   that matters: the frozen read this feature was first written with left one board's button dead
-   for the life of the page, and a check that only looked at the player who pressed it would have
-   passed.
+   **Both decks, and the opening starts on its own.** The button this used to be gated on is gone -
+   the deal cannot be built from a deck that is not there, and the room can see that for itself, so
+   there was nothing left for a press to decide.
 */
-await wait('both decks to land', async () => (await board(alice)).setupButton.disabled === false)
-const gated = { alice: await board(alice), bob: await board(bob) }
-check('the button is enabled once both decks are in, on both boards',
-   gated.alice.setupButton.disabled === false && gated.bob.setupButton.disabled === false,
-   `alice=${gated.alice.setupButton.disabled} bob=${gated.bob.setupButton.disabled}`)
+await alice.importDeck()
+await sleep(2000)
 
-/* ------------------------------------------------------- both players press Setup --- */
+const oneDeck = { alice: await board(alice), bob: await board(bob) }
+check('one deck is not enough: the lock is still up on both boards',
+   /Setting up the game/.test(oneDeck.alice.dialog || '') && /Setting up the game/.test(oneDeck.bob.dialog || ''),
+   JSON.stringify([ oneDeck.alice.dialog, oneDeck.bob.dialog ]))
+check('and the toss has not started', !oneDeck.alice.buttons.includes('Heads') && !oneDeck.bob.buttons.includes('Heads'))
 
-/*
-   **One press is half of the agreement.** It is recorded, the room is told, and nothing else
-   happens: no toss, no dialog question, and the board stays locked. The press that completes the
-   pair is the one that draws the caller.
-*/
-await clickButton(alice, 'button', 'Game Setup')
-await sleep(1500)
-
-const onePressed = { alice: await board(alice), bob: await board(bob) }
-check('one press does not start the toss: no Heads or Tails anywhere',
-   !onePressed.alice.buttons.includes('Heads') && !onePressed.bob.buttons.includes('Heads'),
-   `alice=${onePressed.alice.buttons} bob=${onePressed.bob.buttons}`)
-check('the player who pressed is told they are waiting',
-   /Waiting for Bob to press Game Setup/.test(onePressed.alice.dialog || ''),
-   JSON.stringify(onePressed.alice.dialog))
-check('and their button says so and cannot be pressed again',
-   onePressed.alice.setupButton.present === true && onePressed.alice.setupButton.disabled === true &&
-   /Waiting for opponent/.test(onePressed.alice.setupButton.label || ''),
-   JSON.stringify(onePressed.alice.setupButton))
-check('and the other is still asked to press',
-   /Both players need to press Game Setup/.test(onePressed.bob.dialog || '') &&
-   onePressed.bob.setupButton.disabled === false,
-   JSON.stringify(onePressed.bob.dialog))
-check('and the board is still locked', /Setting up the game/.test(onePressed.bob.dialog || ''))
+await bob.importDeck()
 
 /* ------------------------------------------------------------------ the toss --- */
 
-await clickButton(bob, 'button', 'Game Setup')
-await wait('the coin dialog', async () => (await board(alice)).buttons.includes('Heads') ||
-   (await board(bob)).buttons.includes('Heads'))
+await wait('the coin dialog, with no press of any kind',
+   async () => (await board(alice)).buttons.includes('Heads') || (await board(bob)).buttons.includes('Heads'))
 await sleep(1500)
 
 const toss = { alice: await board(alice), bob: await board(bob) }
 const aliceCalls = toss.alice.buttons.includes('Heads')
 const bobCalls = toss.bob.buttons.includes('Heads')
 
-check('the second press starts the toss', aliceCalls || bobCalls)
+check('the second deck starts the toss by itself', aliceCalls || bobCalls)
+check('and the import lock is gone',
+   !/Setting up the game/.test(toss.alice.dialog || '') && !/Setting up the game/.test(toss.bob.dialog || ''))
 check('exactly one player is offered the call', aliceCalls !== bobCalls,
    `alice=${aliceCalls} bob=${bobCalls}`)
 check('and that player is offered Heads and Tails',
@@ -235,6 +238,9 @@ check('and the other is told who is calling, with nothing to press',
    (aliceCalls ? toss.bob : toss.alice).buttons.length === 0 &&
    /is calling the coin toss/.test((aliceCalls ? toss.bob : toss.alice).dialog),
    JSON.stringify((aliceCalls ? toss.bob : toss.alice).buttons))
+check('and the board is locked while the toss is open',
+   toss.alice.backdrop === true && toss.bob.backdrop === true,
+   'the cards are not anybody\'s until the order is settled')
 
 const caller = aliceCalls ? alice : bob
 const waiter = aliceCalls ? bob : alice
@@ -289,8 +295,12 @@ await wait('both boards to deal', settled((a, b) =>
 await sleep(600)
 
 const dealt = { alice: await board(alice), bob: await board(bob) }
-check('the dialog is gone, and the Game Setup button with it',
-   dealt.alice.dialog === null && dealt.bob.dialog === null && !dealt.alice.setupButton.present)
+check('the dialog is gone, and the board is the players\' own again',
+   dealt.alice.dialog === null && dealt.bob.dialog === null &&
+   dealt.alice.backdrop === false && dealt.bob.backdrop === false,
+   'the order being settled is what unlocks it')
+check('and no Game Setup button is drawn at any point',
+   dealt.alice.setupButton.present === false && dealt.bob.setupButton.present === false)
 check('the row under the turn is Ready and Mulligan, neither disabled',
    dealt.alice.row.length === 2 && dealt.alice.row[0].label === 'Ready' &&
    dealt.alice.row[0].disabled === false && dealt.alice.row[1].label === 'Mulligan',
@@ -369,13 +379,20 @@ check('and the game has not started on one press',
 
 await clickButton(bob, '.setup-row button', 'Ready')
 await wait('the game to start on both boards', settled((a, b) =>
-   a.row.length === 0 && b.row.length === 0 && a.veil === 0 && b.veil === 0))
+   a.liveRow.length === 2 && b.liveRow.length === 2 && a.veil === 0 && b.veil === 0))
 await sleep(800)
 
 const started = { alice: await board(alice), bob: await board(bob) }
-check('the row is gone on both boards',
-   started.alice.row.length === 0 && started.bob.row.length === 0)
-check('the veil is off both boards',
+/*
+   **Ready and Mulligan stay for the whole game.** They are the room's own controls rather than the
+   opening's: a hand drawn mid-game can be mulliganed, and a player who has said they are ready
+   keeps their tick. What the start changes is the veil, the turn, the clock - and that Flip Coin
+   and End Turn join them.
+*/
+check('Ready and Mulligan are still there on both boards',
+   started.alice.row.length === 2 && started.bob.row.length === 2,
+   JSON.stringify([ started.alice.row, started.bob.row ]))
+check('and the veil is off both boards',
    started.alice.veil === 0 && started.bob.veil === 0,
    `alice=${started.alice.veil} bob=${started.bob.veil}`)
 /*
@@ -420,8 +437,6 @@ check('the game row offers Flip Coin and End Turn',
    started.alice.liveRow.join() === 'Flip Coin,End Turn', JSON.stringify(started.alice.liveRow))
 check('and it is up on both boards',
    started.bob.liveRow.join() === 'Flip Coin,End Turn', JSON.stringify(started.bob.liveRow))
-check('and the setup row is not drawn beside it',
-   started.alice.row.length === 0 && started.alice.liveRow.length === 2)
 
 const turnBefore = (await board(alice)).turn
 await clickButton(alice, '.game-actions button', 'End Turn')
@@ -496,36 +511,35 @@ await lobby(bob)
 const secondRoom = await alice.createRoom('Alice')
 await bob.joinRoom(secondRoom, 'Bob')
 console.log(`  second room ${secondRoom}`)
-await alice.importDeck()
-await bob.importDeck()
-await sleep(2500)
 
+/*
+   **The report this section is here for**: the new room has the *same two members in the same
+   order*, so a setup left over from the room before it used to satisfy `bothReady()` on a room that
+   had not dealt a card - and the opening was never offered again. What is asserted is that the lock
+   is up asking for decks, that nothing of the old game is on the board, and that the whole opening
+   runs from there.
+*/
 const rebuilt = { alice: await board(alice), bob: await board(bob) }
-check('the Game Setup button is there in the new room',
-   rebuilt.alice.setupButton.present === true && rebuilt.bob.setupButton.present === true,
-   `alice=${JSON.stringify(rebuilt.alice.setupButton)} bob=${JSON.stringify(rebuilt.bob.setupButton)}`)
-check('and it is enabled, so the opening can begin',
-   rebuilt.alice.setupButton.disabled === false && rebuilt.bob.setupButton.disabled === false,
-   `alice=${rebuilt.alice.setupButton.disabled} bob=${rebuilt.bob.setupButton.disabled}`)
+check('the new room asks for a deck from each of them',
+   /Both players need to import a deck/.test(rebuilt.alice.dialog || '') &&
+   /Both players need to import a deck/.test(rebuilt.bob.dialog || ''),
+   JSON.stringify([ rebuilt.alice.dialog, rebuilt.bob.dialog ]))
 check('and nothing of the old game is left in the new one',
    rebuilt.alice.hand === 0 && rebuilt.alice.turn === 'Turn 0' &&
    !rebuilt.alice.log.some((l) => /Game started/.test(l)),
    `hand=${rebuilt.alice.hand} turn="${rebuilt.alice.turn}" log=${JSON.stringify(rebuilt.alice.log)}`)
 
-/* and the whole opening runs again, which is the point of the button being there */
-await clickButton(alice, 'button', 'Game Setup')
-await sleep(1200)
-await clickButton(bob, 'button', 'Game Setup')
+/* and the whole opening runs again, from the decks alone */
+await alice.importDeck()
+await bob.importDeck()
 await wait('the toss in the new room',
    async () => (await board(alice)).buttons.includes('Heads') || (await board(bob)).buttons.includes('Heads'))
-await sleep(1200)
+await sleep(1500)
 
 const toss2 = { alice: await board(alice), bob: await board(bob) }
 check('the toss runs in the new room',
    toss2.alice.buttons.includes('Heads') !== toss2.bob.buttons.includes('Heads'),
    `alice=${JSON.stringify(toss2.alice.buttons)} bob=${JSON.stringify(toss2.bob.buttons)}`)
-console.log('  new room dialogs:',
-   JSON.stringify([ toss2.alice.dialog?.slice(0, 45), toss2.bob.dialog?.slice(0, 45) ]))
 
 const caller2 = toss2.alice.buttons.includes('Heads') ? alice : bob
 await clickButton(caller2, '.setup-dialog button', 'Heads')
@@ -545,6 +559,7 @@ check('and the new room deals: seven cards and six prizes',
    newDeal.hand === 7 && newDeal.prizes === 6,
    `${newDeal.hand} in hand, ${newDeal.prizes} prizes`)
 
+clearInterval(alive)
 browser.detach()
 
 console.log(failures

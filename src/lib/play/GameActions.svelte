@@ -8,16 +8,15 @@
    /*
       The board half of the room's opening: `onDeal` is the deal this module knows how to make,
       `onStart` is what starting a game does to a board, and the two questions in between are
-      the dialog's (`play/dialogs/GameSetupDialog.svelte`). What the flow itself is - the
-      phases, the coin, who has pressed and who is ready - is `stores/gameSetup.js`, which owns
-      none of this and asks for it by registering, so the import points one way.
+      the dialog's (`play/dialogs/GameSetupDialog.svelte`). What the flow itself is - the phases,
+      the coin, who is ready - is `stores/gameSetup.js`, which owns none of this and asks for it by
+      registering, so the import points one way.
 
-      The two lists are read here rather than asked of the store's `isReady()` and `hasPressed()`,
-      and that is the rule this whole feature keeps having to relearn: see the note over `waiting`
-      and `pressed` below.
+      The ready list is read here rather than asked of the store's `isReady()`, and that is the rule
+      this feature keeps having to relearn: see the note over `waiting` below.
    */
    import {
-      gameSetup, decksReady, myMulligans, canStartSetup, startSetup, ready,
+      gameSetup, myMulligans, ready,
       takeMulligan, redrawHand, onDeal, onRedraw, onStart, resetSetup, flipCoin
    } from '$lib/stores/gameSetup.js'
 
@@ -69,28 +68,21 @@
       expression calls* is invisible: `disabled={!canStartSetup()}`, `class:glow={isReady()}` and
       `waiting = isReady()` named no store at all, and the compiler emitted each as a bare
       assignment **outside** the component's update function - answered once, at instance creation,
-      and never again. Three symptoms came from that one mistake, all reproduced on the running app:
+      and never again. Symptoms came from that one mistake, all reproduced on the running app:
 
-         the button    a player who entered a room before a deck existed had a *Game Setup* that
-                       was greyed out for the life of the page, and could not start the setup at all
-         the gate      once enabled it never greyed again, so a pressable button silently did
-                       nothing - `startSetup` re-checks the rule and returns false
+         the button    a *Game Setup* button that was greyed out for the life of the page for the
+                       player who joined second, so the setup could not be started from that board
+         the gate      once enabled it never greyed again, so a pressable button silently did nothing
          the row       pressing *Ready* put the player in the room's ready list, `isReady()`
                        answered `true` when asked from the handler, and the button went on drawing
-                       "Ready" with no glow, because the value it drew was frozen before `myId`
-                       had even arrived
+                       "Ready" with no tick, because the value it drew was frozen before `myId` had
+                       even arrived
 
-      So both name the stores they are about. The rule itself stays in the store - `canStartSetup`
-      is still the one place the gate is stated, and `startSetup` still enforces it - and these
-      lines exist so the compiler can see what each answer depends on. `waiting` and `pressed` ask
-      the lists directly rather than through `isReady()` and `hasPressed()`, because "have *I*
-      pressed it" is a question about `$myId` as much as about the list.
+      What is left of that here is `waiting`, and it asks the list directly rather than through
+      `isReady()`, because "have *I* pressed it" is a question about `$myId` as much as about the
+      list.
    */
-   $: canSetup = $decksReady && $gameSetup.phase === 'idle' && canStartSetup()
-
-   /* this player's own presses, asked of the lists directly, for the reason above */
    $: waiting = Boolean($myId) && $gameSetup.ready.includes($myId)
-   $: pressed = Boolean($myId) && $gameSetup.pressed.includes($myId)
 
    function draw7andPutPrizes () {
       resetBoard()
@@ -395,46 +387,28 @@
 
 {#if !$spectating}
    <!--
-      A game room gets one button to begin with: **Game Setup**, on its own row, the whole width
-      of the row, directly above the turn.
+      **A room has no button to begin with.** There used to be one - *Game Setup*, on its own row
+      above the turn, pressed by both players in turn - and the opening it started now starts
+      itself: it waits on the two decks, which the room can see for itself, so a press asked the
+      players to confirm something nothing was waiting on. The board is held by the opening dialog
+      until both have imported, and it is that dialog which says so.
 
-      It is greyed out until the game *can* be set up, which is two things rather than one: a
-      player sitting in each seat, and a deck imported on **both** boards (`canStartSetup` in
-      stores/gameSetup.js). A deal cannot be built from a deck that is not there, and the whole
-      opening - the toss, the order, the opening hands - is between those two players.
+      What is left above the turn is the row the *game* uses: **Ready** and **Mulligan** while the
+      opening hands are being decided, and **Flip Coin** and **End Turn** once the game is under
+      way.
 
-      **Both players press it.** One press is half of the agreement: it is recorded, the room is
-      told, and nothing else happens - the board stays locked and this player is told they are
-      waiting. The press that completes the pair starts the toss. So the label says whose press is
-      still outstanding rather than only whether this player has made theirs.
-   -->
-   {#if !$solo && $gameSetup.phase === 'idle'}
-      <button
-         class="game-setup"
-         disabled={!canSetup || pressed}
-         title={pressed
-            ? 'Waiting for the other player to press Game Setup'
-            : 'Both players need a deck imported, and both need to press this'}
-         on:click={startSetup}
-      >{pressed ? 'Waiting for opponent…' : 'Game Setup'}</button>
-   {/if}
-
-   <!--
-      The row that replaces it once the order is settled, and above the turn like the button it
-      replaced. Both players have their seven cards and six prizes by now - the deal happened
-      when the phase became `deal` - so these two are what a player does with an opening hand:
-      keep it, or take a mulligan and draw another.
-
-      The row is up until the game starts, and then it is replaced by the row below: the phase is
-      `live`, and neither of these means anything once the game is under way. That is why it is
-      drawn from the phase rather than from a flag of its own - one thing decides both whether the
-      row is there and what it is for.
+      The Ready/Mulligan row is up for everything from the deal onwards, which is why it is drawn
+      from "not before the deal" rather than from the deal alone: a player who has pressed Ready
+      keeps their tick and their mulligan count for the whole game, and both buttons mean the same
+      thing at turn 5 as they did at turn 0 - take another hand, or say you are done. They are the
+      room's own controls rather than the opening's, and taking them away when the game started left
+      a player with no way to mulligan a hand drawn mid-game.
 
       **Ready carries a tick and no animation.** A press that sets a glowing button pulsing for as
       long as the other player takes is a light nobody can turn off, and what it was saying - *this
       one is done, and is waiting* - the tick says on its own.
    -->
-   {#if !$solo && $gameSetup.phase === 'deal'}
+   {#if !$solo && $gameSetup.phase !== 'idle' && $gameSetup.phase !== 'coin' && $gameSetup.phase !== 'order'}
       <div class="setup-row">
          <button
             class="ready"
@@ -458,14 +432,10 @@
    {/if}
 
    <!--
-      And the row the game itself runs on, once it has begun: **Flip Coin** and **End Turn**, the
-      two actions a room has always had and has had no button for since the row was cut down to
-      *Game Setup*. They appear where the setup row was - above the turn, the same width - so the
-      turn and the clock under them never move.
-
-      They were keyboard-only (`F` and `Enter`) while the setup was the one thing a room did with a
-      button. A game that has started is a game with a turn to end and a coin to flip, so they come
-      back when it does.
+      And the row the game itself runs on: **Flip Coin** and **End Turn**, the two actions a room
+      has always had. They sit under the setup row rather than replacing it, and they are keyboard
+      only until the game starts - `F` and `Enter` - because there is no turn to end and no reason
+      to flip a coin while the opening hands are still being chosen.
    -->
    {#if !$solo && $gameSetup.phase === 'live'}
       <div class="game-actions">
@@ -518,26 +488,11 @@
 
 <style>
    /*
-      The room's one button, and the whole width of its row: `w-full` rather than
-      the share-of-the-row `flex-1` the buttons below it take, because it has no
-      row-mates to share with and a button that stops short of the turn row above
-      it reads as a mistake.
-   */
-   .game-setup {
-      @apply block w-full font-bold text-white bg-[var(--primary-color)] px-2 py-1.5 rounded-md whitespace-nowrap;
-   }
-
-   .game-setup:disabled {
-      @apply opacity-50;
-   }
-
-   /*
-      The row that replaces it once the deal is on the table: **Ready** and **Mulligan**, side
-      by side and sharing the row, above the turn.
-
-      It is the same width as the button it replaced, which is what keeps the turn row and the
-      clock under it from moving when the setup moves on - the row a player is watching changes
-      its contents, not its place on the screen.
+      The row above the turn: **Ready** and **Mulligan**, side by side and sharing the width. It is
+      the only row above the turn now - the *Game Setup* button it used to replace is gone, because
+      the opening starts on its own (see the markup above) - so this is what keeps the turn row and
+      the clock under it from moving: the row a player is watching changes, not its place on the
+      screen.
    */
    .setup-row {
       @apply flex gap-1;

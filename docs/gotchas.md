@@ -1746,3 +1746,20 @@ shape — a timer that has just been started still reads the fifty minutes it wa
 it once reported *"clock reads 50:00"* — and it is now read until it has ticked. The general rule for
 a two-board check: **a wait has to name every board the next assertion reads.**
 
+**A room that has closed makes every assertion fail at once, and the loudest one is not the
+cause.** The same check reported eight failures in a row after the game started — *"and the opening
+turn is 1 on both boards - alice=\"null\" bob=\"null\""*, an empty log, *"clock reads null"*, no game
+row — which reads like the start having broken the board component. It had not: the room was
+**closed**, the page was back at the lobby, and there is no turn row, no clock and no game row in a
+lobby. What closed it was the relay's own idle prompt. `tools/dev-servers.ps1` runs the idle window
+at **eight seconds with a twelve-second prompt** so the lifecycle can be tested in seconds, and this
+check spends about forty seconds reading two boards while appending very little to the relay — so
+the room prompted, nobody answered, and it closed underneath the check. The tell is a `null` where a
+board should be, plus the lobby's buttons in the page text; a screenshot-free way to see it is to
+read `document.body.innerText` on failure, which is where *"Room closed: nobody answered the idle
+prompt"* was found. The fix is the one `reveal-check.mjs` and the panel section of
+`browser-check.mjs` already use: a `keepAlive` interval that clicks the prompt's button every 1.5
+seconds. **Those windows belong to the room, not to one check**, so any check that keeps a room open
+for more than a few seconds has to answer it. The general rule: **when many assertions fail at once,
+ask whether the room is still there before believing any of them.**
+

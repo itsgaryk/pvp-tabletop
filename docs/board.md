@@ -506,11 +506,11 @@ On screen a spectator gets the whole board and none of the play:
   in `opponent.js`) and seated from the relay's `seated` event. The normal single
   mirror is switched off while spectating rather than unmounted, because it would
   otherwise quietly collect both players' cards into one set of slots.
-- **No game actions.** The room's row — the Game Setup button, the Ready and Mulligan pair
-  that replaces it, the Flip Coin and End Turn pair after that, and the turn row's `−` / `+` —
-  is not rendered and the shortcuts are not bound, so End Turn and Flip Coin are not one
-  keystroke away for somebody who is only watching. A watcher is told the opening as it
-  happens, through the log and through the dialog every board is shown
+- **No game actions.** The room's row — the Ready and Mulligan pair, the Flip Coin and End
+  Turn pair that joins them once the game starts, and the turn row's `−` / `+` — is not
+  rendered and the shortcuts are not bound, so End Turn and Flip Coin are not one keystroke
+  away for somebody who is only watching. A watcher is told the opening as it happens, through
+  the log and through the dialog every board is shown
   ([Opening a room's game](mechanics.md#opening-a-rooms-game)).
 - **Both hands and both sets of prizes are face up** (`$spectating` reveals them
   outright), which is the deliberate difference from a player, who sees a hidden hand

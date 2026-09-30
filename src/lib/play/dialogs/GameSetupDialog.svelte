@@ -1,33 +1,38 @@
 <script>
    /*
-      The room's opening, on screen: the lock that holds the board until both players are ready to
-      begin, the coin toss, and the choice it hands to one of them.
+      The room's opening, on screen: the lock that holds the board until both players have a deck,
+      the coin toss, and the choice it hands to one of them.
 
       ---------------------------------------------------------------------------
       It is a lock before it is a dialog
       ---------------------------------------------------------------------------
-      A player sits down, imports a deck, and looks at a board they are not yet meant to play. The
-      game has not been opened, and nothing on the table is anybody's to touch until **both** have
-      said so - so this is up from the moment a room has two players in it, and it covers the whole
-      window: the board, the cards, the chat and the panel beside them. The way out is the *Game
-      Setup* button, which is on the panel and outside this dialog's reach, and the way out of the
-      room is *Leave Room* beside it.
+      A player sits down and imports a deck. Until **both** have one there is no game to play, so
+      this is up from the moment a room has two players in it and it covers the whole window: the
+      board, the cards, the chat and the panel beside them. Everything behind it is out of reach,
+      which is the point - the cards on the table are not anybody's until the game has begun.
 
-      It then carries the two questions of the toss, and goes when the order is settled and the
-      boards deal. So there is one element for the whole opening, and which of its states is on
-      screen is the phase:
+      **It is not a prompt and it is not a gate.** There is no button to press: the opening starts
+      by itself the moment the second deck lands (see `startSetup` in the store, which the store
+      calls for itself), so this says what the room is waiting for and goes when it has it. It is
+      drawn *under* the Import Deck window, which is the one thing a player still needs while it is
+      up.
 
-         idle     nothing yet. *Game Setup* is the only thing to press, and a player who has
-                  pressed it reads that they are waiting for the other one
+      It then carries the two questions of the toss, so there is one element for the whole opening
+      and which of its states is on screen is the phase:
+
+         idle     a deck is still missing. Nothing to press; the game begins on its own
          coin     the player the room picked calls Heads or Tails
          order    the coin has come up, and whoever called it right chooses first or second
+
+      And it goes the moment the order is settled: both boards deal, and **both players are free
+      again** - that is what the order being decided means.
 
       ---------------------------------------------------------------------------
       It cannot be dismissed, and that is deliberate
       ---------------------------------------------------------------------------
-      Neither a click beside it nor `Escape` is a call, a choice, or a game begun. The Import Deck
-      window is the one other thing shaped like this, and for the same reason: a window that could
-      be waved away would leave the other player waiting on an answer that is never coming.
+      Neither a click beside it nor `Escape` is a call, a choice, or a deck imported. The Import
+      Deck window is the one other thing shaped like this, and for the same reason: a window that
+      could be waved away would leave the other player waiting on something that is never coming.
 
       ---------------------------------------------------------------------------
       Why every `$:` here names a store
@@ -45,7 +50,7 @@
       reason. See docs/gotchas.md.
    */
    import {
-      gameSetup, callsCoin, choosesOrder, callCoin, chooseOrder, hasPressed
+      gameSetup, callsCoin, choosesOrder, callCoin, chooseOrder, decksReady
    } from '$lib/stores/gameSetup.js'
    import { spectating, seatedPlayers, myId, room } from '$lib/stores/connection.js'
    import { solo } from '$lib/stores/solo.js'
@@ -66,24 +71,30 @@
    /*
       The states, each with the store it is about named in the expression.
 
-      `locked` is the board being held: a room whose game has not been dealt, which is the phase
-      being `idle`, `coin` or `order`. `isPressed` is this player's own half of the agreement, read
-      off the list rather than asked of `hasPressed()` - the store read inside that call is
-      invisible to the compiler, and the whole opening is built on not making that mistake twice.
+      `locked` is the board being held, and there are two reasons for it, which is why it is two
+      terms rather than one:
 
-      **`locked` is not the whole of `open`, and that is load-bearing.** The phase is `idle` on a
-      board that has never been in a room at all, so a lock drawn on the phase alone covers the
-      **main menu** - measured: *Setting up the game* over the logo and the Play Solo button, on a
-      page that has no table to lock. So `$room` is asked as well, and it is read here rather than
-      handed down as `onMenu`: this component is a sibling of the page's menu flag, and a dialog
-      that could only be correct when the page remembered to pass something is a dialog that is
-      wrong again the next time the page grows a state.
+         the import   a room with two players in it where **a deck is still missing**. The board is
+                      covered until both have imported, and the dialog says so
+         the toss     the coin and the order, once both decks are in. Both are decisions about the
+                      game rather than about a deck, and neither can be made while cards are being
+                      moved
+      
+      It is **not** up for `deal` or `live`: the moment the order is settled the boards deal and
+      both players are free again - that is the point of the order being decided.
+
+      **`$room` is included, and that is load-bearing.** The phase is `idle` on a board that has
+      never been anywhere, so a lock drawn on the phase alone covers the **main menu** - measured:
+      *Setting up the game* over the logo and the Play Solo button, on a page with no table to lock.
+
+      `$decksReady` is read here rather than asked of a call, for the reason every `$:` in this file
+      gives: a store read inside a function is invisible to the compiler.
    */
    $: calling = callsCoin(state.phase)
    $: ordering = choosesOrder(state.phase)
-   $: isPressed = state.pressed.includes($myId)
-   $: locked = ($gameSetup.phase === 'idle' || $gameSetup.phase === 'coin' || $gameSetup.phase === 'order')
-   $: open = Boolean($room) && !$solo && !$spectating && locked
+   $: importing = $gameSetup.phase === 'idle' && !$decksReady
+   $: tossing = $gameSetup.phase === 'coin' || $gameSetup.phase === 'order'
+   $: open = Boolean($room) && !$solo && !$spectating && $myId !== null && (importing || tossing)
 
    /* the face the coin came up, in the words the log used for it */
    $: face = state.result === 'heads' ? 'Heads' : 'Tails'
@@ -100,20 +111,16 @@
    -->
    <div class="setup-backdrop" role="presentation">
       <div class="setup-dialog" role="alertdialog" aria-modal="true" aria-labelledby="setup-title">
-         {#if state.phase === 'idle'}
+         {#if importing}
             <!--
-               The lock, before anything has been decided. Both players are told what to do, and the
-               one who has already pressed is told that they are waiting - a board that went quiet
-               with no explanation would read as a fault rather than as the other player reading
-               their deck.
+               The lock, while a deck is missing. **It is not a button prompt**: the game begins by
+               itself the moment the second deck lands (see `startOpening` in the store), so this
+               says what the room is waiting for and nothing else. The Import Deck window is over
+               this dialog rather than under it, which is why the wording can point at it.
             -->
             <p id="setup-title" class="setup-title">Setting up the game</p>
             <p class="setup-hint">
-               {#if isPressed}
-                  Ready. Waiting for {other} to press Game Setup.
-               {:else}
-                  Both players need to press Game Setup before the game can begin.
-               {/if}
+               Both players need to import a deck before the game can begin
             </p>
 
          {:else if state.phase === 'coin'}

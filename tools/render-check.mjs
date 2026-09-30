@@ -1247,7 +1247,6 @@ const setupState = (over) => ({
    order: null,
    first: null,
    ready: [],
-   pressed: [],
    ...over
 })
 
@@ -1267,22 +1266,35 @@ rendersNothing('the setup dialog draws nothing on the main menu', mod.GameSetupD
 
 mod.room.set('ABCDEF')
 
-/* the lock, before anything has been decided: both are asked to press, and neither has */
+/*
+   The lock, while a deck is missing. **It is not a prompt**: the opening starts by itself the moment
+   the second deck lands, so there is nothing here to press and the wording is the whole of what it
+   is for - which is what was wrong with it before, when it asked for a press that the room no
+   longer needed.
+*/
 mod.gameSetup.set(setupState({ phase: 'idle' }))
 const lockedDialog = renders('the setup dialog renders the lock', mod.GameSetupDialog)
 check('and it says the game is being set up',
    Boolean(lockedDialog) && lockedDialog.includes('Setting up the game'))
-check('and asks both players to press Game Setup',
-   Boolean(lockedDialog) && lockedDialog.includes('Both players need to press Game Setup'))
+check('and asks for a deck from each of them',
+   Boolean(lockedDialog) && lockedDialog.includes('Both players need to import a deck before the game can begin'),
+   'the wording is the request, because there is no button to press')
 check('and it offers nothing to press at all',
-   Boolean(lockedDialog) && !lockedDialog.includes('<button'), 'the way out is the button behind it')
+   Boolean(lockedDialog) && !lockedDialog.includes('<button'),
+   'the opening is not gated on a press, so this is not a prompt')
 
-/* and the same state once this player has pressed, which is the wait */
-mod.gameSetup.set(setupState({ phase: 'idle', pressed: [ 'me' ] }))
-const waitingForOther = renders('the lock renders for the player who has pressed', mod.GameSetupDialog)
-check('and that player is told they are waiting on the other one',
-   Boolean(waitingForOther) && /Waiting for Bob to press Game Setup/.test(waitingForOther),
-   'the name comes from the seats, not from a prop')
+/*
+   **And it goes the moment the order is settled.** `deal` is the two boards dealing and `live` is
+   the game under way; neither is a question, so neither carries a dialog - and a lock left over
+   either of them is a board that never becomes playable, which is the other half of the import
+   lock being right. This is the case the harness can reach without a deck, since the store it reads
+   for the import lock is a real one with nothing in it.
+*/
+mod.gameSetup.set(setupState({ phase: 'deal', chooser: 'me', winner: 'me', order: 'first' }))
+rendersNothing('the setup dialog draws nothing once the boards deal', mod.GameSetupDialog)
+
+mod.gameSetup.set(setupState({ phase: 'live', chooser: 'me', winner: 'me', order: 'first' }))
+rendersNothing('the setup dialog draws nothing once the game is live', mod.GameSetupDialog)
 
 mod.gameSetup.set(setupState({ chooser: 'me', you: { chooser: 'you', winner: null } }))
 

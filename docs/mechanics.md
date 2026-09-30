@@ -222,17 +222,18 @@ button, but the button is never disabled in play.
 
 ### Setup
 
-*Setup* deals a fresh game in this order. In a room it is **Game Setup**, the room's
-one button, on its own row above the turn; in solo it is the *Setup* button of the row
-solo keeps. **There is no key for it**: the `N` shortcut and its confirmation are gone,
-so the deal is a button in the mode you are in, and starting again over a game in
-progress is *New Game* in the settings menu ([Starting again, inside the same
+*Setup* deals a fresh game in this order. In solo it is the *Setup* button of the row solo
+keeps, and **it is the only mode with a button for it**: a room deals when its opening
+finishes, which is not a press anybody makes — see [Opening a room's
+game](#opening-a-rooms-game). **There is no key for it**: the `N` shortcut and its
+confirmation are gone, and starting again over a game in progress is *New Game* in the
+settings menu ([Starting again, inside the same
 room](rooms.md#starting-again-inside-the-same-room)).
 
 **The two modes are not the same flow any more.** Solo is one person at a button: the
 press deals both halves, and that is the whole of it. A room has a second player in it,
 so the deal is the *end* of a short negotiation and cannot happen until both of them
-have a deck and have agreed who goes first — see
+have a deck and have decided who goes first — see
 [Opening a room's game](#opening-a-rooms-game). What follows here is the deal itself,
 which both modes share: solo calls it from its button, and a room calls it from the
 phase the order settles into.
@@ -262,8 +263,8 @@ phase the order settles into.
    front of each of them is still being decided
    ([Opening a room's game](#opening-a-rooms-game)).
 7. **The deal itself writes nothing.** The room's opening hand is not an event at the
-   table and the board it deals already says so — the hand, the prizes, turn 0 — so
-   *Game Setup* and the *Mulligan* behind it keep quiet, and the lines a room's log gets
+   table and the board it deals already says so — the hand, the prizes, turn 0 — so the
+   room's deal and the *Mulligan* behind it keep quiet, and the lines a room's log gets
    are the ones the players actually say: the coin, the order, the mulligans and
    *Game started*. **Solo's own button logs `Setup`**, because its row is the solo
    player's alone and the one button is the deal. The board state is published to the
@@ -296,26 +297,30 @@ step, so the two are never in different phases.
 **Solo does none of this.** There is no second player to toss with, and solo's row is
 unchanged.
 
-**0. The board is locked, and both players press.** Nothing on the table is anybody's to
-touch until both have said the game may begin, so a **lock** covers the whole window — the
-board, the cards, the chat and the panel — from the moment a room has two players in it.
-The only controls it leaves are the *Game Setup* button and *Leave Room*, and both are in
-the panel behind it.
+**1. The board is locked until both players have a deck.** Nothing on the table is anybody's
+to touch while a deck is missing, so a **lock** covers the whole window — the board, the
+cards, the chat and the panel — from the moment a room has two players in it. It says
+*Setting up the game* and *Both players need to import a deck before the game can begin*, and
+it carries **nothing to press**: the way to satisfy it is the Import Deck window, which is
+drawn over it.
 
-*Game Setup* is pressed **by both**, one after the other. One press is half of an
-agreement: it is recorded and passed to the room, the board stays locked, and that player
-is told they are waiting. The press that completes the pair is the one that draws the coin
-caller. So the button reads *Game Setup* until this player has pressed, *Waiting for
-opponent…* after, and it is greyed out until there are two players in the room **and both
-have imported a deck**. That last part is not a flag of its own: the deck a player imported
-*is* the card list on their board, and the other player's arrives with every board state,
-so the rule asks `cards` and the opponent mirror.
+**There is no *Game Setup* button, and no press to make.** The opening used to wait on a
+press from each player; it waits on the **two decks**, which is the same condition the lock
+was already drawn on — and the room can see a deck for itself, so asking the players to
+confirm it was asking them to confirm something nothing was waiting on. The moment the second
+deck lands, the opening starts by itself: a room where one player imported while alone waits
+for the seat rather than for a second press.
 
-**2. Deciding who goes first.** The second press does not deal. It picks one of the two
-players **at random, on the board whose press completed the pair**, and names them in the
-event — two boards each drawing for themselves would disagree about half the time. That
-player is shown *Determining player order* with **Heads** and **Tails**, and the other
-player is shown the same dialog saying that the call is being made.
+That condition is not a flag of its own: the deck a player imported *is* the card list on
+their board, and the other player's arrives with every board state, so the rule asks `cards`
+and the opponent mirror.
+
+**2. Deciding who goes first.** The second deck does not deal. It picks one of the two
+players **at random, on the board that saw it arrive**, and names them in the event — two
+boards each drawing for themselves would disagree about half the time, and the board that
+receives the event takes the phase from it rather than drawing a second caller. That player
+is shown *Determining player order* with **Heads** and **Tails**, and the other player is
+shown the same dialog saying that the call is being made.
 
 - The call is logged as `Chooses HEADS` or `Chooses TAILS`, and the coin is flipped in the
   same act: `Coin flip: HEADS` or `Coin flip: TAILS`. **Neither line says `Player`**: the
@@ -330,11 +335,14 @@ player is shown the same dialog saying that the call is being made.
 
 While either question is open the dialog still takes the screen, and it cannot be clicked
 away or escaped out of, because neither of those is a call or a choice — the same behaviour
-the Import Deck window has.
+the Import Deck window has. **The board stays locked through both questions**, and the
+moment one of them is answered the lock goes: that is what the order being settled means.
+What the players are let back into is a board that is dealt but *veiled*, so it is their own
+cards they can reach first.
 
 **3. The deal, and the opening hand.** As soon as the order is settled both boards deal:
-seven cards each and six prizes, hidden as the deal always hides them. The row that
-replaces *Game Setup* is **Ready** and **Mulligan**:
+seven cards each and six prizes, hidden as the deal always hides them. The row above the
+turn is **Ready** and **Mulligan**:
 
 - **Ready** starts the game. A press that has been made shows a **tick** — *Ready ✓* — and
   the button stops answering. It does not glow: the tick says everything the glow was
@@ -353,18 +361,23 @@ replaces *Game Setup* is **Ready** and **Mulligan**:
   board to arrive cannot hide the first one's Pokémon by toggling it back on;
 - the **clock starts**, from the room's default of fifty minutes;
 - the **turn** is stated as **1** — see below;
-- the setup row is replaced by the **game's own row: Flip Coin and End Turn**, the two
-  actions a room has always had and had no button for while the setup was the only row
-  there was. They were on `F` and `Enter` alone;
+- **Flip Coin** and **End Turn** appear *under* the Ready/Mulligan row: the two actions a
+  room has always had and had no button for while the setup was the only row there was.
+  They were on `F` and `Enter` alone;
 - `Game started` goes in the log — **once**, written by the first seat, because both
   boards notice the same moment and a line from each would say it twice.
 
-**A board that reloads mid-setup replays into it.** The four steps are room events, so a
-client that comes back arrives at the same phase with the same caller and the same ready
-list. *Your own deck is the one thing the replay does not bring back*
+**Ready and Mulligan stay for the whole game** rather than going with the opening. They are
+the room's own controls: a hand drawn mid-game can be mulliganed, and a player who has said
+they are ready keeps their tick. Taking them away at the start left a player with no way to
+mulligan a hand drawn at turn 5.
+
+**A board that reloads mid-setup replays into it.** The steps are room events, so a client
+that comes back arrives at the same phase with the same caller and the same ready list.
+*Your own deck is the one thing the replay does not bring back*
 ([rooms.md](rooms.md#reconnecting-and-idle-boards)), so a reloaded board is sent to the
 Import Deck window again and deals when it has a deck — which is why the deal hangs off
-the *phase* rather than off the press that caused it.
+the *phase* rather than off whatever caused it.
 
 **The opening turn is stated, not counted.** A game begins at turn 1, so the start says
 `setTurn(0)` and then `setTurn(1)` rather than adding one to whatever the counter holds.
@@ -376,20 +389,20 @@ browsers, the game started, the log said so once, and the turn row read **Turn 2
 phase lives in the room's log and nowhere else, so a seat changing hands — or the same two
 players making *another* room — leaves both boards in a phase agreed by somebody, or
 somewhere, that is no longer the case. The second is the one that was reported:
-*"after leaving the room and creating a new room the Game Setup button did not appear"*,
-because the new room had the **same two members in the same order**, so a watcher on the
-seats had nothing to notice while the flow still held a ready list naming both of them —
-and `bothReady()` was satisfied by a room that had not dealt a card, which put the phase at
-`live` and took the button away. The watcher is therefore on the **room id** as well, and
-keyed on the value rather than on an event, which is what keeps a *reload* from wiping the
-setup it is in the middle of: resuming a session re-joins the same room, and that is not a
-change.
+*"after leaving the room and creating a new room the Game Setup button did not appear"* —
+which at the time meant an opening that could not be started at all, because the new room
+had the **same two members in the same order**, so a watcher on the seats had nothing to
+notice while the flow still held a ready list naming both of them — and `bothReady()` was
+satisfied by a room that had not dealt a card, which put the phase at `live`. The watcher is
+therefore on the **room id** as well, and keyed on the value rather than on an event, which
+is what keeps a *reload* from wiping the setup it is in the middle of: resuming a session
+re-joins the same room, and that is not a change.
 
 **A second game in the same room is still not checked.** *New Game* goes through — the other
-player accepts, both boards are cleared, both import a deck again — but whether the room
-returns to a phase where *Game Setup* is offered has not been verified since the reset was
-reworked, and it was **broken** when it was last tried: the reset ran on both boards and left
-the phase at `live` with the previous game's ready list in it, so the second game could not
+player accepts, both boards are cleared, both import a deck again — but whether the opening
+returns has not been verified since the reset was reworked, and it was **broken** when it was
+last tried: the reset ran on both boards and left the phase at `live` with the previous
+game's ready list in it, so the second game could not
 be started at all. The reset now also clears the two lists outright (a union has no way to
 empty itself) and is keyed on the room rather than on an event, which is the shape the
 diagnosis pointed at — but the section of `tools/game-setup-browser-check.mjs` that drives it
@@ -526,9 +539,8 @@ type. Nothing checks that an evolution is legal, either — see
 
 Two sets of keys, and both ignore a keystroke while somebody is typing. The game
 actions are `Enter` (end the turn), `C` (next turn), `F` (flip a coin) and `Z` (show or
-hide Pokémon). There is no key for the deal: *Game Setup* is the button, and the
-confirmation-and-`N` pair that used to be beside it is gone (see [Setup](#setup)). The
-board keys are
+hide Pokémon). There is no key for the deal, and in a room no button for it either: the
+opening finishes by itself and deals the game (see [Setup](#setup)). The board keys are
 the table in [shortcuts.md](shortcuts.md#moving-a-selection); the ones worth repeating here
 are the move keys, because they are the same moves the card menu offers: `H` `D` `L`
 `P` for hand, discard, lost zone and prizes; `B` `A` `G` for bench, active and
@@ -897,8 +909,8 @@ and what the opponent gets is the log line *Viewed deck* — nothing about the c
 *Hide Pokémon* (`Z`) turns your Pokémon in play — the Active spot and the Bench —
 into card backs for the other player. It is about what the other player can see, so
 **solo has no Hide Pokémon button**: there is nobody to hide them from. **A room has
-no button for it either** — the only button in a room is *Game Setup* — so in both
-modes the action is the `Z` key, and the store and the sharing behind it are
+no button for it either** — its row is Ready and Mulligan, and then Flip Coin and End
+Turn — so in both modes the action is the `Z` key, and the store and the sharing behind it are
 unchanged (see `switchVisibility` in `GameActions.svelte`).
 
 Three things about it are worth knowing, because they are not what "hide" sounds

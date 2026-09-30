@@ -61,9 +61,7 @@ export const PHASES = [ 'idle', 'coin', 'order', 'deal', 'live' ]
    put in front, which is a fact about the *game* rather than about the handshake - it is
    what the turn row starts from, and it is public so a late watcher knows it too.
 
-   `pressed` is who has pressed *Game Setup*, which is two members rather than one event:
-   the board stays locked until **both** have, so the press cannot be a single flag. It is
-   the same union rule as `ready` and for the same reason - see `put`.
+   `ready` is who has pressed *Ready* for this game.
 
    The mulligans are **not** in here: they are one player's own, counted and read locally,
    and the log is where the table is told about them (see `myMulligans`).
@@ -77,8 +75,7 @@ export const gameSetup = writable({
    result: null,
    order: null,
    first: null,
-   ready: [],
-   pressed: []
+   ready: []
 })
 
 const isPhase = (value) => PHASES.includes(value)
@@ -234,11 +231,9 @@ const RANK = { idle: 0, coin: 1, order: 2, deal: 3, live: 4 }
    Ready button it was still showing would publish that stale list back. Nobody stops being
    ready, so the answer is the one the two boards between them know.
 
-   `pressed` is the same union for the same reason, one step earlier.
-
    `clear` is the exception, and it exists because a union has no way out: a step that speaks for a
    list adds to it, and there is no value it could send that would take an entry away. Forgetting a
-   setup has to mean forgetting, so `reset` passes this and the two lists are replaced instead.
+   setup has to mean forgetting, so `reset` passes this and the list is replaced instead.
 */
 function put (state, { clear = false } = {}) {
    if (!isPhase(state?.phase)) return
@@ -258,8 +253,7 @@ function put (state, { clear = false } = {}) {
       result: state.result ?? before.result ?? null,
       order: state.order ?? before.order ?? null,
       first: state.first ?? before.first ?? null,
-      ready: clear ? (state.ready || []) : union(before.ready, state.ready),
-      pressed: clear ? (state.pressed || []) : union(before.pressed, state.pressed)
+      ready: clear ? (state.ready || []) : union(before.ready, state.ready)
    })
 }
 
@@ -286,8 +280,7 @@ function reset () {
       result: null,
       order: null,
       first: null,
-      ready: [],
-      pressed: []
+      ready: []
    }, { clear: true })
    dealtFor = null
    startedFor = false
@@ -332,74 +325,66 @@ export function resetSetup () {
    GameActions.svelte). This function is still the one place the rule is stated, and `startSetup`
    still enforces it.
 */
+/*
+   Whether this board may begin the opening.
+
+   **Everything here is a precondition, and none of it is a button.** The opening used to wait on a
+   *Game Setup* press from each player; it waits on **the two decks** now. That is the same
+   condition the lock was already drawn on - the board is covered while a player has not imported -
+   so the moment the second deck lands there is nothing left to wait for, and asking for a press on
+   top of it was asking the players to confirm something the room could already see.
+
+   Read by `startSetup` and by the automatic start below, which is the only caller left.
+*/
 export function canStartSetup () {
    const open = Boolean(room.get()) && !solo.get() && !spectating.get() && seats().length >= 2
    const at = gameSetup.get().phase
-   return open && (at === 'idle' || at === 'coin') && decksReady.get()
+   return open && at === 'idle' && decksReady.get()
 }
 
 /*
-   Whether this board has pressed *Game Setup*.
+   Beginning the opening: one player is picked to call the coin.
+
+   **It runs by itself, on whichever board sees the second deck arrive**, which is the board that
+   imported it. Two boards can both think they are the one - each has its own deck and its own
+   mirror of the other's, and they fill in a different order - so what does the deciding is the
+   room: the event carries the phase, and the board that receives it takes `coin` from the event
+   rather than drawing a second caller. Two draws would disagree about half the time; the one that
+   loses is ignored by the rank guard in `put`, because `coin` is not behind `coin`.
+
+   It is called from a subscription rather than from a click (see `startOpening`), so it is
+   deliberately *not* exported as the thing a button does: there is no button.
 */
-export function hasPressed () {
-   return gameSetup.get().pressed.includes(myId.get())
-}
-
-/*
-   Whether **both players** have pressed it, which is what the flow waits for.
-
-   Two members rather than one press, because the button is on both boards and both players are
-   asked to say they are ready to begin - a room where one of them has pressed and the other has
-   not is a room with a board still to be read, and the game is not yet anybody's to start. Asked
-   of the seats for the reason `bothReady` is: two entries are two *players* only if both hold one.
-*/
-export function bothPressed () {
-   const state = gameSetup.get()
-   const players = seats().map((player) => player.id)
-   return players.length >= 2 && players.every((id) => state.pressed.includes(id))
-}
-
-/*
-   Pressing *Game Setup*: this player says they are ready to begin.
-
-   **The press is recorded, and the toss only starts once both have pressed.** One press is half
-   of the agreement, so it publishes itself and stops: the room stays locked, the other player is
-   still reading their board, and the *first* press does not decide anything on its behalf. The
-   press that completes the pair is the one that draws the caller - and it draws it **on the board
-   that made it**, naming them in the event, rather than each board drawing for itself: two boards
-   each drawing "at random" are two answers to one question and disagree about half the time.
-
-   A press arriving while this board is already at the toss is not a second press - it is the same
-   agreement seen from the other side, so it is recorded and the flow is left where it is.
-*/
-export function startSetup () {
+function startSetup () {
    if (!canStartSetup()) return false
-
-   const id = myId.get()
-   if (!id || hasPressed()) return false
-
-   /*
-      This player's press is written into the state **before** the pair is judged, and that order
-      is the whole of it: `bothPressed` asks the seats against the list, and it has to be able to
-      see the press it is judging. Written the other way round the answer was always "no" on the
-      second press, and the toss never began.
-   */
-   put({ ...gameSetup.get(), pressed: [ ...gameSetup.get().pressed, id ] })
-
-   /* one press of two: the room is told, and nothing else happens yet */
-   if (!bothPressed()) {
-      share('setupStarted', gameSetup.get())
-      return true
-   }
 
    const players = seats().map((player) => player.id)
    const chooser = players[Math.floor(Math.random() * players.length)]
 
-   const agreed = { ...gameSetup.get(), phase: 'coin', chooser, ready: [], pressed: [] }
+   const agreed = { phase: 'coin', chooser }
    put(agreed)
    share('setupStarted', agreed)
 
    return true
+}
+
+/*
+   The automatic start, on every change to the two things it waits for.
+
+   **Watched on the seats as well as the decks**, because the order they arrive in is not fixed: a
+   player who imported while alone in the room has `decksReady` false until the second seat is
+   filled, and the seat arriving changes nothing about their deck - so a watcher on the decks alone
+   would never fire for them, and the room would sit under the lock with both decks imported and
+   nobody to start it.
+*/
+decksReady.subscribe(maybeStart)
+seatedPlayers.subscribe(maybeStart)
+
+function maybeStart () {
+   if (gameSetup.get().phase !== 'idle') return
+   if (!canStartSetup()) return
+
+   startSetup()
 }
 
 /* --------------------------------------------------------------- the coin toss --- */
@@ -456,8 +441,8 @@ export function callCoin (call) {
    const won = result === call
    const winner = won ? chooser : (seats().find((player) => player.id !== chooser)?.id || null)
 
-   /* the pressed pair was the opening's, and it has been spent: the deal starts with neither */
-   const agreed = { phase: 'order', chooser, winner, call, result, ready: [], pressed: [] }
+   /* the deal is the next game's, and it starts with nobody ready */
+   const agreed = { phase: 'order', chooser, winner, call, result, ready: [] }
    put(agreed)
    share('setupCoin', agreed)
 
@@ -496,8 +481,7 @@ export function chooseOrder (order) {
       winner,
       order,
       first: taker,
-      ready: [],
-      pressed: []
+      ready: []
    }
 
    put(agreed)

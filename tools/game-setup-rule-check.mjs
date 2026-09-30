@@ -143,8 +143,12 @@ mod.myId.set('me')
 
 /*
    **The gate, one term at a time.** Each of these is a state a real board sits in while a room
-   fills up, and each is a different reason the button must stay grey: no deck at all, one deck,
+   fills up, and each is a different reason the opening must not start: no deck at all, one deck,
    the opponent's deck only, and finally both.
+
+   The gate is asked *before* the start for the last three, because the store starts the opening
+   the moment it can - so `canStartSetup()` answering true is the same instant as the toss
+   beginning, and reading it afterwards would be reading the state it just left.
 */
 check('and none with no deck imported', mod.canStartSetup() === false)
 
@@ -155,55 +159,39 @@ mod.cards.set([])
 mod.defaultOpponent.cards.set([ { name: 'Charmander', stage: 'basic' } ])
 check('and none with only the opponent\'s deck imported', mod.canStartSetup() === false)
 
-mod.cards.set([ { name: 'Pikachu', stage: 'basic' } ])
-mod.defaultOpponent.cards.set([ { name: 'Charmander', stage: 'basic' } ])
-check('and one with both decks imported', mod.canStartSetup() === true)
-
-/* and a spectator's board is never offered it, however full the room is */
+/* and a spectator's board never starts it, however full the room is */
 mod.spectating.set(true)
+mod.cards.set([ { name: 'Pikachu', stage: 'basic' } ])
 check('and none for a spectator, who has no deck to import', mod.canStartSetup() === false)
 mod.spectating.set(false)
+mod.cards.set([])
+mod.defaultOpponent.cards.set([])
 
 /*
-   **One press is half of an agreement, and the toss waits for the other half.** This is the rule
-   the two boards have to keep between them, and it is asked of the running store rather than read
-   out of the source: the first press is recorded and stops, the second completes the pair and
-   draws the caller.
-
-   The two seats are driven by moving `myId` between them, which is what the two boards differ by -
-   they share one store here because a check has one process, so "the other board" is played by
-   changing whose id is looking. That is a limit of this harness rather than of the rule, and the
-   browser check is where the two boards really are two.
+   **The second deck starts the opening by itself.** There is no button, so this is the whole of
+   how the toss begins - and it is asked of the running store rather than read out of the source:
+   setting the opponent's deck is exactly what `deckLoaded` does when a real one arrives, and the
+   subscription is built to answer it.
 */
-const { startSetup, callsCoin, hasPressed, bothPressed } = mod.setup
+const { callsCoin } = mod.setup
 
-check('the first press is recorded', startSetup() === true && hasPressed() === true)
-check('and does not start the toss on its own',
-   mod.gameSetup.get().phase === 'idle' && bothPressed() === false,
+check('and nothing has begun with no decks in', mod.gameSetup.get().phase === 'idle')
+
+mod.cards.set([ { name: 'Pikachu', stage: 'basic' } ])
+check('and nothing begins on one deck', mod.gameSetup.get().phase === 'idle',
    `phase = ${mod.gameSetup.get().phase}`)
-check('and the same player cannot press again', startSetup() === false)
 
-mod.myId.set('them')
-check('the other player has not pressed', hasPressed() === false)
-check('and the second press completes the pair and starts the toss',
-   startSetup() === true && bothPressed() === true)
+mod.defaultOpponent.cards.set([ { name: 'Charmander', stage: 'basic' } ])
+check('and the second deck starts the toss on its own',
+   mod.gameSetup.get().phase === 'coin', `phase = ${mod.gameSetup.get().phase}`)
 
 const state = mod.gameSetup.get()
-check('and the room is now calling the coin', state.phase === 'coin', `phase = ${state.phase}`)
 check('and the caller is one of the two seats',
    [ 'me', 'them' ].includes(state.chooser), `chooser = ${state.chooser}`)
-/*
-   And the pair is not re-pressed at. The list is a **union** - a client is never handed its own
-   events back, so a board that reloads replays the other player's list and would otherwise lose
-   its own entry and offer the button to somebody who has already pressed it - so it is still the
-   two members here. What matters is that neither of them is offered the button again, which is
-   what `hasPressed` answers.
-*/
-check('and neither player is offered the button again',
-   (mod.myId.set('me'), hasPressed() === true) && (mod.myId.set('them'), hasPressed() === true))
-mod.myId.set('me')
-check('and the toss does not wait on the pair any longer',
-   bothPressed() === true, 'both have pressed; the flow has moved on to the coin')
+check('and it starts once, not again on every change',
+   (mod.cards.set([ { name: 'Pikachu', stage: 'basic' }, { name: 'Potion' } ]),
+      mod.gameSetup.get().phase === 'coin' && mod.gameSetup.get().chooser === state.chooser),
+   'a re-import mid-opening must not draw a second caller')
 
 /* and only the player who was picked is asked to call it */
 check('and the player who was picked may call it',
@@ -222,5 +210,5 @@ mod.defaultOpponent.cards.set([])
 
 console.log(failures
    ? `\n${failures} check(s) failed`
-   : '\nverdict: ok - the setup store loads, gates on two players and two decks, and needs both presses')
+   : '\nverdict: ok - the setup store loads, gates on two players and two decks, and begins on its own')
 process.exit(failures ? 1 : 0)
