@@ -140,6 +140,13 @@
          because it is the one menu here that needs nothing else to be true - no window, no
          permission, no selection.
 
+         **The pile goes with it, and on the hand that is not decoration either.** The hand
+         is the one zone of the four whose menu carries a second entry - *Reveal Hand*, the
+         entry the zone's own menu has (`opponent/Hand.svelte`), which shows this player the
+         whole of the hand the card was right-clicked in. The menu cannot ask which pile it
+         was opened over unless the card hands it over, so it does, and the pile answers
+         with its own marking (`theirHand` in `opponent.js`).
+
          **`pile.pingable` is the second half of the question, and it is not decoration.**
          This component draws a card of theirs in two situations, and only one of them is a
          zone a ping belongs on: a card lying in a zone, and every card of one of their
@@ -156,14 +163,15 @@
          opens the details of the selected card, and *the details of one of their hidden
          cards* is exactly the read this half must not offer - so a gesture that only
          points at a card must not put it in a selection. Nothing else on this path needs
-         one: `pingCard` takes the card it is handed.
+         one: `pingCard` takes the card it is handed, and `revealHand` resolves the far
+         half's hand itself.
       */
       if (!$solo && !actionable) {
          if (!pile.pingable) return
 
          e.preventDefault()
          e.stopPropagation()
-         openOppCardPingMenu(e.clientX, e.clientY, card, revealed)
+         openOppCardPingMenu(e.clientX, e.clientY, card, revealed, pile)
          return
       }
 

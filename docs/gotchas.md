@@ -1798,3 +1798,44 @@ seconds. **Those windows belong to the room, not to one check**, so any check th
 for more than a few seconds has to answer it. The general rule: **when many assertions fail at once,
 ask whether the room is still there before believing any of them.**
 
+**A check written before a gate does not pass through it.** `tools/reveal-check.mjs` was last
+touched before the consent handshake landed (#186), which put a question between *Reveal Hand*,
+*Reveal* and *Look* and their windows: the gesture is asked first and happens on a yes. The check
+clicked the entry and waited for the window, so every section that reads somebody else's pile hung
+on an answer nobody gave. What fixes it is the owner's own answer, given the way a player gives it:
+`.consent-dialog .consent-yes` on *their* page, waited for rather than slept past.
+
+**And the same check had a second version of it: it answered every "X" by overriding
+`window.prompt`.** The app had stopped using the platform dialog when the counts moved into
+`dialogs/NumberPrompt.svelte` — a dialog of its own, for two reasons that component states — and a
+helper that patches a function the app no longer calls reports nothing at all: the entry opened its
+own dialog, the click was recorded as taken, and the count never arrived, which reads as *the window
+never opened*, the same symptom as a broken feature three layers down. It waits for that dialog and
+presses its OK now, and it is called *after* the entry rather than before it, because the click is
+what asks. Both halves are one lesson about a check that is run by hand: **the app moves under it,
+and nothing on the other side says so.**
+
+**A setup step that does nothing looks exactly like one that worked.** The same check reached its
+dealt board through `browser.mjs`'s `setup()`, which clicks the word *Setup* — and a room has no
+button of any age: *Game Setup* was removed when the opening was made automatic (#190), and before
+that the click was already matching nothing, because `clickText` compares the whole label while the
+helper's own note claimed a substring. The two states are worth keeping apart, and they are why this
+was expensive:
+
+- **while the button existed, the helper broke the check.** Nothing was clicked, the board stayed
+  undealt, and the check reported *and both were dealt a hand - 0 and 0* followed by forty lines
+  about a feature that was fine. A failing check's *first* line is the one to read; everything after
+  it is the same failure retold in the feature's own vocabulary, and a deck badge still reading 60
+  after Setup is the whole of it.
+- **once the deal became automatic, the same dead click became harmless and invisible.** The room
+  deals itself from the two decks, so a helper that clicks nothing is a no-op rather than a fault —
+  and the check that needed it kept failing for the *next* reason instead. Measured on the merge
+  that made the opening automatic: `setup()` in a room is a click on a button that is not there, and
+  the deal still has to be driven — the coin call and the turn order are a dialog now, and a check
+  that walks past them waits for ever for a hand nobody dealt.
+
+`tools/game-setup-browser-check.mjs` is the check that owns that flow, and its sections are the
+recipe for anybody porting an older room check onto it: import both decks, answer *Heads*, answer
+*First*, wait for **both** boards to hold seven cards, and press *Ready* on both if the check
+touches the Pokemon zones — the veils stay up until the game starts.
+

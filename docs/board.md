@@ -353,6 +353,12 @@ that used to be *Declare Target* on a Pokemon in play, and it is the only thing 
 names a card without changing anything — nothing is marked, nothing is moved, and nobody answers
 it (`stores/ping.js`).
 
+**A card in their hand offers one entry besides it**: *Reveal Hand*, the hand zone's own entry,
+which asks that hand's owner to show the whole of it ([reveal.md](reveal.md#where-the-entries-are-offered)).
+The window shows every card of the hand, so which card the entry was taken from makes no
+difference — it is offered on the cards as well as on the zone because a card is where the cursor
+already is when a player is reading a hand. No other zone's cards carry a second entry.
+
 - **Where it is offered.** Every zone of theirs a card is read in: the hand, the prizes, the
   Active spot and the Bench (a Pokemon's own menu, `dialogs/OppSlotMenu.svelte`), their Stadium,
   and the cards they played to the table. **A card attached under one of their Pokemon is pinged
@@ -362,7 +368,8 @@ it (`stores/ping.js`).
   one card on the screen whatever is in it, so a ping there would point at a position nobody can
   read. The pile is what answers that (`pingable`, marked in `opponent.js`), because the component
   that draws a card of theirs also draws every card of those three piles when one is opened as a
-  view.
+  view. **The hand answers one question more** (`theirHand`, marked the same way), and that is what
+  draws *Reveal Hand* on its cards and on no other zone's.
 - **What the log says.** `Ping: <card>` for a card this player can read, and `Ping: Hidden card`
   for one they cannot — the opponent's hand, a face-down prize, a Pokemon whose owner has hidden
   their board. The name is the *pinger's* knowledge rather than the card's, and that is the whole

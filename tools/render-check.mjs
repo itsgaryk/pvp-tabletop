@@ -1169,9 +1169,51 @@ check('and only a zone a ping belongs on may be pinged',
    'the deck, the discard and the lost zone are piles, and a view of one draws every card of it')
 check('and a card of theirs on the board opens the ping menu in a room',
    /if \(!\$solo && !actionable\) \{/.test(oppCardSource) &&
-   /openOppCardPingMenu\(e\.clientX, e\.clientY, card, revealed\)/.test(oppCardSource))
+   /openOppCardPingMenu\(e\.clientX, e\.clientY, card, revealed, pile\)/.test(oppCardSource))
 check('and so does a card of theirs on the table',
-   /openOppCardPingMenu\(e\.clientX, e\.clientY, card\)/.test(oppTempSource))
+   /openOppCardPingMenu\(e\.clientX, e\.clientY, card, true, table\)/.test(oppTempSource))
+
+/*
+   **And the one entry a card of theirs carries besides the ping: *Reveal Hand*, on the
+   cards of their hand.**
+
+   A Reveal Hand shows the whole of the hand, so *which* card of it was right-clicked makes
+   no difference to what happens - which is why the entry is offered on each card of the hand
+   as well as on the zone, and why both routes take the same `revealHand` rather than two
+   implementations that have to agree. What keeps it off the cards of their other zones is a
+   marker on the pile (`theirHand`), asked the way `pingable` is asked one screen up: this
+   component draws a card of the hand, a card of the prizes and a card of a *view* alike, and
+   only one of those has a hand behind it.
+
+   The marker is asked of the mirror the app really builds rather than read off the source,
+   because that is the half a source check cannot see: the marker is *per instance*, so a
+   spectator's mirror answers for itself, and a non-enumerable property is not one that a
+   spread or a `JSON.stringify` of a pile could carry off the board. The menu's own entries
+   are behind an `isOpen` a server render never sets, so those two are read from the source -
+   and the behaviour, a right click on a card of the hand opening the window, is
+   `tools/reveal-check.mjs`'s.
+*/
+const oppCardPingMenuSource = readFileSync(join(src, 'lib', 'play', 'dialogs', 'OppCardPingMenu.svelte'), 'utf8')
+
+check('and the far half\'s hand is marked as the pile a Reveal Hand is about',
+   mod.defaultOpponent.hand.theirHand === true &&
+   [ mod.defaultOpponent.prizes, mod.defaultOpponent.stadium, mod.defaultOpponent.table ]
+      .every((zone) => zone.theirHand === undefined) &&
+   mod.hand.theirHand === undefined,
+   'the hand alone, so the entry cannot turn up on the prizes, the table or the player\'s own hand')
+check('and the marker is not enumerable, so a copy of the pile cannot carry it anywhere',
+   !Object.keys(mod.defaultOpponent.hand).includes('theirHand'),
+   'the marker is defined the way `theirPile` and `pingable` are defined, in opponent.js')
+check('and the menu offers Reveal Hand only for a card drawn with that pile',
+   /\{#if pile\?\.theirHand\}/.test(oppCardPingMenuSource) &&
+   /<ContextMenuOption click=\{revealTheirHand\} text="Reveal Hand" disabled=\{!canReveal\(\)\} \/>/.test(oppCardPingMenuSource) &&
+   /function revealTheirHand \(\) \{\s*revealHand\(\)/.test(oppCardPingMenuSource),
+   'and it calls the store\'s own gesture rather than a second copy of it')
+check('and the pile travels with the card, or the menu cannot ask which zone it is in',
+   /function openOppCardPingMenu \(x, y, card, revealed = true, pile = null\)/.test(boardSource) &&
+   /oppCardPingMenu\.open\(x, y, card, revealed, pile\)/.test(boardSource) &&
+   /export function open \(x, y, _card, _revealed = true, _pile = null\)/.test(oppCardPingMenuSource),
+   'the third menu a card of theirs opens now answers for the pile it was opened over')
 
 /*
    The six components that draw a card, and each one's half of `pingedCard`: a player's own
@@ -1211,7 +1253,7 @@ check('and the cards attached under a Pokemon wear it on both halves',
    glowCount(join(src, 'lib', 'play', 'opponent', 'Slot.svelte'), 'far') === 3,
    'the Pokemon, its energy and its tools are four cards that can be pinged, and each has its own binding')
 check('and a card attached under their Pokemon is pinged as its own card',
-   bodyOf(oppSlotSource, 'onCardCtx').includes('openOppCardPingMenu(e.clientX, e.clientY, card)') &&
+   bodyOf(oppSlotSource, 'onCardCtx').includes('openOppCardPingMenu(e.clientX, e.clientY, card, true, pile)') &&
    /function onCardCtx[\s\S]{0,400}?e\.stopPropagation\(\)/.test(oppSlotSource),
    'the click stops at that card, or the slot menu opens over it and the ping is about the Pokemon')
 

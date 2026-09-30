@@ -161,3 +161,60 @@ anyone else.
   and none of anybody else's. That check above would then need to assert the block
   instead of the bare port, which is why this is a decision rather than a typo fix and
   I have left it alone.
+
+## 2026-09-30 — *Reveal Hand* is on the cards of the hand as well as on the zone
+
+- **The entry is offered twice now.** `Reveal Hand` was the hand zone's own menu entry
+  (`opponent/Hand.svelte`); it is also on every card *in* that hand, through the menu a card of
+  theirs already opens for *Ping Card* (`dialogs/OppCardPingMenu.svelte`). One gesture with two
+  places to ask: both call the store's `revealHand`, so the window, the log line and the consent
+  question are one implementation rather than two that have to agree.
+- **Which pile the card is drawn with answers it**, and that is a new marker rather than a list of
+  zone names: `theirHand`, marked on the far half's hand in `opponent.js` beside `pingable`. The
+  component that draws a card of theirs draws the hand, the prizes, their Stadium, the table and a
+  pile opened as a view, so only the pile can say whether a hand is behind the card - and a
+  *batch* wears the hand's own name too (`asPile` in `reveal.js`), which is the case the marker is
+  for rather than `pile.name === 'hand'`.
+- **`tools/reveal-check.mjs` was stale on `main` for three reasons that are not this change, and
+  none of them could show up in CI** - the browser checks are run by hand (`diagnostics.md`):
+  - **the consent gate is not in the check.** #186 put a question between *Reveal Hand*, *Reveal*
+    and *Look* and their windows, and `reveal-check.mjs` was last touched before that: it clicked
+    the entry and waited for a window that cannot open until the owner answers. A helper now
+    answers on the owner's page (`.consent-dialog .consent-yes`), at the six sites that ask.
+  - **the number questions are not the browser's `prompt` any more.** The check overrode
+    `window.prompt`, which the app stopped using when every count moved into
+    `dialogs/NumberPrompt.svelte` - so the entry opened its own dialog, the click was recorded as
+    taken, and the count never arrived. The helper now waits for that dialog and presses its OK,
+    and it is called *after* the entry rather than before it, because the click is what asks.
+  - **the room has no deal button at all any more.** `browser.mjs`'s `setup()` clicks the word
+    *Setup*; #190 made the opening automatic, so in a room that is a click on a button that is not
+    there and the deal never happens - the board waits for a coin call and a turn order that no
+    check answers. `reveal-check.mjs` now settles the opening itself (import both decks, *Heads*,
+    *First*, both boards dealt, *Ready* on both so the veils come down), following
+    `tools/game-setup-browser-check.mjs`. Before #190 the same helper was worse than a no-op: the
+    room's button read *Game Setup* while `clickText` compares the whole label, so nothing was
+    clicked and the board stayed undealt.
+  - **The finding underneath all three**: a room check that fails at its own setup reports it in
+    the feature's vocabulary - *and both were dealt a hand - 0 and 0*, then *the reveal window
+    opens on the revealer's board - no window*, then forty lines about a feature that is fine. The
+    first failing line is the one to read. All of it is in [gotchas.md](gotchas.md).
+- **`tools/reveal-check.mjs` measured on this branch**, two players and a watcher: *verdict: ok*,
+  including *and a card of that hand offers Reveal Hand from its own menu - Ping Card | Reveal
+  Hand* and *and taking it from the card opens the same window the zone opens - 7 cards, 7 in the
+  hand*. It took two runs: the first died about two thirds through with *no reply to
+  Runtime.evaluate after 15s on port 9230*, and the next attempt found *no browser is listening on
+  9230, 9231, 9232* - the three headless Chromes and this session's dev server were gone, with
+  another session's stack (3005, 9222-9224) still up. Restarting the block and running the same
+  check again was green with no code change, so it was the environment rather than the check; a
+  five-minute run on three browsers is worth re-running once before believing it.
+- **The other hand-run room checks deal through `page.setup()` too** - `zone-sync-check.mjs`,
+  `consent-check.mjs`, `new-game-clear-check.mjs`, `probe-reveal-consent.mjs`, `prize-check.mjs` -
+  so they are all waiting on the same coin dialog now, and none of them was touched or run here.
+  Whoever ports them can lift the opening steps out of `reveal-check.mjs`.
+- **This session closed its block by hand rather than with `-Stop`, and that is worth copying.**
+  `isOurBrowser` in `dev-servers.lib.mjs` still matches *any* `--user-data-dir=...pvp-chrome-<n>`,
+  so `-Stop -BasePort 9230` would have closed session A's browsers as well - and session A's
+  stack was up at the time (3005, 9222-9224 listening) with its own check probably running. Six
+  pids found by their own listening ports (9230-9232, 3006, 6392, 6393) closed this block and
+  nothing else, and the three `%TEMP%\pvp-chrome-923x` profiles went with it. The profile removal
+  in the script *is* scoped now; the browser matcher is the one that is not.

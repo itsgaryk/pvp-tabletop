@@ -351,19 +351,22 @@ import { isWindowPile } from '$lib/stores/reveal.js'
 
    /*
       A card of the far half's that this player may not act on at all - the ordinary
-      card of theirs on their own board, in a room. There is exactly one thing the menu
-      offers, which is a ping (see `OppCardPingMenu.svelte`, which is why it is not an
-      entry on the action menu above).
+      card of theirs on their own board, in a room. The menu is the ping, and on the
+      cards of their **hand** it is the ping and the hand zone's own *Reveal Hand* as
+      well: a hand is the one pile whose gesture is about the whole of it, so the entry
+      that opens its window is offered from any card in it as well as from the zone
+      (`OppCardPingMenu.svelte`, which asks the pile for that).
 
       It is the third menu a card of the far half's can open, and the three are three
       situations rather than three tastes: in solo the card is the player's own to move
       (`OppCardMenu`), a window hands over a card this player *may* act on
       (`OppCardActionMenu`), and a card of theirs lying on the board is one this player
-      may only point at. `opponent/Card.svelte` and `opponent/Temp.svelte` are what pick
-      between them.
+      may point at. `opponent/Card.svelte` and `opponent/Temp.svelte` are what pick
+      between them, and the pile travels with the card because the menu's own question -
+      whether a hand is behind it - is one only the pile can answer.
    */
-   function openOppCardPingMenu (x, y, card, revealed = true) {
-      oppCardPingMenu.open(x, y, card, revealed)
+   function openOppCardPingMenu (x, y, card, revealed = true, pile = null) {
+      oppCardPingMenu.open(x, y, card, revealed, pile)
    }
 
    function startAE (evo = false) { // attach / evolve

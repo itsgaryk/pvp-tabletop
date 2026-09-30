@@ -464,6 +464,31 @@ export function createOpponent () {
       Object.defineProperty(zone, 'pingable', { value: true, enumerable: false })
    }
 
+   /*
+      And the one zone of theirs a **Reveal Hand** is about: their hand.
+
+      *Reveal Hand* is the entry the hand zone's own menu carries (`opponent/Hand.svelte`),
+      and it is offered on **every card in that hand as well** - the window shows the whole
+      of the hand, so a card of it is as good a place to ask as the zone itself, and a
+      player who has found the entry on the zone finds it on the card too. Which menu a card
+      opens is decided by the pile it is drawn with (`opponent/Card.svelte` hands the pile
+      over and `OppCardPingMenu.svelte` asks it), so the pile is what answers - the same
+      arrangement `pingable` above is written in, and for the same reason: the component
+      that draws a card of theirs draws the hand, the prizes, their Stadium, the table and a
+      pile opened as a view, and only one of those has a hand behind it to reveal.
+
+      **The name is not the question, and a hand is the pile that shows why.** A Reveal
+      Hand's batch is handed to the cards of its window in a pile's shape, and that object
+      calls itself `hand` as well (`asPile` in reveal.js) - the same word, worn by something
+      that is not a zone of anybody's board. Those cards open the action menu rather than
+      this one, so a test by name would not offer the entry there today; what the marker
+      keeps is the *reason* it does not, since "this pile is a hand" and "this card lies in
+      their hand" are two statements that one word answers.
+
+      Non-enumerable and marked per mirror, for the reasons the two markings above give.
+   */
+   Object.defineProperty(b.hand, 'theirHand', { value: true, enumerable: false })
+
    return {
       ...b,
       get clientId () { return clientId },

@@ -135,7 +135,14 @@
       if ($pokemonHidden && !$solo && top) {
          e.preventDefault()
          e.stopPropagation()
-         openOppCardPingMenu(e.clientX, e.clientY, top, false)
+         /*
+            The pile the Pokemon is drawn with goes with it, for the reason the two other
+            callers hand theirs over: the menu asks the pile whether a hand is behind the
+            card, and a Pokemon in play is not one (`theirHand` in `opponent.js`). It is
+            passed rather than left out so that this call and a card of theirs lying in a
+            zone ask the same question of the same thing.
+         */
+         openOppCardPingMenu(e.clientX, e.clientY, top, false, pokemon)
          return
       }
 
@@ -149,8 +156,10 @@
    /*
       An attached card can be picked up on its own, without disturbing the Pokémon
       it is attached to - exactly as on your own half. Left-clicking one selects
-      that card (not the Pokémon), right-clicking opens the same menu a card in
-      that half's hand gets, and dragging one moves just that card.
+      that card (not the Pokémon), right-clicking opens the menu a card of theirs
+      lying in a zone gets - a ping, and for a card of their *hand* the hand's own
+      *Reveal Hand* as well, which an attached card has no hand behind it for - and
+      dragging one moves just that card.
    */
    function onCardClick (e, card, pile) {
       if (!$solo || $attaching || $evolving) return
@@ -177,7 +186,10 @@
       if (!$solo) {
          e.preventDefault()
          e.stopPropagation() // the slot's own menu must not open as well
-         openOppCardPingMenu(e.clientX, e.clientY, card)
+         /* the card's own pile, the same argument the two other callers pass: the menu
+            asks it whether a hand is behind the card, and an attached energy or tool is
+            not one (`theirHand` in `opponent.js`) */
+         openOppCardPingMenu(e.clientX, e.clientY, card, true, pile)
          return
       }
 

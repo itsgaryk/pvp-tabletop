@@ -12,7 +12,9 @@
      2. Reveal Hand opens a window with the whole of the opponent's hand on the board
         that asked, and NOT on the opponent's - whose hand it is. The owner is told by
         the log line. **And the cards in the Hand Zone are not actionable**, with the
-        window open or closed: only the cards the window itself is carrying are
+        window open or closed: only the cards the window itself is carrying are. The
+        entry that opens it is offered on the hand zone **and on every card in that
+        hand**, which are the two routes to the one gesture
      3. Look on the opponent's deck opens a window on the acting board, and on
         **nobody else's** - not the deck's owner (never sent the ids) and not a watcher
         (whose report is the named log line)
@@ -57,17 +59,87 @@ const watcher = pages[2] || null
 await browser.setViewport(1277, 821)
 
 /*
-   The next `prompt` is answered with this. Every "X" on the board is asked for with
-   the browser's own prompt (Draw X, View Top X, Order Top X, Reveal Top X, the
-   opponent's View Top X, and the two Discard Top X entries), and a headless page that
-   raises one and nobody answers sits blocked for ever - so this is set *before* the
-   click that asks.
+   Answer the board's own number question, the way a player answers it.
+
+   Every "X" on this board — Draw X, View Top X, Order Top X, Reveal Top X, the opponent's
+   View Top X and the two Discard Top X entries — is asked with the dialog in
+   `dialogs/NumberPrompt.svelte`, not with the browser's own `prompt()`, which the app
+   deliberately stopped using: the platform dialog can be suppressed for the rest of a
+   session by Chrome's *prevent additional dialogs* checkbox, and it cannot be typed into
+   strictly (see that component). This helper used to override `window.prompt`, which by
+   then answered nothing at all — the entry opened its own dialog, the click was recorded as
+   taken, and the count never arrived, so *the window never opened* was what a check reported.
+
+   So it **waits for the question and presses OK**, and it is called *after* the entry that
+   asks it, because the click is what opens the dialog. The input event is dispatched by hand
+   (Svelte binds on `input`) and the press is retried until OK is enabled, which it is not
+   until the box holds a number inside the question's own range.
 */
-async function answerNextPrompt (page, value) {
+async function answerNumber (page, value, { timeout = 10000 } = {}) {
+   const deadline = Date.now() + timeout
+   for (;;) {
+      if (await page.evaluate(`Boolean(document.querySelector('.number-dialog input'))`)) break
+      if (Date.now() > deadline) return false
+      await sleep(200)
+   }
+
    await page.evaluate(`(() => {
-      window.prompt = () => ${JSON.stringify(String(value))}
+      const input = document.querySelector('.number-dialog input')
+      input.value = ${JSON.stringify(String(value))}
+      input.dispatchEvent(new Event('input', { bubbles: true }))
       return true
    })()`)
+
+   for (let i = 0; i < 20; i++) {
+      const state = await page.evaluate(`(() => {
+         const ok = document.querySelector('.number-dialog .ok')
+         if (!ok) return 'gone'
+         if (ok.disabled) return 'disabled'
+         ok.click()
+         return 'pressed'
+      })()`)
+      if (state === 'pressed') {
+         await sleep(700)
+         return true
+      }
+      if (state === 'gone') return false
+      await sleep(150)
+   }
+   return false
+}
+
+/*
+   Answer the consent question a gesture puts to the cards' **owner**.
+
+   All three of the gestures this check is about are gated now: a Reveal, a Look and a
+   Reveal Hand ask the other player first and happen only on a *Yes* (`stores/consent.js`;
+   `tools/consent-check.mjs` is the gate's own check). This one was written before the gate
+   and clicked straight through it, so every gesture it takes on the opponent's cards sat
+   waiting for an answer nobody gave - measured as *the reveal window opens on the
+   revealer's board - no window* and everything downstream of it.
+
+   The dialog is the owner's, so this is called on *their* page, right after the entry was
+   taken on the asker's. It waits for the question rather than sleeping past it, which is
+   the same rule the windows below are waited for by: a sleep that is too short reads as
+   the gesture having failed. The button it presses is the one a player presses, found by
+   its own class rather than by its word - *Yes* is a word other dialogs use.
+*/
+async function allow (page, { timeout = 20000, settle = 2500 } = {}) {
+   const deadline = Date.now() + timeout
+   for (;;) {
+      const pressed = await page.evaluate(`(() => {
+         const yes = document.querySelector('.consent-dialog .consent-yes')
+         if (!yes) return false
+         yes.click()
+         return true
+      })()`)
+      if (pressed) {
+         await sleep(settle)
+         return true
+      }
+      if (Date.now() > deadline) return false
+      await sleep(300)
+   }
 }
 
 /*
@@ -378,6 +450,68 @@ function keepAlive (pages) {
    }, 1500)
 }
 
+/*
+   Settle the room's opening, which is what "the board is dealt" means now.
+
+   There used to be a *Game Setup* button and `browser.mjs`'s `setup()` pressed it. A room has no
+   such button any more (#190): the opening starts itself the moment both decks are in, and the two
+   things it asks are dialogs - the first seat calls the coin (*Heads* / *Tails*) and whoever wins
+   the toss picks the turn order (*First* / *Second*). A check that walks past them waits for a hand
+   nobody dealt, which is *and both were dealt a hand - 0 and 0* and then forty assertions about
+   whatever the section was about.
+
+   **Both boards are asked at every step, and that is not tidiness.** Which board is offered the
+   coin is the room's first seat rather than this check's to choose, and each board takes the deal
+   from its own poll - so a wait on one board and a read of the other is the mid-flight read
+   `tools/game-setup-browser-check.mjs` was written to stop (it measured *alice=7/6 bob=0/0* on
+   about one run in three). The steps below are that check's, in its order.
+
+   *Ready* is pressed on both boards at the end for the same kind of reason: the opening's veil
+   covers the Pokemon zones until the game starts, and this check drops cards on the owner's Bench
+   and Active spot. A press is one-way - the label becomes *Ready ✓* - so pressing twice is not a
+   toggle, it is a click on a button that is no longer offering one.
+*/
+const settleTheOpening = async (a, b, { timeout = 40000 } = {}) => {
+   const board = (page) => page.evaluate(`(() => ({
+      dialog: Boolean(document.querySelector('.setup-dialog')),
+      buttons: [...document.querySelectorAll('.setup-dialog button')].map((x) => x.textContent.trim()),
+      hand: document.querySelectorAll('.hand .card').length,
+      veils: document.querySelectorAll('.veil.applied').length
+   }))()`)
+
+   const ask = (page, label) => page.evaluate(`(() => {
+      const x = [...document.querySelectorAll('.setup-dialog button')].find((el) => el.textContent.trim() === ${JSON.stringify(label)})
+      if (!x) return false
+      x.click()
+      return true
+   })()`)
+
+   const until = async (what, fn) => {
+      const deadline = Date.now() + timeout
+      for (;;) {
+         const answer = await fn()
+         if (answer) return answer
+         if (Date.now() > deadline) throw new Error(`the room's opening never reached ${what}`)
+         await sleep(400)
+      }
+   }
+
+   /* the toss, then the order: whichever board is offered each one answers it */
+   const called = await until('the coin toss', async () => (await ask(a, 'Heads')) || (await ask(b, 'Heads')))
+   const ordered = await until('the turn order', async () => (await ask(a, 'First')) || (await ask(b, 'First')))
+
+   /* the deal itself, waited for on both boards before either is read */
+   await until('both boards dealt', async () => {
+      const [ x, y ] = [ await board(a), await board(b) ]
+      return !x.dialog && !y.dialog && x.hand === 7 && y.hand === 7
+   })
+
+   for (const page of [ a, b ]) await page.clickText('Ready', { settle: 600 })
+   await until('the game to start', async () => (await board(a)).veils === 0 && (await board(b)).veils === 0)
+
+   return { called, ordered }
+}
+
 try {
    console.log('setting up two players\n')
 
@@ -400,9 +534,17 @@ try {
    check('and the opponent is in it', (await bob.counts()).mode === 'room')
 
    await alice.importDeck()
-   await alice.setup()
    await bob.importDeck()
-   await bob.setup()
+
+   /*
+      Then the room's own opening, which no button starts any more: both decks being in is the
+      whole of the condition, and the coin and the turn order are the two questions between it and
+      a dealt board. See `settleTheOpening` above - `browser.mjs`'s `setup()` is the *solo* deal
+      now, and a room that calls it clicks a button that is not there.
+   */
+   const opening = await settleTheOpening(alice, bob)
+   check('the room dealt itself once both decks were in', opening.called && opening.ordered,
+      `coin called: ${opening.called}, order chose: ${opening.ordered}`)
 
    /*
       A watcher, when a third browser was started. A Look is *reported* to the room's
@@ -503,8 +645,8 @@ try {
       deckMenu.findIndex((t) => t.startsWith('Discard Top X')) === deckMenu.findIndex((t) => t.startsWith('Discard Top Card')) + 1,
       deckMenu.filter((t) => t.startsWith('Discard')).join(' | '))
 
-   await answerNextPrompt(alice, 3)
    const revealed = await clickMenuItem(alice, 'Reveal Top X')
+   await answerNumber(alice, 3)
    check('and clicking it asks how many and reveals them', revealed)
 
    const aliceReveal = await waitForWindow(alice, 3)
@@ -696,6 +838,14 @@ try {
    check('and their hand has cards in it to reveal', theirHandBefore > 0, `${theirHandBefore} cards`)
 
    await clickMenuItem(alice, 'Reveal Hand')
+   /*
+      And the hand's owner is asked before anything happens, which is the last thing that
+      changed about this gesture: the click is a *question* now, and the window is what a
+      yes looks like on the asker's board. The answer is given here so the rest of the
+      section is about the window rather than about the gate (`tools/consent-check.mjs`
+      asserts the gate itself).
+   */
+   await allow(bob)
    const handShape = await waitForWindow(alice, theirHandBefore, { kind: 'hand' })
    check('and the window opens on the player who asked for it',
       Boolean(handShape), handShape ? `${handShape.cards.length} cards` : 'no window')
@@ -917,6 +1067,55 @@ try {
          JSON.stringify(closedRule))
    }
 
+   /*
+      **And each card of that hand carries the entry too, which is the second route to it.**
+
+      A Reveal Hand shows the whole of the hand, so *which* card was right-clicked makes no
+      difference to what happens: the entry is the zone's own - the same `revealHand`, the
+      same window, the same line in the log - offered on a card because a card is where the
+      cursor already is when a player is reading a hand. It is asserted by *taking* it from a
+      card rather than by reading the menu it draws, because an entry that is drawn and an
+      entry that works are two different claims, and it is the second one a player makes.
+
+      `rightClickHandZone` is that card's own menu and not the zone's: it dispatches the
+      right click at the first `div.border-2` inside the zone, which is a card wrapper of
+      `opponent/Card.svelte` (`Pile`'s own menu is opened from the zone's `.pile`).
+   */
+   await rightClickHandZone()
+   await sleep(700)
+   const handCardMenu = await menuText(alice)
+   check('and a card of that hand offers Reveal Hand from its own menu',
+      handCardMenu.some((t) => t.startsWith('Reveal Hand')), handCardMenu.join(' | ') || 'no menu')
+   check('and that menu is still the ping\'s, with the hand\'s entry beside it',
+      handCardMenu.some((t) => t.startsWith('Ping Card')) &&
+      !handCardMenu.some((t) => t.startsWith('To Discard') || t.startsWith('Attach to Their Active')),
+      handCardMenu.join(' | '))
+
+   await clickMenuItem(alice, 'Reveal Hand')
+   /* the same question, asked again: the card's route is the same gesture, so it is the
+      same consent, and the owner has to answer this one too */
+   await allow(bob)
+   const handFromCard = await waitForWindow(alice, theirHandBefore, { kind: 'hand' })
+   check('and taking it from the card opens the same window the zone opens',
+      Boolean(handFromCard) && handFromCard.cards.length === theirHandBefore,
+      handFromCard ? `${handFromCard.cards.length} cards, ${theirHandBefore} in the hand` : 'no window')
+   check('and it ends the same way: Close, and nothing beside it',
+      handFromCard?.buttons.length === 1 && handFromCard.buttons[0] === 'Close',
+      JSON.stringify(handFromCard?.buttons))
+
+   /*
+      And the cards of the hand are still card backs after it - the second route has to leave
+      the zone exactly as the first one does, which is the whole of *when "Reveal Hand" is
+      selected the cards in the hand zone should remain as Hidden Cards*.
+   */
+   const readersHandAgain = await handDrawing(alice, '.gameboard > .hand2')
+   check('and the hand is still drawn as card backs after the card\'s own entry was taken',
+      Boolean(readersHandAgain) && readersHandAgain.images > 0 && readersHandAgain.backs === readersHandAgain.images,
+      `${readersHandAgain?.backs} of ${readersHandAgain?.images} are card backs`)
+
+   await closeWindow(alice)
+   await sleep(600)
+
    /* ---------------------------------------------------------------- 3. look -- */
 
    console.log('\nlook: the opponent\'s deck, shown to the looker and reported to the watchers\n')
@@ -945,8 +1144,9 @@ try {
       and that board must still see **no window**, because the rule is about who revealed
       rather than about whose deck it is.
    */
-   await answerNextPrompt(alice, 2)
    await clickMenuItem(alice, 'Reveal Top X')
+   await answerNumber(alice, 2)
+   await allow(bob)
    const theirRevealAlice = await waitForWindow(alice, 2, { kind: 'reveal' })
    const theirRevealBob = await waitForWindow(bob, 2, { kind: 'reveal', timeout: 4000 })
    check('a reveal of the opponent\'s deck opens on the revealer',
@@ -972,8 +1172,9 @@ try {
       of exactly two left the drag asserting against an empty window, and reporting "the
       drag failed" for "there was nothing to drag".
    */
-   await answerNextPrompt(alice, 3)
    const looked = await clickMenuItem(alice, 'View Top X')
+   await answerNumber(alice, 3)
+   await allow(bob)
    check('and clicking it shows two cards', looked)
 
    const aliceLook = await waitForWindow(alice, 2, { kind: 'look' })
@@ -1166,8 +1367,9 @@ try {
    */
    async function lookAtThree () {
       await alice.rightClick(THEIR_DECK)
-      await answerNextPrompt(alice, 3)
       await clickMenuItem(alice, 'View Top X')
+      await answerNumber(alice, 3)
+      await allow(bob)
       await sleep(1800)
    }
 
@@ -1712,9 +1914,15 @@ try {
       }
 
       await alice.rightClick(THEIR_DECK)
-      if (asked !== null) await answerNextPrompt(alice, asked)
-      const clickedAt = Date.now()
       const took = await clickMenuItem(alice, entry)
+      /*
+         The count is answered *after* the entry, because the entry is what opens the
+         question, and `clickedAt` is taken after it for the same reason: the timing below is
+         about the relay carrying a finished gesture to the owner's board, and a gesture still
+         waiting on its own dialog has not been made yet.
+      */
+      if (asked !== null) await answerNumber(alice, asked)
+      const clickedAt = Date.now()
 
       const moved = asked ?? 1
 
@@ -1805,8 +2013,9 @@ try {
       has to be on screen whatever has happened to the cards.
    */
    await alice.rightClick(THEIR_DECK)
-   await answerNextPrompt(alice, 2)
    await clickMenuItem(alice, 'View Top X')
+   await answerNumber(alice, 2)
+   await allow(bob)
    await waitForWindow(alice, 2, { kind: 'look' })
 
    const aliceDeckBefore = (await badges(alice)).theirDeck
@@ -1894,8 +2103,8 @@ try {
    const freshMenu = await menuText(alice)
    check('and its deck menu still opens', freshMenu.some((t) => t.startsWith('Reveal Top X')), freshMenu.join(' | '))
 
-   await answerNextPrompt(alice, 3)
    check('and Reveal Top X can still be taken', await clickMenuItem(alice, 'Reveal Top X'))
+   await answerNumber(alice, 3)
    const aliceSaw = await waitForWindow(alice, 3, { kind: 'reveal' })
    check('a fresh reveal is on the revealer\'s board', Boolean(aliceSaw), aliceSaw?.text || 'no window')
 

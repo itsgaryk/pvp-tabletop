@@ -14,9 +14,10 @@ audiences, and that is the whole of the difference between them:
 Reveal and Look are entries on a deck's own right-click menu — *Reveal Top X* on either
 deck, *View Top X* on the opponent's — and both are asked for with the browser's
 `prompt`, the way every other "X" on this board is (*Draw X*, *View Top X*, *Order
-Top X*). Reveal Hand is an entry on the **opponent's hand** menu and asks for nothing: the
-hand is already a list of cards, so there is no X to ask for. Each opens a pile window: the
-same panel a pile's view is, the same scroll container, the same foot of actions.
+Top X*). Reveal Hand is an entry on the **opponent's hand** — on the zone's own menu and on
+each card in it alike — and asks for nothing: the hand is already a list of cards, so there is
+no X to ask for. Each opens a pile window: the same panel a pile's view is, the same scroll
+container, the same foot of actions.
 
 The discards are the third entry on the opponent's deck and the third and fourth on the
 player's own, and they are the ones with no window at all: the cards move from the top of the
@@ -586,7 +587,7 @@ worth knowing that it exists before adding a fourth thing that names a half.
 | the player's own deck | *Reveal Top X* | `revealTop(deck, x)` → `owner: 'mine'` |
 | the opponent's deck | *Reveal Top X* | `revealTop(deck, x)` → `owner: 'theirs'` |
 | the opponent's deck | *View Top X* | `lookTop(x)` — local only |
-| the opponent's hand | *Reveal Hand* | `revealHand()` — the whole hand, shown to this player and the watchers |
+| the opponent's hand, and each card of it | *Reveal Hand* | `revealHand()` — the whole hand, shown to this player and the watchers |
 | the opponent's deck | *Discard Top Card* | `discardTopOfTheirDeck(1)` |
 | the opponent's deck | *Discard Top X* | `discardTopOfTheirDeck(x)` |
 | the player's own deck | *Discard Top Card* | the top card, to the discard |
@@ -606,6 +607,18 @@ where the far half is yours to play, and it is now reachable whenever an entry o
 taken (`reachable` in `opponent/Hand.svelte`, the same rule `opponent/Deck.svelte` uses). The
 solo entries on it are rendered only in solo, because they *are* solo's, while Reveal Hand is
 rendered disabled outside a room rather than removed.
+
+**The entry is on the hand zone and on each card of that hand, and that is the one place in
+this feature where one gesture is offered twice.** A Reveal Hand shows the *whole* of the hand,
+so *which* card it was asked from makes no difference to what happens: the same `revealHand`
+runs, the same window opens and the same line goes into the log — the second route is a second
+place to ask, not a second thing that happens. It is offered on a card because a card is where
+the cursor already is when a player is reading a hand. Which piles offer it is asked of the
+*pile* the card is drawn with (`theirHand`, marked on the far half's hand in `opponent.js`),
+the same way a ping asks `pingable`, and that is what keeps it off the cards of their prizes,
+their Stadium, their table and their Pokémon — and off the cards of a Reveal Hand *window*,
+whose pile is a batch wearing the hand's own name. A spectator sees the entry on a card of a
+hand, disabled, exactly as it sees it on the zone.
 
 **Discarding needs no window and no drag.** *Discard Top Card* and *Discard Top X* are one
 menu entry each: the player picks it, answers how many for the X one, and the cards go from
@@ -756,7 +769,9 @@ a card is actionable while it is one of the cards a window that is *up* is showi
 carried by that window's batch, the same card handed one of the far half's own zones is refused,
 and a closed window's cards stop answering — the shape of a batch (a live view of a pile, and not
 one of the board's own piles), all three windows rendering with their cards and their buttons, and
-the wiring that offers the entries and picks the right menu for a card of the far half's.
+the wiring that offers the entries and picks the right menu for a card of the far half's —
+including the marker that decides whether *Reveal Hand* is drawn on a card at all, which is asked
+of the mirror the app really builds because it is marked per instance.
 
 It holds the permission's other edges as well: a card stops answering the moment this player has
 acted on it, and the record of that does not outlive its batch. It also asserts, out of the
@@ -768,7 +783,9 @@ shape the reported fault came and went in.
 
 `node tools/reveal-check.mjs` drives the rest in two browsers, and a third where one is running:
 the window's audience (the revealer's alone, the looker's alone, a Reveal Hand's on the watcher's
-board too), the whole of a hand in the window where the count says it should be, the cards in the
+board too), the whole of a hand in the window where the count says it should be, **the entry taken
+from the hand zone and from a card of that hand**, which are the two routes to the one gesture and
+which have to open the same window, the cards in the
 **Hand Zone** answering nothing with the window open or closed, the one button, the log line on
 both boards, the hand still drawn as card backs afterwards, the owner's hand refusing a drop, the
 menu offering no *To Hand*, no card animating anywhere, and a card that has been moved going on

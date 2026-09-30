@@ -604,7 +604,7 @@ vocabulary for that zone:
 | Stadium | *none* — the Stadium has no menu; a card gets there by *To Stadium*, `G`, or a drag |
 | Deck (theirs) | Reveal Top X, View Top X, Discard Top Card, Discard Top X |
 | Discard, Lost Zone, Table (theirs) | no menu, but each is readable: a click on the pile opens it |
-| Hand (theirs) | Reveal Hand — and in solo, the far half's own play entries |
+| Hand (theirs) | Reveal Hand — on the zone's own menu and on each card in it — and in solo, the far half's own play entries |
 | Prizes, Stadium (theirs) | nothing in a room: a player cannot open them. A spectator can read either player's prizes and deck; in solo every pile of the far half is playable |
 
 Two gestures are not in a menu:
@@ -861,19 +861,25 @@ and they are the whole of the interaction:
 cannot move, attach, evolve, discard, draw for or shuffle the other player's cards**
 from their board. Their piles have no menu of their own in a room, with two
 exceptions: their **deck**, whose menu offers *Reveal Top X*, *View Top X*, *Discard
-Top Card* and *Discard Top X*, and their **hand**, which offers *Reveal Hand*.
+Top Card* and *Discard Top X*, and their **hand**, whose menu offers *Reveal Hand*.
 Everything else of theirs is read-only — clicking their discard, lost zone or Table
 opens it — and their counts are not buttons.
 
 **A ping is the one entry offered on their other cards as well.** Right-clicking a card of
 theirs in their hand, in their prizes, in their Stadium, on the table, or **attached under one
-of their Pokémon** opens a menu whose only entry is *Ping Card*: the same line in the log and
+of their Pokémon** opens a menu that offers *Ping Card*: the same line in the log and
 the same glow — and on an attached card it is that card that is pointed at, not the Pokémon
 holding it. A card this player was not shown — one in their hand, a face-down prize — is pinged
 as `Ping: Hidden card` rather than by name, because the name is the *pinger's* knowledge and the
 log is the whole table's. The three zones that are a pile — their deck, their discard and their
 lost zone — offer nothing: each is one card on screen whatever is in it, so a ping there would
 point at a position nobody can read. See [board.md](board.md#pinging-a-card).
+
+**And a card in their hand carries *Reveal Hand* beside the ping**, which is the hand zone's own
+entry reached from a card: the window shows the *whole* of the hand, so which card it was asked
+from makes no difference, and the hand's owner is asked the same question either way. No other
+zone's cards carry a second entry, because a hand is the one pile whose gesture is about the
+whole of it ([reveal.md](reveal.md#where-the-entries-are-offered)).
 
 **A left click on their Pokémon does nothing** — it is not yours to select — so their
 menu is reached by right-clicking, and it is the only way in.
@@ -961,7 +967,7 @@ below:
 | --- | --- | --- | --- | --- |
 | **Reveal** | *Reveal Top X* on a deck of yours, or on theirs | the **other player**, when the deck is theirs; nobody when it is your own | the whole table: the revealer's own window, everyone else by a log line that names the cards | *Close & Shuffle* (shuffles that deck), or *Close* / `Esc` with no shuffle |
 | **Look** | *View Top X* on the **opponent's** deck | the deck's owner | **a window on your board and nobody else's.** The room's watchers are told by a log line that names the cards; the deck's owner is told only that a look happened | *Close & Shuffle* — one ending, because a card that says "look at the top X" never puts them back untouched |
-| **Reveal Hand** | *Reveal Hand* on the **opponent's** hand | the hand's owner | you, and the room's watchers — this is the one of the three whose window opens on a watcher's board; the hand's owner is told by *Revealed opponent's hand* | *Close* only — a hand has no order to shuffle |
+| **Reveal Hand** | *Reveal Hand* on the **opponent's** hand, or on any card in that hand | the hand's owner | you, and the room's watchers — this is the one of the three whose window opens on a watcher's board; the hand's owner is told by *Revealed opponent's hand* | *Close* only — a hand has no order to shuffle |
 
 **A window is the board of the player who took the gesture, and the table is told by
 the game log.** Reveal and Look are exactly that; Reveal Hand adds the room's watchers
@@ -995,7 +1001,7 @@ own consent, so there is one question and one answer, and the answer is the othe
 | **New Game** (the settings menu) | the other player | the room goes back to how it was when it was created ([rooms.md](rooms.md#starting-again-inside-the-same-room)) |
 | **Look** — *View Top X* on their deck | the deck's owner | the look happens, and they are told only *that* it happened |
 | **Reveal** — *Reveal Top X*, or a reveal of their cards | the cards' owner | the cards are shown to the table, and the log names them |
-| **Reveal Hand** — on their hand | the hand's owner | the hand is shown to the player who asked and to the room's watchers |
+| **Reveal Hand** — on their hand, or on a card of it | the hand's owner | the hand is shown to the player who asked and to the room's watchers |
 
 Three things about it, and the first is the whole shape:
 
