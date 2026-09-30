@@ -12,7 +12,10 @@
       a room it is the first thing a player meets: creating or joining opens it and
       leaves no way out until a deck has imported cleanly (see `required`). Solo
       keeps its two buttons - *Import Deck 1* and *Import Deck 2*, one per half - and
-      opens this same window for whichever half was asked for.
+      opens this same window for whichever half was asked for. **A room has no such
+      button**: the window is the app's to open there (joining, and again when a new
+      game clears the board), so nothing sits in the corner of a room's board asking
+      for it.
    */
    import { fade } from 'svelte/transition'
    import { importDeck } from '$lib/stores/player.js'
@@ -38,7 +41,8 @@
       A room's window is unclosable until it has: the deck is what the table is for,
       and a window that could be dismissed would leave a player sitting at an empty
       board with nothing to import into. Once one has landed the window is theirs
-      again - reopening it to import another deck is an ordinary, closable window.
+      again and closes like any other - and a room asks for it a second time through
+      its own handshake rather than through a button (see `seenNewGame` below).
    */
    let imported = false
 
@@ -253,10 +257,13 @@
          {/if}
       </div>
    </div>
-{:else}
+{:else if $solo}
    <!--
-      The button that asks for the window. In a room it reads *Import Deck*; solo has
-      one per half, side by side, because both halves are the same person's.
+      The button that asks for the window. It is solo's alone, one per half, side by
+      side, because both halves are the same person's. A room draws none: its window is
+      the app's to open (joining, and a new game clearing the board), so a button in
+      the corner of the board would be a second way to ask for a window the room
+      already knows when to put up.
    -->
    <button class="fixed z-14 top-0 left-0 bg-blue-500 !rounded-none !rounded-br-md !p-3" class:second={opponent} on:click={() => isOpen = true}>{label}</button>
 {/if}

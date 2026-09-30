@@ -573,6 +573,37 @@ if (want('leave')) {
    const room = await seatGame('leaving: a spectator, a player, and the last player', { withWatcher: true })
    console.log(`  room ${room}`)
 
+   /*
+      The corner button that solo asks for its window with, and the room that has none.
+      A room's window is the app's to open - on joining, and again when a new game
+      clears the board - so after the import `seatGame` has just done the top left of
+      both players' windows is empty of it: no button there at all, and none anywhere
+      outside the window reading *Import Deck*. Both players, because each of their own
+      boards used to carry its own copy of the button.
+   */
+   const cornerButtons = (page) => page.evaluate(`(() => {
+      const buttons = [...document.querySelectorAll('button')].map((b) => {
+         const rect = b.getBoundingClientRect()
+         return {
+            text: b.textContent.trim(),
+            inWindow: Boolean(b.closest('.import-window')),
+            drawn: rect.width > 0 && rect.height > 0,
+            left: Math.round(rect.left),
+            top: Math.round(rect.top)
+         }
+      })
+      return {
+         asked: buttons.filter((b) => !b.inWindow && /^Import Deck( [12])?$/.test(b.text)).map((b) => b.text),
+         corner: buttons.filter((b) => b.drawn && b.left < 8 && b.top < 8).map((b) => b.text)
+      }
+   })()`)
+
+   for (const [who, page] of [['Alice', alice], ['Bob', bob]]) {
+      const corner = await cornerButtons(page)
+      check(`${who}'s board has no Import Deck button in its corner`,
+         corner.asked.length === 0 && corner.corner.length === 0, JSON.stringify(corner))
+   }
+
    check('both players are on their boards', (await zones(alice)).hand > 0, JSON.stringify(await zones(alice)))
    check('the players see the watcher', /1 spectator/.test(String(await alice.waitForWatchers(1))), JSON.stringify(await header(alice)))
 
