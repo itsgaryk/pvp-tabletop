@@ -100,7 +100,25 @@ const EVENTS = new Set([
       different words at the end.
    */
    'consentAsked',
-   'consentVote'
+   'consentVote',
+   /*
+      The opening of a game: who is asked to call the coin, what it came up, who won the
+      toss, which of them chose to go first, and who is ready to start.
+
+      They are here as their own events rather than one `gameSetup` carrying a state,
+      because they are four different things *said* rather than four values of one field -
+      each is written once by the player it belongs to, and the room's log is where the
+      handshake lives. What a client builds out of them is one small state machine
+      (see stores/gameSetup.js), and a board that reloads mid-setup replays into it.
+
+      None of them carries a card, and none touches a board: the deal is each board's own
+      and is done from the phase they agree on, so these are the room's - both players and
+      every watcher are told what was said.
+   */
+   'setupStarted',
+   'setupCoin',
+   'setupOrder',
+   'setupReady'
 ])
 
 /*

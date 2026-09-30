@@ -1669,3 +1669,132 @@ nothing but `browser`. The tidier shape, if a second retired setting ever needs 
 treatment, is a named one-shot beside `storable()` in `custom/storable.js` rather than growing
 `settings.js` into a module that acts when read.
 
+**A plain function call in a Svelte attribute or `$:` naming no store is answered once, and
+nothing says so.** This one mistake cost the setup flow three separate faults in one afternoon,
+and the shape is identical every time: the expression calls a function that reads stores *inside
+itself*, so the compiler sees a call and no dependency.
+
+The first version asked its rule where every other rule in that row is asked:
+
+```svelte
+<button disabled={!canStartSetup()}>Game Setup</button>
+```
+
+The compiler's output is `button.disabled = !canStartSetup()` inside `c()`, with the block's update
+function untouched — no `p()` branch mentions it. The button is therefore whatever it was when the
+block was *created*, for the life of the page. Against the app: a player who joined a room that
+already had somebody in it saw a permanently greyed-out *Game Setup* and could not start the setup
+at all, and once the button had been created enabled it never greyed again — a pressable button
+that silently does nothing, because the function it calls re-checks its own rule and returns
+`false`.
+
+The fix is a **named reactive value**:
+
+```svelte
+$: canSetup = $decksReady && $gameSetup.phase === 'idle' && canStartSetup()
+```
+
+and it has to *read a store* to be worth anything — `$: canSetup = canStartSetup()` is the same
+frozen call with a name on it, because the dependencies of a `$:` are the variables **in the
+expression** and a call names none. That is the trap: the code reads correctly, `canStartSetup()`
+answers correctly when you call it by hand, and only the compiled output disagrees.
+
+**Naming the store is not enough on its own, and the third symptom is the one that proves it.**
+`$: waiting = Boolean($myId) && isReady()` *does* name a store — and it was still frozen, because
+the value it wanted was `$gameSetup.ready` and that store was reachable only through `isReady()`.
+The button went on drawing "Ready" with no glow after the press that put the player in the ready
+list, while `isReady()` answered `true` when asked from the same handler:
+
+```svelte
+$: waiting = Boolean($myId) && $gameSetup.ready.includes($myId)
+```
+
+So the rule is not "name a store", it is **name the store the answer is actually about** — and when
+two stores are involved, name both. The general form: *an attribute, a `class:` directive, a text
+interpolation or a `$:` whose only store reads are inside a function it calls is a snapshot.*
+
+**And nothing short of running it finds this.** `tools/game-setup-check.mjs` reads the source and
+found the expression correct; `tools/game-setup-rule-check.mjs` runs the store and was told the
+truth by every function involved; the compiled output reads perfectly. What caught all three was
+`tools/game-setup-browser-check.mjs`, looking at what two real boards were *drawing* — the button
+that never came alive, and the player who was told the *other* one was calling the coin while
+neither of them was offered Heads or Tails.
+
+**And a module-level `let` written from a subscriber that runs during the module's own evaluation
+is a temporal dead zone.** The setup flow keeps its "this has already happened" guards as module
+locals, and a watcher on the seats calls `reset()`, which writes all of them. `let` is in its dead
+zone from the top of a file until the line it is declared on, so a guard left *below* the watcher
+that writes it is a `ReferenceError` while the module evaluates — every page load answering 500,
+in a file that reads perfectly and that a source-level check passes. It cost a review pass to
+find, and the guard against it is `tools/game-setup-rule-check.mjs`, which **imports the store**
+rather than reading it: the only way to see this class of fault is to evaluate the module.
+
+**A dialog drawn on "the phase" is drawn everywhere that phase is the default.** The room's
+opening added a lock so that nothing on the table can be touched until both players have agreed to
+begin, and the lock covers the whole window while the phase is `idle`, `coin` or `order`. It was
+written as `open = !$solo && !$spectating && locked` — and `idle` is the phase of a board that has
+*never been anywhere*: reported as *"Seeing Setting up the game when I load into the main menu"*,
+with the dialog over the logo and the Play Solo button, on a page that has no table to lock. The
+miss is that a phase name is a state of **one flow**, and a screen that does not have that flow is
+not in some fourth phase — it is simply not this component's business. So `$room` is asked as well,
+and asked **in the component** rather than handed down as the page's `onMenu`: a dialog that is only
+correct when the page remembers to pass something is wrong again the next time the page grows a
+state. Both halves are checked — `tools/render-check.mjs` renders it with no room set (and *with the
+seats still set*, since leaving a room clears both and a case that cleared both would pass with the
+bug in place), and `tools/game-setup-browser-check.mjs` asks the menu after a real Leave Room.
+
+**A check that waits on one board and reads the other is flaky, and reads like a fault.** The
+browser check for the opening drove two boards and waited for *Alice's* dialog to close before
+reading *Bob's* dealt cards — and each board takes the deal from its own poll, so about one run in
+three reported *"both boards have dealt seven cards and six prizes - alice=7/6 bob=0/0"*. The
+numbers in that message are the tell: one board is whole and the other is empty, which is a
+mid-flight read rather than a broken deal, and the same run passed on the next try. Every wait in
+that tool now asks **both** boards (`settled`) before anything is asserted. The clock had the same
+shape — a timer that has just been started still reads the fifty minutes it was set to, so reading
+it once reported *"clock reads 50:00"* — and it is now read until it has ticked. The general rule for
+a two-board check: **a wait has to name every board the next assertion reads.**
+
+**Two overlays that both cover the board are a stacking order, and the higher one eats the lower
+one's clicks.** A room has two things that cover the table while it is being opened: the **Import
+Deck** window (`z-index: 45`), which is where the deck comes from, and the **setup dialog**
+(`z-index: 46`), which says what the room is waiting for. The setup dialog was drawn on "the game
+has not been dealt", which is true before a deck has been imported as well as after — so it came up
+*over* the import window and took its buttons and its textarea with it. Reported from play as
+*"player is still unable to import the deck"*, with the screenshot showing the import window plainly
+visible underneath the message: the window was there, and unreachable. The fix is not a z-index — it
+is that the two must not want to be up at once: the setup dialog waits on **this player's own deck**
+rather than on `decksReady`, so the import window is what covers the board until the import lands and
+the setup message is what covers it after. The general rule: **when two overlays can be up together,
+decide which one owns the pointer and make the other wait for it** — and assert it by asking
+`document.elementFromPoint` at the centre of the button a player has to press, which is what the
+browser check does now. A click-and-hope check passes on a button that happened to be hit-testable.
+
+**And an automatic start that both boards can take is a race, not a start.** The opening begins by
+itself when both players have a deck — and *both boards* can see that condition become true, since
+each has its own deck and its own mirror of the other's and they fill in a different order. Measured
+on two browsers: both boards started the opening, both picked a caller with `Math.random()`, each
+then received the other's event — and **both players were offered Heads or Tails**, calling different
+coins. Nothing threw and nothing looked wrong on either screen. The draw is now the **first seat**,
+which is a value both boards already hold, so two boards that both start produce the *same* answer
+rather than two; and `put` refuses a second step for a phase that already has one (`ONE_ANSWER`),
+so whichever event lands first is the toss. The general rule: **if two peers can each decide to do
+something on the same condition, the decision has to be a function of state they already share, not
+of a coin either of them flips.**
+
+**A room that has closed makes every assertion fail at once, and the loudest one is not the
+cause.** The same check reported eight failures in a row after the game started — *"and the opening
+turn is 1 on both boards - alice=\"null\" bob=\"null\""*, an empty log, *"clock reads null"*, no game
+row — which reads like the start having broken the board component. It had not: the room was
+**closed**, the page was back at the lobby, and there is no turn row, no clock and no game row in a
+lobby. What closed it was the relay's own idle prompt. `tools/dev-servers.ps1` runs the idle window
+at **eight seconds with a twelve-second prompt** so the lifecycle can be tested in seconds, and this
+check spends about forty seconds reading two boards while appending very little to the relay — so
+the room prompted, nobody answered, and it closed underneath the check. The tell is a `null` where a
+board should be, plus the lobby's buttons in the page text; a screenshot-free way to see it is to
+read `document.body.innerText` on failure, which is where *"Room closed: nobody answered the idle
+prompt"* was found. The fix is the one `reveal-check.mjs` and the panel section of
+`browser-check.mjs` already use: a `keepAlive` interval that clicks the prompt's button every 1.5
+seconds. **Those windows belong to the room, not to one check**, so any check that keeps a room open
+for more than a few seconds has to answer it. The general rule: **when many assertions fail at once,
+ask whether the room is still there before believing any of them.**
+

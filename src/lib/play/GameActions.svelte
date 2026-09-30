@@ -1,9 +1,24 @@
 <script>
-   import { onMount } from 'svelte'
+   import { onMount, onDestroy } from 'svelte'
    import { autoMulligan } from '$lib/stores/settings.js'
-   import { share, publishLog, spectating } from '$lib/stores/connection.js'
+   import { share, publishLog, spectating, myId, seatedPlayers } from '$lib/stores/connection.js'
    import { showMessage } from '$lib/stores/message.js'
    import { isTyping } from '$lib/util/typing.js'
+
+   /*
+      The board half of the room's opening: `onDeal` is the deal this module knows how to make,
+      `onStart` is what starting a game does to a board, and the two questions in between are
+      the dialog's (`play/dialogs/GameSetupDialog.svelte`). What the flow itself is - the phases,
+      the coin, who is ready - is `stores/gameSetup.js`, which owns none of this and asks for it by
+      registering, so the import points one way.
+
+      The ready list is read here rather than asked of the store's `isReady()`, and that is the rule
+      this feature keeps having to relearn: see the note over `waiting` below.
+   */
+   import {
+      gameSetup, myMulligans, ready,
+      takeMulligan, redrawHand, onDeal, onRedraw, onStart, resetSetup, flipCoin
+   } from '$lib/stores/gameSetup.js'
 
    /*
       `pokemonHidden` still has a reader here - `switchVisibility`, which is still on
@@ -18,8 +33,11 @@
       shareBoardstate,
       clearAbilities,
       turn,
-      setTurn
+      setTurn,
+      setTimer
    } from '$lib/stores/player.js'
+   import { onNewGameStart } from '$lib/stores/newGame.js'
+   import { DEFAULT_TIMER_MS } from '$lib/stores/timer.js'
    import { spectatorOpponents, spectatorFlipped, defaultOpponent } from '$lib/stores/opponent.js'
    import { solo } from '$lib/stores/solo.js'
    import GameTimer from './GameTimer.svelte'
@@ -43,6 +61,28 @@
    }
 
    $: deckValid = hasBasic($cards)
+
+   /*
+      **A `$:` is only as reactive as the stores the expression itself names.** Svelte decides a
+      statement's dependencies from the identifiers in it, so a store read *inside a function the
+      expression calls* is invisible: `disabled={!canStartSetup()}`, `class:glow={isReady()}` and
+      `waiting = isReady()` named no store at all, and the compiler emitted each as a bare
+      assignment **outside** the component's update function - answered once, at instance creation,
+      and never again. Symptoms came from that one mistake, all reproduced on the running app:
+
+         the button    a *Game Setup* button that was greyed out for the life of the page for the
+                       player who joined second, so the setup could not be started from that board
+         the gate      once enabled it never greyed again, so a pressable button silently did nothing
+         the row       pressing *Ready* put the player in the room's ready list, `isReady()`
+                       answered `true` when asked from the handler, and the button went on drawing
+                       "Ready" with no tick, because the value it drew was frozen before `myId` had
+                       even arrived
+
+      What is left of that here is `waiting`, and it asks the list directly rather than through
+      `isReady()`, because "have *I* pressed it" is a question about `$myId` as much as about the
+      list.
+   */
+   $: waiting = Boolean($myId) && $gameSetup.ready.includes($myId)
 
    function draw7andPutPrizes () {
       resetBoard()
@@ -100,17 +140,21 @@
    }
 
    /*
-      `log` says whether the deal writes its line, and only the room's *Game Setup*
-      passes false: the room's opening hand is not an event at the table, and the board
-      it deals already says so. Solo's *Setup* logs, because its row is the solo
-      player's own and the button is the only way in. **There is no shortcut into
-      `setup()` in any mode** - the confirmation-and-`N` pair was removed with the
-      room's row, so a room that has not dealt a game deals one by button alone, and
-      starting again over a game in progress is *New Game* in the settings menu
-      (`stores/newGame.js`), which asks the other player.
+      The deal, and everything a board does when its game is set up.
+
+      It is one function because it is one motion - shuffle, seven cards, six prizes, turn
+      back to zero - and it is reached two ways: solo's *Setup* button, and the room's
+      `gameSetup` flow, which calls the same function through `onDeal` the moment both players
+      have settled the turn order. The room does not go through the button at all, which is
+      what makes the deal a consequence of the phase rather than of a click.
+
+      **It publishes nothing.** The room's opening hand is not an event at the table, and the
+      board it deals already says so; whether a *line* is written is the caller's business, and
+      solo's button is the only caller that writes one. That also keeps the deal safe to run
+      from a replayed phase, which a reloading board does.
    */
-   function setup ({ log = true } = {}) {
-      if (!deckValid && $autoMulligan) return
+   function setup () {
+      if (!deckValid && $autoMulligan) return 0
       const mulligans = setupBoard()
       if ($autoMulligan) showMessage(`${mulligans} Mulligans`)
 
@@ -120,37 +164,137 @@
       setTurn(0)
 
       /*
-         Setting up hides your Pokemon: a fresh board is not meant to be read over
-         your shoulder. It is the same action a player's own Z key takes, not a copy
-         of it. In solo the button that takes it back is on screen, so it glows: that
-         is the one thing the log line does not mention, and the glow stays until the
-         button is pressed.
+         Setting up hides your Pokemon: a fresh board is not meant to be read over your
+         shoulder, and it is the same action a player's own Z key takes rather than a copy of
+         it. In solo the button that takes it back is on screen, so it glows: that is the one
+         thing the log line does not mention, and the glow stays until the button is pressed.
 
-         In a room the flag is still set and `hideGlow` with it, but nothing draws it:
-         the room's row has one button and it is not glowable, because there is no
-         button left to bring the Pokemon back with - the Z key is what the player has
-         (see the row's own comment). The flag is kept set rather than skipped so that
-         the two modes take the same path through here; the drawing is what differs.
+         In a room nothing draws the glow - the room's row has no such button, because the veil
+         is not this player's to lift: it comes off when *both* players have pressed Ready
+         (see `onStart` below). The flag is still set and cleared with the button in solo only.
 
-         Solo is playing both sides yourself, so there is nobody to hide them from and
-         the call is skipped there entirely.
+         Solo is playing both sides yourself, so there is nobody to hide them from and the call
+         is skipped there entirely.
 
-         Hidden before the board is shared, not after: whoever is watching us takes
-         the state from either the event or the board state, and the board state has
-         to agree with it.
+         Hidden before the board is shared, not after: whoever is watching us takes the state
+         from either the event or the board state, and the board state has to agree with it.
       */
       if (!$solo) {
-         switchVisibility()
+         setVisibility(true)
          hideGlow = true
       }
 
-      /* the deal writes its line unless the caller is the room's own button (see above) */
-      if (log) publishLog('Setup' + ($autoMulligan ? ` - ${mulligans} Mulligans` : ''))
+      shareBoardstate()
+
+      return mulligans
+   }
+
+   /*
+      Starting the game, on the board that just dealt.
+
+      The four things a start is, and they are the flow's rather than the flow's board's - which
+      is why they live here and are *registered* with `onStart`: the flow decides when a game
+      has begun, and this decides what beginning does to this player's board.
+
+         the veil      off. Both players are ready, so there is nothing left to keep from either
+                       of them, and it is set as a state rather than toggled because the two
+                       boards reach this at different moments and a toggle would hide the board
+                       of whichever arrived second
+         the clock     started, from the room's own default. Entering a room leaves it paused at
+                       fifty minutes (see stores/timer.js), so a game that has begun is the one
+                       thing that sets it running
+         the turn      on by one, so the opening turn is turn 1 rather than the 0 a deal leaves
+         the row       gone, because `phase` is `live` and the row only draws before that
+
+      None of it is sent: the clock and the turn are shared values each board applies for itself
+      (both are `setTimer` and `setTurn`, which publish), and the veil is a `pokemonToggle` like
+      any other.
+   */
+   function startGame () {
+      setVisibility(false)
+
+      setTimer({ running: true, remaining: DEFAULT_TIMER_MS })
+
+      /*
+         **The opening turn is stated, not counted.** A game begins at turn 1, so this says so -
+         and it is deliberately not `$turn + 1`.
+
+         Two things are wrong with counting from wherever the counter happens to be. A deal leaves
+         it at 0 (see `setup` below), so `+1` is *usually* right; but the two boards reach `live`
+         independently and each applies the clock and the turn for itself, and a single extra
+         entry into this function - the second player's `setupReady` arriving at a board that had
+         already begun - advanced it again. Measured on two browsers: the game started, the log
+         said so once, and the turn row read **Turn 2**. The guard that makes a start once per
+         phase is above; this is the half that does not depend on it being airtight.
+
+         Setting it in two steps is how the counter is *forced* rather than nudged: `setTurn`
+         ignores a value it is already holding, so this resets to zero whatever the last game left
+         behind - or a stray `+` press during the opening - and then states the opening turn. Both
+         calls are shared like any other turn change, and the second is the one that reaches the
+         other board.
+      */
+      setTurn(0)
+      setTurn(1)
+   }
+
+   /* the flow asks for the deal, the redraw and the start; this module owns what they do */
+   onDeal(() => setup())
+   onRedraw(() => redraw())
+   onStart(() => startGame())
+
+   /*
+      A game started again forgets the setup that came before it.
+
+      *New Game* does not leave the room, so the flow is never told the table has moved on: its
+      "this deal has happened" and "the game has started" guards would still be set, and the
+      second game in a room would deal nothing and start nothing. `player.js` registers its own
+      half of the restart with `onNewGameStart`, and this is the other half - the flow's.
+   */
+   onNewGameStart(() => resetSetup())
+
+   /*
+      The *Mulligan*'s redraw: the hand goes back into the deck, the deck is shuffled, and seven
+      fresh cards come off the top. The prizes stay where they are, and the turn counter is not
+      touched - **a mulligan is not a new game**, so it is deliberately not `setup()`, which
+      would also put the turn back to zero and re-deal the prizes.
+
+      It is silent and it publishes nothing on its own: the two lines the table reads are the
+      flow's (`takeMulligan`), and the new hand reaches the opponent's mirror with the board
+      state the deal after it shares. Nothing here goes in the log, because *Drew 7* is not what
+      a mulligan is called.
+   */
+   function redraw () {
+      for (const card of $hand) deck.push(card)
+
+      hand.clear()
+      deck.shuffle()
+      draw(7, true)
 
       shareBoardstate()
    }
 
+   /*
+      The Mulligan button: a redraw, and the two lines that say what it was.
 
+      The count and the hand are the flow's (see `takeMulligan`), and the redraw is this
+      module's. The order is the one the two lines are read in: the count is written, the redraw
+      runs, and then `$hand` is read for the cards it produced.
+   */
+   function mulligan () {
+      takeMulligan(() => redrawHand(), () => $hand)
+   }
+
+   /*
+      Solo's Setup button: the same deal, and the one caller that writes a line about it.
+
+      The auto-mulligan's count belongs in that line and is not the manual button's count -
+      it is what the deal had to do to find a Basic, not what the player chose - so it is
+      taken from the deal's own answer rather than from the flow.
+   */
+   function setupSolo () {
+      const drawn = setup()
+      publishLog('Setup' + ($autoMulligan ? ` - ${drawn} Mulligans` : ''))
+   }
 
    /* the turn counter only counts: drawing for the turn is the player's job */
    function startTurn () {
@@ -175,10 +319,16 @@
 
    /* Misc. Actions */
 
-   function flipCoin () {
-      const heads = Math.floor(Math.random() * 2)
-      showMessage('Coin flip result: ' + (heads ? 'HEADS' : 'TAILS'))
-      publishLog('Coin flip: ' + (heads ? 'HEADS' : 'TAILS'))
+   /*
+      The `F` key's coin, and the room's *Flip Coin* used to be this. The flip itself is the
+      store's - one coin, so that a standalone flip and the one in a toss cannot disagree about
+      what a coin is - and what is here is the two things a *player's* flip does with the answer:
+      it is shown in the middle of the screen and written to the log.
+   */
+   function flip () {
+      const result = flipCoin()
+      showMessage('Coin flip result: ' + (result === 'heads' ? 'HEADS' : 'TAILS'))
+      publishLog('Coin flip: ' + (result === 'heads' ? 'HEADS' : 'TAILS'))
    }
 
    function switchVisibility () {
@@ -223,7 +373,7 @@
          endTurn()
       }
       else if (key === 'c') startTurn()
-      else if (key === 'f') flipCoin()
+      else if (key === 'f') flip()
       else if (key === 'z') switchVisibility()
    }
 
@@ -237,20 +387,61 @@
 
 {#if !$spectating}
    <!--
-      A game room gets one button: Game Setup, on its own row, the whole width of
-      the row, directly above the turn. Setting the game up is the one action worth
-      a button of its own there.
+      **A room has no button to begin with.** There used to be one - *Game Setup*, on its own row
+      above the turn, pressed by both players in turn - and the opening it started now starts
+      itself: it waits on the two decks, which the room can see for itself, so a press asked the
+      players to confirm something nothing was waiting on. The board is held by the opening dialog
+      until both have imported, and it is that dialog which says so.
 
-      It deals without a line in the game log - the room's opening hand is not an
-      event at the table - which is what `log: false` says, and it is the only way
-      into `setup()` that says it. It has no shortcut: this button is the way a game
-      gets dealt.
+      What is left above the turn is the row the *game* uses: **Ready** and **Mulligan** while the
+      opening hands are being decided, and **Flip Coin** and **End Turn** once the game is under
+      way.
+
+      The Ready/Mulligan row is up for everything from the deal onwards, which is why it is drawn
+      from "not before the deal" rather than from the deal alone: a player who has pressed Ready
+      keeps their tick and their mulligan count for the whole game, and both buttons mean the same
+      thing at turn 5 as they did at turn 0 - take another hand, or say you are done. They are the
+      room's own controls rather than the opening's, and taking them away when the game started left
+      a player with no way to mulligan a hand drawn mid-game.
+
+      **Ready carries a tick and no animation.** A press that sets a glowing button pulsing for as
+      long as the other player takes is a light nobody can turn off, and what it was saying - *this
+      one is done, and is waiting* - the tick says on its own.
    -->
-   {#if !$solo}
-      <button
-         class="game-setup"
-         disabled={!deckValid && $autoMulligan}
-         on:click={() => setup({ log: false })}>Game Setup</button>
+   {#if !$solo && $gameSetup.phase !== 'idle' && $gameSetup.phase !== 'coin' && $gameSetup.phase !== 'order'}
+      <div class="setup-row">
+         <button
+            class="ready"
+            disabled={waiting}
+            title={waiting ? 'Waiting for the other player' : 'Ready to start the game'}
+            on:click={ready}
+         >{waiting ? 'Ready ✓' : 'Ready'}</button>
+
+         <!--
+            The mulligan, drawn with the count it is about to write: the button says how many
+            this player has taken rather than making them read the log to find out. Green, because
+            it is the one button here that is the player's own rather than the table's, and the
+            grey it had read as disabled.
+         -->
+         <button
+            class="mulligan"
+            title="Shuffle this hand back and draw a new one, keeping your prizes"
+            on:click={mulligan}
+         >{$myMulligans > 0 ? `Mulligan (${$myMulligans})` : 'Mulligan'}</button>
+      </div>
+   {/if}
+
+   <!--
+      And the row the game itself runs on: **Flip Coin** and **End Turn**, the two actions a room
+      has always had. They sit under the setup row rather than replacing it, and they are keyboard
+      only until the game starts - `F` and `Enter` - because there is no turn to end and no reason
+      to flip a coin while the opening hands are still being chosen.
+   -->
+   {#if !$solo && $gameSetup.phase === 'live'}
+      <div class="game-actions">
+         <button on:click={flip} title="Shortcut: F">Flip Coin</button>
+         <button on:click={endTurn} title="End your turn (Shortcut: Enter): logs it, moves the turn on, and clears your Ability Used stripes">End Turn</button>
+      </div>
    {/if}
 
    <!--
@@ -260,11 +451,14 @@
       Setup button's glow is the one thing on screen that says the setup just hid the
       boards. A room hides Flip Coin and End Turn rather than removing them: they are
       still the game's, and still on `F` and `Enter` (see the shortcuts above).
+
+      Solo's Setup writes its line, because its row is the solo player's own and the
+      button is the only way in - the room's deal keeps quiet (see `setup`).
    -->
    {#if $solo}
       <div class="game-actions">
-         <button class:glow={hideGlow} disabled={!deckValid && $autoMulligan} on:click={setup}>Setup</button>
-         <button on:click={flipCoin} title="Shortcut: F">Flip Coin</button>
+         <button class:glow={hideGlow} disabled={!deckValid && $autoMulligan} on:click={setupSolo}>Setup</button>
+         <button on:click={flip} title="Shortcut: F">Flip Coin</button>
          <button on:click={endTurn} title="End your turn (Shortcut: Enter): logs it, moves the turn on, and clears your Ability Used stripes">End Turn</button>
       </div>
    {/if}
@@ -294,17 +488,42 @@
 
 <style>
    /*
-      The room's one button, and the whole width of its row: `w-full` rather than
-      the share-of-the-row `flex-1` the buttons below it take, because it has no
-      row-mates to share with and a button that stops short of the turn row above
-      it reads as a mistake.
+      The row above the turn: **Ready** and **Mulligan**, side by side and sharing the width. It is
+      the only row above the turn now - the *Game Setup* button it used to replace is gone, because
+      the opening starts on its own (see the markup above) - so this is what keeps the turn row and
+      the clock under it from moving: the row a player is watching changes, not its place on the
+      screen.
    */
-   .game-setup {
-      @apply block w-full font-bold text-white bg-[var(--primary-color)] px-2 py-1.5 rounded-md whitespace-nowrap;
+   .setup-row {
+      @apply flex gap-1;
    }
 
-   .game-setup:disabled {
-      @apply opacity-50;
+   .setup-row button {
+      @apply flex-1 font-bold px-2 py-1.5 rounded-md whitespace-nowrap;
+   }
+
+   /*
+      The Mulligan is the green one and Ready is the blue one. Green is not decoration: the
+      mulligan is the only button in this row that is *this player's own* - it buys another hand
+      and changes nothing on the other board - and the grey it wore read as a disabled button
+      sitting beside a live one.
+   */
+   .setup-row .mulligan {
+      @apply text-white bg-green-600;
+   }
+
+   .setup-row .ready {
+      @apply text-white bg-[var(--primary-color)];
+   }
+
+   /*
+      A player who has pressed Ready keeps its colour rather than dimming: `disabled` is what the
+      second press would do, not what the button is saying, and the tick beside the word is the
+      whole of the feedback. **There is no glow** - a press that sets a light pulsing for as long
+      as the other player takes is a light nobody can turn off.
+   */
+   .setup-row .ready:disabled {
+      @apply opacity-100;
    }
 
    .game-actions {
@@ -320,10 +539,10 @@
    }
 
    /*
-      Solo's Setup hides the boards for you, and its button shows which one did it.
-      The pulse repeats rather than stopping after a couple of beats: it stays until
-      the button is clicked, which for a player who is mid-turn may be a while. A
-      room has no such button, so nothing there is glowable.
+      Solo's Setup hides the boards for you, and its button shows which one did it. The pulse
+      repeats rather than stopping after a couple of beats: it stays until the button is
+      clicked, which for a player who is mid-turn may be a while. It is the only glow left in
+      this component - the room's *Ready* had the same one and it is gone.
    */
    .game-actions button.glow {
       animation: hide-glow 1s ease-in-out infinite;

@@ -82,17 +82,25 @@ End Turn and Flip Coin are not one keystroke away for somebody who is only watch
 | `F` | flip a coin |
 | `Z` | hide or show Pokémon |
 
-**The deal has no key.** Setting the game up is *Game Setup* in a room and *Setup* in
-solo, and neither button has a shortcut — the `N` key and its *Start new game?*
-confirmation are gone. Starting again over a game in progress is *New Game* in the
-settings menu, which asks the other player
+**The deal has no key.** Setting the game up is *Setup* in solo, and **a room has no button
+for it at all** — its opening finishes by itself and deals the game. The `N` key and its
+*Start new game?* confirmation are gone. Starting again over a game in progress is *New Game*
+in the settings menu, which asks the other player
 ([mechanics.md](mechanics.md#setup)).
 
-In a **room**, `F` and `Z` have no button at all: the row is one full-width **Game
-Setup** above the turn, so those two keys are the only way to those actions — off the
-screen rather than out of the app. `C` is the turn row's `+`. **Solo** keeps the whole
-row instead — Setup, Flip Coin and End Turn — with `Z` and its button both gone,
-because both halves are one person's and there is nobody to hide from.
+In a **room**, `F` and `Z` have no button while the opening is under way: the row above the
+turn is the **Ready** and **Mulligan** pair, and then *Flip Coin* and *End Turn* are added to
+it once the game starts — so a room has no *Flip Coin* button until there is a game to flip
+for. **There is no *Game Setup* button at all**: the opening starts by itself once both
+players have imported a deck ([mechanics.md](mechanics.md#opening-a-rooms-game)). `Z` never
+gets a button in a room — hiding is a keyboard action there — and `C` is the turn row's `+`.
+**Solo** keeps the whole row throughout — Setup, Flip Coin and End Turn — with `Z` and its
+button both gone, because both halves are one person's and there is nobody to hide from.
+
+**The row fills up twice during a room's game**: *Ready* and *Mulligan* once the boards deal,
+and *Flip Coin* and *End Turn* under them once the game starts. Nothing in the opening is on a
+key — it waits on the two decks rather than on a press, and a coin toss and an opening hand
+are decisions rather than shortcuts, so the dialog takes the screen while it asks.
 
 `Enter` is also how a focused button is pressed, so it ends the turn only when the
 focus is not on one.
