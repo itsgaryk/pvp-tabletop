@@ -1267,11 +1267,19 @@ rendersNothing('the setup dialog draws nothing on the main menu', mod.GameSetupD
 mod.room.set('ABCDEF')
 
 /*
-   The lock, while a deck is missing. **It is not a prompt**: the opening starts by itself the moment
-   the second deck lands, so there is nothing here to press and the wording is the whole of what it
-   is for - which is what was wrong with it before, when it asked for a press that the room no
-   longer needed.
+   The lock, for a player who **has** imported and is waiting on the other one.
+
+   That precondition is the whole of the state, and it is set explicitly rather than left to
+   whatever an earlier section put on the board: the lock waits on this player's own deck (see
+   `imported` in the dialog), because a lock drawn over the Import Deck window is a window that
+   cannot be clicked - and a case that happened to pass with no deck on the board would be passing
+   by drawing *nothing*, which is not what it means to check.
+
+   **It is not a prompt**: the opening starts by itself the moment the second deck lands, so there
+   is nothing here to press and the wording is the whole of what it is for - which is what was wrong
+   with it before, when it asked for a press that the room no longer needed.
 */
+mod.setDeck([ { name: 'Pikachu', stage: 'basic' } ])
 mod.gameSetup.set(setupState({ phase: 'idle' }))
 const lockedDialog = renders('the setup dialog renders the lock', mod.GameSetupDialog)
 check('and it says the game is being set up',
@@ -1284,11 +1292,20 @@ check('and it offers nothing to press at all',
    'the opening is not gated on a press, so this is not a prompt')
 
 /*
+   **And it stays down while this player still has to import.** That is the reported fault: the lock
+   is over the Import Deck window (`z-index: 46` against `45`), so drawing it before a deck has
+   landed takes that window's buttons and its textarea with it - *"player is still unable to import
+   the deck"*, with the window visible underneath.
+*/
+mod.setDeck([])
+rendersNothing('the setup dialog draws nothing while this player still has to import', mod.GameSetupDialog)
+mod.setDeck([ { name: 'Pikachu', stage: 'basic' } ])
+
+/*
    **And it goes the moment the order is settled.** `deal` is the two boards dealing and `live` is
    the game under way; neither is a question, so neither carries a dialog - and a lock left over
    either of them is a board that never becomes playable, which is the other half of the import
-   lock being right. This is the case the harness can reach without a deck, since the store it reads
-   for the import lock is a real one with nothing in it.
+   lock being right.
 */
 mod.gameSetup.set(setupState({ phase: 'deal', chooser: 'me', winner: 'me', order: 'first' }))
 rendersNothing('the setup dialog draws nothing once the boards deal', mod.GameSetupDialog)

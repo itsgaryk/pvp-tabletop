@@ -144,21 +144,27 @@ check('and both boards are asked, so one import is not enough',
 /* ------------------------------------------------------------------ the toss --- */
 
 /*
-   The caller is picked **once**, on whichever board saw the second deck arrive, and named in the
-   event. Two boards each drawing for themselves is the fault this rules out: they disagree about
-   half the time, and the player who did not draw one is then asked to call a toss that was already
-   decided somewhere else.
+   The caller is picked **once, and identically on whichever board starts it**. Both of them can:
+   each has its own deck and its own mirror of the other's, so both preconditions can become true in
+   the same moment - measured on two boards, both started the opening and both drew a caller, so
+   **both players were offered Heads or Tails**. The draw is therefore the first seat rather than
+   `Math.random()`, which is a value both boards already hold.
 */
 const start = bodyOf(setup, 'startSetup')
 check('the toss demands a room, both decks and an opening not yet begun',
    /if \(!canStartSetup\(\)\) return false/.test(start))
-check('and the caller is picked on the board that started it',
-   /const chooser = players\[Math\.floor\(Math\.random\(\) \* players\.length\)\]/.test(start))
+check('and the caller is the first seat rather than a coin the two boards flip separately',
+   /const chooser = players\[0\]/.test(start) && !/^\s*const chooser = .*Math\.random/m.test(start),
+   'two boards drawing at random is two answers to one question')
 check('and the choice travels with the event rather than being drawn again',
    /share\('setupStarted', agreed\)/.test(start) && /chooser/.test(start))
 check('and the opening it starts carries nothing from the game before it',
    /const agreed = \{ phase: 'coin', chooser \}/.test(start),
    'the state it publishes is the opening\'s own rather than whatever was on the board')
+check('and a second step cannot overwrite an answer already given',
+   /const ONE_ANSWER = \{ coin: 'chooser', order: 'winner' \}/.test(setup) &&
+   /if \(state\.phase === before\.phase && answer && before\[answer\] != null\) return/.test(setup),
+   'both boards may start the opening; whichever event lands first is the toss')
 
 /*
    The call is the player's own act and is logged before the coin is flipped; the flip is in the
@@ -418,9 +424,9 @@ check('and a phase that is not a deal takes no mulligan',
    the deal is a board that never becomes playable at all.
 */
 check('the lock is up for the import and for the two questions of the toss',
-   /importing = \$gameSetup\.phase === 'idle' && !\$decksReady/.test(dialog) &&
+   /importing = \$gameSetup\.phase === 'idle'/.test(dialog) &&
    /tossing = \$gameSetup\.phase === 'coin' \|\| \$gameSetup\.phase === 'order'/.test(dialog),
-   'idle-and-a-deck-missing, then the toss; nothing after it')
+   'the import wait, then the toss; nothing after it')
 check('and it says what the room is waiting for while a deck is missing',
    /Setting up the game/.test(dialog) &&
    /Both players need to import a deck before the game can begin/.test(dialog),
@@ -429,7 +435,7 @@ check('and nothing of the old press remains in what it does',
    !/hasPressed\(/.test(dialog) && !/state\.pressed/.test(dialog) && !/\$gameSetup\.pressed/.test(dialog),
    'the opening is no longer gated on a press, so its list is gone from the component')
 check('and the lock is on store values rather than a call',
-   /\$: open = Boolean\(\$room\)/.test(dialog) && /\$decksReady/.test(dialog))
+   /\$: open = Boolean\(\$room\)/.test(dialog) && /imported/.test(dialog))
 /*
    **And it is not drawn outside a room.** The phase is `idle` on a board that has never been
    anywhere, so a lock drawn on the phase alone covers the **main menu** - reported as *"Seeing
@@ -440,6 +446,23 @@ check('and the lock is on store values rather than a call',
 check('and it is never drawn outside a room',
    /\$: open = Boolean\(\$room\)/.test(dialog),
    'the main menu is phase idle with no room, and the lock was covering it')
+/*
+   **And the lock does not cover the Import Deck window.** They are the two things that cover the
+   board in a room, and this one is *above* that one (`z-index: 46` against `45`) - so drawing it
+   while a player still has to import takes that window's buttons and its textarea with it. That is
+   what was reported: *"player is still unable to import the deck"*, with the import window visible
+   underneath. So `open` waits on **this player's own deck** rather than on `decksReady`, and the two
+   windows come in the order they were asked for - import first, the setup message after it closes.
+*/
+check('the lock waits for this player\'s own deck, not for both players\'',
+   /importing = \$gameSetup\.phase === 'idle' && imported && !\$decksReady/.test(dialog),
+   'a lock over the import window is a window that cannot be clicked')
+check('and that is watched on the card list the import window itself watches',
+   /\$cards\.length/.test(dialog) && /\$: if \(\$cards\.length\) imported = true/.test(dialog),
+   'the two cannot disagree about what an import landing means')
+check('and the lock is over the import window, which is why that matters',
+   /z-index: 46/.test(dialog) && /over the Import Deck window, which is at 45/.test(dialog))
+
 check('and covers the window rather than the board',
    /position: fixed;\s*inset: 0;/.test(dialog), 'the chat and the row are behind it too')
 check('and offers Heads and Tails to the player who was picked',

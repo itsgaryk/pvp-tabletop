@@ -1746,6 +1746,33 @@ shape — a timer that has just been started still reads the fifty minutes it wa
 it once reported *"clock reads 50:00"* — and it is now read until it has ticked. The general rule for
 a two-board check: **a wait has to name every board the next assertion reads.**
 
+**Two overlays that both cover the board are a stacking order, and the higher one eats the lower
+one's clicks.** A room has two things that cover the table while it is being opened: the **Import
+Deck** window (`z-index: 45`), which is where the deck comes from, and the **setup dialog**
+(`z-index: 46`), which says what the room is waiting for. The setup dialog was drawn on "the game
+has not been dealt", which is true before a deck has been imported as well as after — so it came up
+*over* the import window and took its buttons and its textarea with it. Reported from play as
+*"player is still unable to import the deck"*, with the screenshot showing the import window plainly
+visible underneath the message: the window was there, and unreachable. The fix is not a z-index — it
+is that the two must not want to be up at once: the setup dialog waits on **this player's own deck**
+rather than on `decksReady`, so the import window is what covers the board until the import lands and
+the setup message is what covers it after. The general rule: **when two overlays can be up together,
+decide which one owns the pointer and make the other wait for it** — and assert it by asking
+`document.elementFromPoint` at the centre of the button a player has to press, which is what the
+browser check does now. A click-and-hope check passes on a button that happened to be hit-testable.
+
+**And an automatic start that both boards can take is a race, not a start.** The opening begins by
+itself when both players have a deck — and *both boards* can see that condition become true, since
+each has its own deck and its own mirror of the other's and they fill in a different order. Measured
+on two browsers: both boards started the opening, both picked a caller with `Math.random()`, each
+then received the other's event — and **both players were offered Heads or Tails**, calling different
+coins. Nothing threw and nothing looked wrong on either screen. The draw is now the **first seat**,
+which is a value both boards already hold, so two boards that both start produce the *same* answer
+rather than two; and `put` refuses a second step for a phase that already has one (`ONE_ANSWER`),
+so whichever event lands first is the toss. The general rule: **if two peers can each decide to do
+something on the same condition, the decision has to be a function of state they already share, not
+of a coin either of them flips.**
+
 **A room that has closed makes every assertion fail at once, and the loudest one is not the
 cause.** The same check reported eight failures in a row after the game started — *"and the opening
 turn is 1 on both boards - alice=\"null\" bob=\"null\""*, an empty log, *"clock reads null"*, no game

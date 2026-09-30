@@ -178,42 +178,63 @@ console.log(`  room ${room}\n`)
 /* ------------------------------------------------------------- the lock, and the start --- */
 
 /*
-   **The board is held from the moment a room has two players in it, until both have a deck.**
-   Nothing on the table is anybody's to touch while a deck is missing, and there is **no button to
-   press**: the opening starts by itself the moment the second deck lands, so what this section
-   asserts is the new wording, that the lock is up, and that nothing behind it answers.
+   **The Import Deck window is the thing covering the board while a deck is missing, and this check
+   is that it is reachable.**
+
+   The setup dialog is at `z-index: 46` and the import window at `45`, so a lock drawn before a deck
+   has landed sits *over* the window - every button, the textarea, all of it. That is the reported
+   fault: *"player is still unable to import the deck"*, with the window visible underneath. The
+   setup dialog therefore does not draw until this player has imported, and the two come in the order
+   they were asked for.
 */
-await wait('the lock to come up', async () => (await board(alice)).dialog !== null)
-const locked = { alice: await board(alice), bob: await board(bob) }
-check('the board is locked as soon as there are two players',
-   /Setting up the game/.test(locked.alice.dialog) && /Setting up the game/.test(locked.bob.dialog),
-   JSON.stringify([ locked.alice.dialog, locked.bob.dialog ]))
-check('and it says what the room is waiting for: a deck from each of them',
-   /Both players need to import a deck before the game can begin/.test(locked.alice.dialog) &&
-   /Both players need to import a deck before the game can begin/.test(locked.bob.dialog),
-   JSON.stringify(locked.alice.dialog))
-check('and there is no button for either of them to press',
-   locked.alice.buttons.length === 0 && locked.bob.buttons.length === 0,
-   'the opening is not gated on a press any more')
-check('and no Game Setup button is drawn at all',
-   locked.alice.setupButton.present === false && locked.bob.setupButton.present === false)
+await wait('the import window', async () =>
+   (await alice.evaluate(`document.body.innerText.includes('Import Random Deck')`)) === true)
+
+const importing = await board(alice)
+check('the import window is up, and the setup dialog is not over it',
+   importing.dialog === null && importing.backdrop === false,
+   `dialog=${JSON.stringify(importing.dialog)} - a lock here would take the window's clicks`)
+
+/*
+   What "reachable" means, asked properly: the element at the centre of the import button **is** that
+   button, rather than something drawn over it. Clicking and hoping would pass on a button that
+   happened to be hit-testable and fail confusingly when it was not.
+*/
+const topOfImport = await alice.evaluate(`(() => {
+   const button = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Import Random Deck')
+   if (!button) return 'no button'
+   const box = button.getBoundingClientRect()
+   const top = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+   return { topIsTheButton: button.contains(top) || top === button, top: top ? top.className || top.tagName : null }
+})()`)
+check('and nothing is drawn over the import buttons',
+   topOfImport.topIsTheButton === true, JSON.stringify(topOfImport))
+
+/* and the deck actually goes in, which is the thing the player could not do */
+await alice.importDeck()
+await sleep(2000)
+
+const afterImport = await board(alice)
+check('and the import lands',
+   afterImport.hand > 0 || afterImport.prizes !== null || afterImport.dialog !== null,
+   'the window closed, so the deck arrived')
+check('and the setup dialog is up now, for the player who has imported',
+   /Setting up the game/.test(afterImport.dialog || '') &&
+   /Both players need to import a deck before the game can begin/.test(afterImport.dialog || ''),
+   JSON.stringify(afterImport.dialog))
+check('and it says nothing about pressing anything',
+   afterImport.buttons.length === 0 && !/Game Setup/.test(afterImport.dialog || ''),
+   'the opening is not gated on a press')
 check('and the lock is the whole window, not the board',
-   locked.alice.backdrop === true, 'a click meant for a card lands on the backdrop')
+   afterImport.backdrop === true, 'a click meant for a card lands on the backdrop')
+check('and no Game Setup button is drawn at all',
+   afterImport.setupButton.present === false)
 
 /*
    **Both decks, and the opening starts on its own.** The button this used to be gated on is gone -
    the deal cannot be built from a deck that is not there, and the room can see that for itself, so
    there was nothing left for a press to decide.
 */
-await alice.importDeck()
-await sleep(2000)
-
-const oneDeck = { alice: await board(alice), bob: await board(bob) }
-check('one deck is not enough: the lock is still up on both boards',
-   /Setting up the game/.test(oneDeck.alice.dialog || '') && /Setting up the game/.test(oneDeck.bob.dialog || ''),
-   JSON.stringify([ oneDeck.alice.dialog, oneDeck.bob.dialog ]))
-check('and the toss has not started', !oneDeck.alice.buttons.includes('Heads') && !oneDeck.bob.buttons.includes('Heads'))
-
 await bob.importDeck()
 
 /* ------------------------------------------------------------------ the toss --- */
@@ -520,10 +541,16 @@ console.log(`  second room ${secondRoom}`)
    runs from there.
 */
 const rebuilt = { alice: await board(alice), bob: await board(bob) }
-check('the new room asks for a deck from each of them',
-   /Both players need to import a deck/.test(rebuilt.alice.dialog || '') &&
-   /Both players need to import a deck/.test(rebuilt.bob.dialog || ''),
-   JSON.stringify([ rebuilt.alice.dialog, rebuilt.bob.dialog ]))
+/*
+   **The new room asks for a deck again, and the import window is how it asks.**
+   The setup dialog is deliberately *down* here - it is over the import window (`z-index: 46` against
+   `45`) and does not draw until this player has a deck - so what says the room is waiting is the
+   window itself. Asserting the dialog's words here would be asserting a screen that must not be up.
+*/
+const importUp = await alice.evaluate(`document.body.innerText.includes('Import Random Deck')`)
+check('the new room asks for a deck again',
+   importUp === true && rebuilt.alice.dialog === null,
+   `import window=${importUp} dialog=${JSON.stringify(rebuilt.alice.dialog)}`)
 check('and nothing of the old game is left in the new one',
    rebuilt.alice.hand === 0 && rebuilt.alice.turn === 'Turn 0' &&
    !rebuilt.alice.log.some((l) => /Game started/.test(l)),

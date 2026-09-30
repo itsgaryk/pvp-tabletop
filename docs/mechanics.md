@@ -297,30 +297,39 @@ step, so the two are never in different phases.
 **Solo does none of this.** There is no second player to toss with, and solo's row is
 unchanged.
 
-**1. The board is locked until both players have a deck.** Nothing on the table is anybody's
-to touch while a deck is missing, so a **lock** covers the whole window — the board, the
-cards, the chat and the panel — from the moment a room has two players in it. It says
-*Setting up the game* and *Both players need to import a deck before the game can begin*, and
-it carries **nothing to press**: the way to satisfy it is the Import Deck window, which is
-drawn over it.
+**1. The board is locked until both players have a deck, and two things do the covering.** While
+a deck is missing nothing on the table is anybody's to touch — the board, the cards, the chat
+and the panel — and which of the two windows is up depends on *whose* deck is missing:
+
+- **this player has not imported** — the **Import Deck** window is up, at `z-index: 45`. It is
+  where the deck comes from, it covers the board on its own, and it is what a player has to
+  reach — so the setup dialog stays down. It sits at `46`, over that window, and drawing it here
+  took the window's buttons with it: reported as *"player is still unable to import the deck"*,
+  with the import window visible underneath.
+- **this player has imported, the other has not** — the import window has closed on a successful
+  import and the **setup dialog** comes up: *Setting up the game* and *Both players need to
+  import a deck before the game can begin*. Nothing to press; it says what the room is waiting
+  for.
 
 **There is no *Game Setup* button, and no press to make.** The opening used to wait on a
-press from each player; it waits on the **two decks**, which is the same condition the lock
-was already drawn on — and the room can see a deck for itself, so asking the players to
-confirm it was asking them to confirm something nothing was waiting on. The moment the second
-deck lands, the opening starts by itself: a room where one player imported while alone waits
-for the seat rather than for a second press.
+press from each player; it waits on the **two decks**, which the room can see for itself — so
+asking the players to confirm it was asking them to confirm something nothing was waiting on.
+The moment the second deck lands, the opening starts by itself: a room where one player
+imported while alone waits for the seat rather than for a second press.
 
-That condition is not a flag of its own: the deck a player imported *is* the card list on
-their board, and the other player's arrives with every board state, so the rule asks `cards`
-and the opponent mirror.
+Neither condition is a flag of its own: the deck a player imported *is* the card list on their
+board, and the other player's arrives with every board state — so the *both decks* rule asks
+`cards` and the opponent mirror, and the *this player's deck* rule asks `cards`.
 
-**2. Deciding who goes first.** The second deck does not deal. It picks one of the two
-players **at random, on the board that saw it arrive**, and names them in the event — two
-boards each drawing for themselves would disagree about half the time, and the board that
-receives the event takes the phase from it rather than drawing a second caller. That player
-is shown *Determining player order* with **Heads** and **Tails**, and the other player is
-shown the same dialog saying that the call is being made.
+**2. Deciding who goes first.** The second deck does not deal. It gives the call to the
+**first seat**, and names them in the event. Both boards can see the second deck arrive — each
+has its own deck and its own mirror of the other's, and they fill in a different order — so both
+of them start the opening, and measured on two browsers they both picked a caller at random and
+**both players were offered Heads or Tails**. The caller is therefore the first seat, which is a
+value both boards already hold, and a phase that already has its answer refuses a second one:
+whichever event lands first is the toss.
+That player is shown *Determining player order* with **Heads** and **Tails**, and the other
+player is shown the same dialog saying that the call is being made.
 
 - The call is logged as `Chooses HEADS` or `Chooses TAILS`, and the coin is flipped in the
   same act: `Coin flip: HEADS` or `Coin flip: TAILS`. **Neither line says `Player`**: the

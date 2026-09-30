@@ -7,20 +7,33 @@
       It is a lock before it is a dialog
       ---------------------------------------------------------------------------
       A player sits down and imports a deck. Until **both** have one there is no game to play, so
-      this is up from the moment a room has two players in it and it covers the whole window: the
-      board, the cards, the chat and the panel beside them. Everything behind it is out of reach,
-      which is the point - the cards on the table are not anybody's until the game has begun.
+      the board is covered from the moment a room has two players in it: the board, the cards, the
+      chat and the panel beside them. Everything behind is out of reach, which is the point - the
+      cards on the table are not anybody's until the game has begun.
+
+      **This is the second of the two things that cover the board, and the order they come in is
+      the whole of the layering.**
+
+         the Import Deck window   `z-index: 45`. It is up first, it is where the deck comes from, and
+                                  it says what it is for. **It is the thing that covers the board
+                                  while this player has no deck**
+         this dialog              `z-index: 46`. It comes up when the import window has gone
+
+      A dialog at 46 drawn while that window is at 45 covers *it* - every one of its buttons and its
+      textarea included - so a player who has not imported cannot import. That is what happened:
+      reported from play as *"player is still unable to import the deck"*, with the import window
+      visible underneath. So this does not draw until **this player's own deck has landed** (see
+      `imported`), which is also the order the two were asked for: the import window first, and the
+      setup message after it closes.
 
       **It is not a prompt and it is not a gate.** There is no button to press: the opening starts
       by itself the moment the second deck lands (see `startSetup` in the store, which the store
-      calls for itself), so this says what the room is waiting for and goes when it has it. It is
-      drawn *under* the Import Deck window, which is the one thing a player still needs while it is
-      up.
+      calls for itself), so this says what the room is waiting for and goes when it has it.
 
       It then carries the two questions of the toss, so there is one element for the whole opening
       and which of its states is on screen is the phase:
 
-         idle     a deck is still missing. Nothing to press; the game begins on its own
+         idle     this player has imported, the other has not. Nothing to press
          coin     the player the room picked calls Heads or Tails
          order    the coin has come up, and whoever called it right chooses first or second
 
@@ -30,9 +43,9 @@
       ---------------------------------------------------------------------------
       It cannot be dismissed, and that is deliberate
       ---------------------------------------------------------------------------
-      Neither a click beside it nor `Escape` is a call, a choice, or a deck imported. The Import
-      Deck window is the one other thing shaped like this, and for the same reason: a window that
-      could be waved away would leave the other player waiting on something that is never coming.
+      Neither a click beside it nor `Escape` is a call or a choice. The Import Deck window is the one
+      other thing shaped like this, and for the same reason: a window that could be waved away would
+      leave the other player waiting on something that is never coming.
 
       ---------------------------------------------------------------------------
       Why every `$:` here names a store
@@ -53,9 +66,29 @@
       gameSetup, callsCoin, choosesOrder, callCoin, chooseOrder, decksReady
    } from '$lib/stores/gameSetup.js'
    import { spectating, seatedPlayers, myId, room } from '$lib/stores/connection.js'
+   import { cards } from '$lib/stores/player.js'
    import { solo } from '$lib/stores/solo.js'
 
    $: state = $gameSetup
+
+   /*
+      **Whether this board has a deck**, which is the one thing that decides whether the lock may
+      cover the Import Deck window.
+
+      It is watched here rather than read from the store's `decksReady`, and the two are different
+      questions: `decksReady` is "both players have one", and this is "I have". The dialog needs its
+      own half, because the window it must not cover belongs to this player. `$cards` is the same
+      list the Import Deck window itself watches to decide that an import has landed - the card list
+      a player imported *is* the deck - so the two cannot disagree about what importing means.
+
+      It **latches**: a player who has imported keeps it, whatever happens to the list afterwards,
+      which is the same reading the import window takes of the same store. Read as `$cards` rather
+      than subscribed in `onMount`, for the reason every other `$:` in this file gives - and one
+      more: `onMount` does not run on the server, so a component that latched there would draw
+      nothing at all to `tools/render-check.mjs`, which is how the lock is checked.
+   */
+   let imported = false
+   $: if ($cards.length) imported = true
 
    /*
       The other player, for the wording a player reads while they wait.
@@ -71,15 +104,25 @@
    /*
       The states, each with the store it is about named in the expression.
 
-      `locked` is the board being held, and there are two reasons for it, which is why it is two
-      terms rather than one:
+      `waiting` is the board being held while a deck is missing - **this player's own deck**, and
+      `imported` is what says so. That is not the same question as `decksReady`, which is about
+      both boards, and the difference is the whole of this dialog's relationship with the Import
+      Deck window:
 
-         the import   a room with two players in it where **a deck is still missing**. The board is
-                      covered until both have imported, and the dialog says so
-         the toss     the coin and the order, once both decks are in. Both are decisions about the
-                      game rather than about a deck, and neither can be made while cards are being
-                      moved
-      
+         a deck missing here      the Import Deck window is up, at `z-index: 45`, covering the board
+                                  and saying the same thing in its own words. This dialog stays
+                                  **down**: it sits at 46, over that window, so drawing it here took
+                                  the import buttons' clicks and left the player unable to import at
+                                  all - reported from play, and the reason `open` asks `imported`
+                                  rather than `decksReady`
+         imported, waiting        the import window has closed on a successful import and the other
+                                  player has not finished. *Now* this dialog is the thing covering
+                                  the board, and it says what the room is waiting for
+         both decks in            the opening starts by itself (see `startSetup` in the store)
+
+      `tossing` covers the coin and the order. Both are decisions about the game rather than about a
+      deck, and neither can be made while cards are being moved.
+
       It is **not** up for `deal` or `live`: the moment the order is settled the boards deal and
       both players are free again - that is the point of the order being decided.
 
@@ -87,12 +130,12 @@
       never been anywhere, so a lock drawn on the phase alone covers the **main menu** - measured:
       *Setting up the game* over the logo and the Play Solo button, on a page with no table to lock.
 
-      `$decksReady` is read here rather than asked of a call, for the reason every `$:` in this file
-      gives: a store read inside a function is invisible to the compiler.
+      Every store is read here rather than asked of a call, for the reason the notes below give: a
+      store read inside a function is invisible to the compiler.
    */
    $: calling = callsCoin(state.phase)
    $: ordering = choosesOrder(state.phase)
-   $: importing = $gameSetup.phase === 'idle' && !$decksReady
+   $: importing = $gameSetup.phase === 'idle' && imported && !$decksReady
    $: tossing = $gameSetup.phase === 'coin' || $gameSetup.phase === 'order'
    $: open = Boolean($room) && !$solo && !$spectating && $myId !== null && (importing || tossing)
 
@@ -182,10 +225,17 @@
 
 <style>
    /*
-      z-index 46: over the board and everything it opens, and over the sidebar's own controls -
-      this is a lock rather than a message, so nothing behind it may be reached. It sits under
-      the Import Deck window (45 is *below* this one, and a deck window is not up at the same
-      time as a toss anyway), and under the room's own dialogs.
+      z-index 46: over the board and everything it opens, and over the sidebar's own controls - this
+      is a lock rather than a message, so nothing behind it may be reached.
+
+      **And it is over the Import Deck window, which is at 45** - deliberately, and the reason this
+      component does not draw until *this* player has a deck. Two things cover the board in a room
+      and only one of them can be the one a player is answering; the import window is first because
+      it is where the deck comes from, and this is second because it is about the other player. A
+      lock drawn over a window a player still has to click is a window that cannot be clicked, which
+      is what *"player is still unable to import the deck"* was. The other player's import window,
+      if it opens after this one is up, is the one thing that would be behind it - and that is their
+      own screen and the last thing either player needs to press, so it stays where it is.
    */
    .setup-backdrop {
       position: fixed;

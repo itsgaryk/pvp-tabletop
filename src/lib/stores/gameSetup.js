@@ -216,6 +216,19 @@ seatedPlayers.subscribe(readDecks)
 const RANK = { idle: 0, coin: 1, order: 2, deal: 3, live: 4 }
 
 /*
+   The steps that are **one answer each**, and the field that is the answer.
+
+   A step this names may be taken once for its phase and not again. That is what makes the two
+   boards' automatic start safe rather than a race: both of them *may* begin the opening - they can
+   each see the second deck land - and whichever event reaches a board first is the toss, with the
+   second refused. The same is true of the order, which is one decision.
+
+   It is not "a phase can only be written once": `setupReady` puts `deal` over and over, and the
+   ready list is a union because of it. What is refused is a second *answer*.
+*/
+const ONE_ANSWER = { coin: 'chooser', order: 'winner' }
+
+/*
    Taking the state the room has agreed.
 
    It **merges** rather than replaces: an event names what its own step decided - the caller,
@@ -240,6 +253,9 @@ function put (state, { clear = false } = {}) {
 
    const before = gameSetup.get()
    if (RANK[state.phase] < RANK[before.phase]) return
+
+   const answer = ONE_ANSWER[state.phase]
+   if (state.phase === before.phase && answer && before[answer] != null) return
 
    const chooser = state.chooser ?? before.chooser ?? null
    const winner = state.winner ?? before.winner ?? null
@@ -346,20 +362,24 @@ export function canStartSetup () {
    Beginning the opening: one player is picked to call the coin.
 
    **It runs by itself, on whichever board sees the second deck arrive**, which is the board that
-   imported it. Two boards can both think they are the one - each has its own deck and its own
-   mirror of the other's, and they fill in a different order - so what does the deciding is the
-   room: the event carries the phase, and the board that receives it takes `coin` from the event
-   rather than drawing a second caller. Two draws would disagree about half the time; the one that
-   loses is ignored by the rank guard in `put`, because `coin` is not behind `coin`.
+   imported it - and that board is not always only one. Each board has its own deck and its own
+   mirror of the other's, and they fill in a different order, so both preconditions can become true
+   at the same moment: measured on two browsers, both boards started the opening, both drew a caller,
+   and each then received the other's event - so **both players were offered Heads or Tails** and the
+   two were calling different coins.
 
-   It is called from a subscription rather than from a click (see `startOpening`), so it is
-   deliberately *not* exported as the thing a button does: there is no button.
+   So the draw is **not** `Math.random()`. A chooser has to be one answer that both boards agree on
+   the instant they make it, because either of them may make it first: it is the first seat, in the
+   order the relay lists the seats, which is a value both already hold. Two boards drawing the same
+   value cannot disagree about it, and the phase guard in `put` refuses a second step for a phase
+   that already has one - so whichever event lands first is the toss.
 */
 function startSetup () {
    if (!canStartSetup()) return false
 
+   /* the *first* seat, which is the one the relay lists first and both boards can see */
    const players = seats().map((player) => player.id)
-   const chooser = players[Math.floor(Math.random() * players.length)]
+   const chooser = players[0]
 
    const agreed = { phase: 'coin', chooser }
    put(agreed)
