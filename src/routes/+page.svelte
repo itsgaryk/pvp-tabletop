@@ -58,7 +58,8 @@
    {#if !$spectating}
       <!--
          The player's own deck. In a room this window opens by itself and stays up
-         until a deck has imported; in solo it is the button *Import Deck 1*.
+         until a deck has imported, so a room draws no button for it either; in solo
+         it is the button *Import Deck 1*.
       -->
       <DeckInput />
 

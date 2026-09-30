@@ -335,6 +335,14 @@ check that reads the board *under* the window still passes, because `clickText` 
 screen and not in the DOM, so a passing check is not evidence that a player could reach
 the button.
 
+**A room has no button to ask for its deck window a second time.** Solo keeps *Import
+Deck 1* / *Import Deck 2* in the corner of the board, but a room draws neither: the
+window is the app's to open there, and after an import it comes back only when the
+room says so — a new game clears the board and puts it up for both players at once.
+So a check that wants a room's window mid-game has to wait for that handshake
+(`tools/browser-check.mjs`, the `newgame` section) instead of clicking for it; the
+window that a freshly created room opens is the only one a check can count on.
+
 **A deck request that fails is answered, not swallowed.** The import used to end at
 `console.error` with the callback never called at all, and nothing on screen can tell
 that from a request still in flight: the window sat on its spinner for ever, and with a

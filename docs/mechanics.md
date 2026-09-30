@@ -159,6 +159,8 @@ Each player imports a deck through the **Import Deck** window: a text box for th
 list, *Import Deck*, and *Import Random Deck* directly under it. In solo the window is
 asked for by a button in the board's corner — **Import Deck 1** for the player's own
 half, **Import Deck 2** for the opponent's, because both halves are one person's there.
+**A room has no such button**: there the window is the app's to open rather than the
+player's to ask for.
 
 In a room the window opens *by itself*, the moment the board appears: creating or
 joining a room puts it up in the middle of the board and leaves no way out until a
@@ -166,8 +168,11 @@ deck has imported cleanly. It has no close button while that is true, and neithe
 backdrop nor `Escape` dismisses it — a player who could close it would be sitting at
 an empty board with nothing to import into. An import that reports nothing closes the
 window, and the board answers **Deck successfully imported** in the middle of itself,
-fading after two seconds. From then on the window is an ordinary one: the **Import
-Deck** button opens it again, and it closes like any other window.
+fading after two seconds. From then on the window is an ordinary one and closes like
+any other — and it is asked for again by the *room* rather than by the player: a new
+game clears the board and puts the window back up for both players at once
+([A room's life](rooms.md)), which is why the corner of a room's board carries no
+*Import Deck* button at all.
 
 The text in the window is sent verbatim to the Limitless TCG API and the cards that
 come back are the deck; the app parses nothing itself. Two requests are possible:
