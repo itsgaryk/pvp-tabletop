@@ -1218,15 +1218,25 @@ check('and a card attached under their Pokemon is pinged as its own card',
 /*
    **The room's opening dialog, in the states it has.** It is a *lock* before it is a dialog: it is
    up from the moment a room has two players in it, before either has pressed *Game Setup*, and it
-   carries the toss and the choice after that. So there is no "draws nothing" state while a room is
-   open - what is asserted instead is the two halves of the lock, and that the buttons belong to the
-   player they are about.
+   carries the toss and the choice after that. The one state it is *not* drawn in is outside a room
+   at all, and that case has its own check below - it is the one it was wrong in.
 
    The phases are put into the store directly, which is the state the relay's own events leave
    behind. `seatedPlayers` and `myId` are set the same way, because *who* the dialog is talking to
    is the whole of what it branches on - and without a seat nobody is the caller, so every state
    draws the waiting half of the dialog and the buttons are never reached.
 */
+const rendersNothing = (label, Component, { props = {}, context = undefined } = {}) => {
+   try {
+      const out = Component.render(props, { context })
+      const html = out?.body ?? out?.html ?? ''
+      check(label, html.trim() === '', `${html.length} chars`)
+      return html
+   } catch (err) {
+      check(label, false, `${err.name}: ${err.message}`)
+      return null
+   }
+}
 const setupState = (over) => ({
    phase: 'coin',
    chooser: null,
@@ -1244,6 +1254,18 @@ const setupState = (over) => ({
 /* the two seats a room has, and this board's player in the first of them */
 mod.seatedPlayers.set([ { id: 'me', name: 'Alice' }, { id: 'them', name: 'Bob' } ])
 mod.myId.set('me')
+
+/*
+   **And it draws nothing outside a room**, which is the state it was wrong in: the phase is `idle`
+   on a board that has never been anywhere, so a lock drawn on the phase alone covered the **main
+   menu** - reported as *"Seeing Setting up the game when I load into the main menu"*, over the logo
+   and the Play Solo button. The seats are still set here on purpose: leaving a room clears them
+   *and* the room, so a case that cleared both would pass with the bug still in place.
+*/
+mod.room.set(null)
+rendersNothing('the setup dialog draws nothing on the main menu', mod.GameSetupDialog)
+
+mod.room.set('ABCDEF')
 
 /* the lock, before anything has been decided: both are asked to press, and neither has */
 mod.gameSetup.set(setupState({ phase: 'idle' }))

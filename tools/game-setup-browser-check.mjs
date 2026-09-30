@@ -95,7 +95,7 @@ const board = (page) => page.evaluate(`(() => {
    return {
       dialog: box ? box.innerText.replace(/\\s+/g, ' ').trim() : null,
       buttons: box ? [...box.querySelectorAll('button')].map((b) => b.textContent.trim()) : [],
-      backdrop: document.querySelector('.setup-backdrop'),
+      backdrop: Boolean(document.querySelector('.setup-backdrop')),
       setupButton: setupButton
          ? { present: true, disabled: setupButton.disabled, label: setupButton.textContent.trim() }
          : { present: false },
@@ -173,7 +173,7 @@ check('and both are told what to do',
    /Both players need to press Game Setup/.test(locked.alice.dialog) &&
    /Both players need to press Game Setup/.test(locked.bob.dialog))
 check('and the lock is the whole window, not the board',
-   locked.alice.backdrop !== null, 'a click meant for a card lands on the backdrop')
+   locked.alice.backdrop === true, 'a click meant for a card lands on the backdrop')
 
 /*
    Both decks, and the button comes alive on **both** boards. The second half is the assertion
@@ -272,8 +272,21 @@ await clickButton(chooser, '.setup-dialog button', 'First')
 
 /* ----------------------------------------------------------------- the deal --- */
 
-await wait('the deal', async () => (await board(alice)).dialog === null)
-await sleep(1800)
+/*
+   **Both boards, not one.** Every wait from here on asks the two of them: the deal reaches each
+   board on its own poll, so a check that waited for Alice's dialog to close and then read Bob's
+   board was reading it mid-flight - and failed about one run in three, on *"both boards have dealt
+   seven cards and six prizes - alice=7/6 bob=0/0"*. That is the shape of a flaky check rather than
+   a fault: the same run passed on the next try.
+*/
+const settled = (both) => async () => {
+   const [ a, b ] = [ await board(alice), await board(bob) ]
+   return both(a, b) ? { a, b } : null
+}
+
+await wait('both boards to deal', settled((a, b) =>
+   a.dialog === null && b.dialog === null && a.hand === 7 && b.hand === 7))
+await sleep(600)
 
 const dealt = { alice: await board(alice), bob: await board(bob) }
 check('the dialog is gone, and the Game Setup button with it',
@@ -355,8 +368,9 @@ check('and the game has not started on one press',
 /* ----------------------------------------------------------------- the start --- */
 
 await clickButton(bob, '.setup-row button', 'Ready')
-await wait('the game to start', async () => (await board(alice)).row.length === 0)
-await sleep(1600)
+await wait('the game to start on both boards', settled((a, b) =>
+   a.row.length === 0 && b.row.length === 0 && a.veil === 0 && b.veil === 0))
+await sleep(800)
 
 const started = { alice: await board(alice), bob: await board(bob) }
 check('the row is gone on both boards',
@@ -376,7 +390,22 @@ check('Game started is written exactly once',
    started.alice.log.filter((l) => /Game started/.test(l)).length === 1,
    JSON.stringify(started.alice.log))
 
-const clock = await alice.evaluate(`(document.querySelector('.timer-row .clock') || {}).innerText || null`)
+/*
+   The clock, read until it has actually ticked: a clock that has *just* been started still shows
+   the fifty minutes it was set to for the first second, so a check that read it once failed on
+   *"clock reads 50:00"* about one run in three. What is asserted is that it is counting down,
+   which is the thing the start is for.
+*/
+const clockReads = async () => {
+   const deadline = Date.now() + 15000
+   for (;;) {
+      const now = await alice.evaluate(`(document.querySelector('.timer-row .clock') || {}).innerText || null`)
+      if (/4[0-9]:/.test(now || '')) return now
+      if (Date.now() > deadline) return now
+      await sleep(500)
+   }
+}
+const clock = await clockReads()
 check('and the clock is running', /4[0-9]:/.test(clock || ''), `clock reads ${clock}`)
 
 /* -------------------------------------------------- the row the game runs on --- */
@@ -441,6 +470,18 @@ const left = await alice.evaluate(`document.body.innerText.includes('Play Solo')
 check('the player is back at the main menu', left === true)
 
 /*
+   **And the menu is the menu.** The lock draws on a phase of `idle`, and a board that is *at the
+   menu* is in exactly that phase - so a lock drawn on the phase alone covers the lobby: reported
+   as *"Seeing Setting up the game when I load into the main menu"*, over the logo and the Play Solo
+   button. What is asserted is that nothing of the opening is on screen once the room is gone.
+*/
+const atMenu = await board(alice)
+check('and the opening is not drawn over the menu',
+   atMenu.dialog === null && atMenu.backdrop === false &&
+   (await alice.evaluate(`document.body.innerText.includes('Setting up the game')`)) === false,
+   `dialog=${JSON.stringify(atMenu.dialog)}`)
+
+/*
    And the other one, who was *in* that room when it closed: leaving ends the game for whoever is
    left, so this board is sent back to the menu too - which is the state a second room is made
    from, and the one the report was about.
@@ -495,8 +536,9 @@ const picker2 = order2.alice.buttons.includes('First') ? alice : bob
 console.log('  new room order buttons:',
    JSON.stringify([ order2.alice.buttons, order2.bob.buttons ]))
 await clickButton(picker2, '.setup-dialog button', 'First')
-await wait('the deal in the new room', async () => (await board(alice)).row.length === 2)
-await sleep(1800)
+await wait('the new room to deal on both boards', settled((a, b) =>
+   a.row.length === 2 && b.row.length === 2 && a.hand === 7 && b.hand === 7))
+await sleep(800)
 
 const newDeal = await board(alice)
 check('and the new room deals: seven cards and six prizes',

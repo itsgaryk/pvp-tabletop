@@ -47,7 +47,7 @@
    import {
       gameSetup, callsCoin, choosesOrder, callCoin, chooseOrder, hasPressed
    } from '$lib/stores/gameSetup.js'
-   import { spectating, seatedPlayers, myId } from '$lib/stores/connection.js'
+   import { spectating, seatedPlayers, myId, room } from '$lib/stores/connection.js'
    import { solo } from '$lib/stores/solo.js'
 
    $: state = $gameSetup
@@ -64,18 +64,26 @@
    $: other = $seatedPlayers.find((player) => player?.id !== $myId)?.name || 'The other player'
 
    /*
-      The three states, each with the store it is about named in the expression.
+      The states, each with the store it is about named in the expression.
 
-      `locked` is the board being held: a room with two players in it whose game has not been
-      dealt. `pressed` is this player's own half of the agreement, read off the list rather than
-      asked of `hasPressed()` - the store read inside that call is invisible to the compiler, and
-      the whole opening is built on not making that mistake twice.
+      `locked` is the board being held: a room whose game has not been dealt, which is the phase
+      being `idle`, `coin` or `order`. `isPressed` is this player's own half of the agreement, read
+      off the list rather than asked of `hasPressed()` - the store read inside that call is
+      invisible to the compiler, and the whole opening is built on not making that mistake twice.
+
+      **`locked` is not the whole of `open`, and that is load-bearing.** The phase is `idle` on a
+      board that has never been in a room at all, so a lock drawn on the phase alone covers the
+      **main menu** - measured: *Setting up the game* over the logo and the Play Solo button, on a
+      page that has no table to lock. So `$room` is asked as well, and it is read here rather than
+      handed down as `onMenu`: this component is a sibling of the page's menu flag, and a dialog
+      that could only be correct when the page remembered to pass something is a dialog that is
+      wrong again the next time the page grows a state.
    */
    $: calling = callsCoin(state.phase)
    $: ordering = choosesOrder(state.phase)
    $: isPressed = state.pressed.includes($myId)
    $: locked = ($gameSetup.phase === 'idle' || $gameSetup.phase === 'coin' || $gameSetup.phase === 'order')
-   $: open = !$solo && !$spectating && locked
+   $: open = Boolean($room) && !$solo && !$spectating && locked
 
    /* the face the coin came up, in the words the log used for it */
    $: face = state.result === 'heads' ? 'Heads' : 'Tails'

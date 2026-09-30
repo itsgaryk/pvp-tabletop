@@ -1721,3 +1721,28 @@ in a file that reads perfectly and that a source-level check passes. It cost a r
 find, and the guard against it is `tools/game-setup-rule-check.mjs`, which **imports the store**
 rather than reading it: the only way to see this class of fault is to evaluate the module.
 
+**A dialog drawn on "the phase" is drawn everywhere that phase is the default.** The room's
+opening added a lock so that nothing on the table can be touched until both players have agreed to
+begin, and the lock covers the whole window while the phase is `idle`, `coin` or `order`. It was
+written as `open = !$solo && !$spectating && locked` — and `idle` is the phase of a board that has
+*never been anywhere*: reported as *"Seeing Setting up the game when I load into the main menu"*,
+with the dialog over the logo and the Play Solo button, on a page that has no table to lock. The
+miss is that a phase name is a state of **one flow**, and a screen that does not have that flow is
+not in some fourth phase — it is simply not this component's business. So `$room` is asked as well,
+and asked **in the component** rather than handed down as the page's `onMenu`: a dialog that is only
+correct when the page remembers to pass something is wrong again the next time the page grows a
+state. Both halves are checked — `tools/render-check.mjs` renders it with no room set (and *with the
+seats still set*, since leaving a room clears both and a case that cleared both would pass with the
+bug in place), and `tools/game-setup-browser-check.mjs` asks the menu after a real Leave Room.
+
+**A check that waits on one board and reads the other is flaky, and reads like a fault.** The
+browser check for the opening drove two boards and waited for *Alice's* dialog to close before
+reading *Bob's* dealt cards — and each board takes the deal from its own poll, so about one run in
+three reported *"both boards have dealt seven cards and six prizes - alice=7/6 bob=0/0"*. The
+numbers in that message are the tell: one board is whole and the other is empty, which is a
+mid-flight read rather than a broken deal, and the same run passed on the next try. Every wait in
+that tool now asks **both** boards (`settled`) before anything is asserted. The clock had the same
+shape — a timer that has just been started still reads the fifty minutes it was set to, so reading
+it once reported *"clock reads 50:00"* — and it is now read until it has ticked. The general rule for
+a two-board check: **a wait has to name every board the next assertion reads.**
+

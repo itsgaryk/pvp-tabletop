@@ -438,7 +438,17 @@ check('and it tells the player who has pressed that they are waiting',
    /isPressed = state\.pressed\.includes\(\$myId\)/.test(dialog),
    'the press is read off the list, because the store read inside `hasPressed()` is invisible to the compiler')
 check('and the lock is on the store value rather than a call',
-   /\$: open = !\$solo && !\$spectating && locked/.test(dialog))
+   /\$: open = .*locked/.test(dialog))
+/*
+   **And it is not drawn outside a room.** The phase is `idle` on a board that has never been
+   anywhere, so a lock drawn on the phase alone covers the **main menu** - reported as *"Seeing
+   Setting up the game when I load into the main menu"*, over the logo and the Play Solo button.
+   `$room` is asked as well, and it is read in this component rather than handed down as the page's
+   `onMenu`, so a page that forgets to pass it cannot bring the fault back.
+*/
+check('and it is never drawn outside a room',
+   /\$: open = Boolean\(\$room\)/.test(dialog),
+   'the main menu is phase idle with no room, and the lock was covering it')
 check('and covers the window rather than the board',
    /position: fixed;\s*inset: 0;/.test(dialog), 'the chat and the row are behind it too')
 check('and offers Heads and Tails to the player who was picked',
