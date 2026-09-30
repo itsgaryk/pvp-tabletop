@@ -50,6 +50,12 @@
       the cards of theirs that are not in a slot, and the same rule picks it: solo is the
       player's own menu, a room is the ping.
 
+      The table is handed over with the card, which is what the menu asks about a card of
+      theirs: a hand is the one zone whose menu carries a second entry (*Reveal Hand*), and
+      this is not one - so the pile answers for the table as well as for the table's own
+      cards. The `true` beside it is the flag the rest of the board passes too, and it is
+      what the heading is drawn from: a card played to the table is public.
+
       The selection is left alone, for the reason written out in `opponent/Card.svelte`:
       a card of theirs picked up in this board's own selection is a card the board's own
       keys then act on, and a ping acts on nothing.
@@ -58,7 +64,7 @@
       if (!$solo) {
          e.preventDefault()
          e.stopPropagation()
-         openOppCardPingMenu(e.clientX, e.clientY, card)
+         openOppCardPingMenu(e.clientX, e.clientY, card, true, table)
          return
       }
 

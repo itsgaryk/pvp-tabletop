@@ -50,6 +50,13 @@
       is told and what the log says. It is deliberately not a move on this board and not a
       change to how the hand is drawn either: nothing in the hand changes, and the zone goes
       on showing card backs - the window is where the cards are.
+
+      **This is the zone's route to the entry, and each card of the hand is the other one.**
+      A right click on a card in this zone opens `OppCardPingMenu`, which offers the same
+      *Reveal Hand* for the same reason - the window shows the whole of the hand, so the
+      card it was asked from makes no difference - and takes it through this very function's
+      store call rather than a second copy of it. Which is why the two are asserted together
+      in `tools/reveal-check.mjs`: one gesture, two places to ask for it.
    */
    function revealTheirHand () {
       revealHand()

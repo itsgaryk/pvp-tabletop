@@ -188,6 +188,9 @@ everything that can go wrong with them needs *two* boards to see:
   happened (the log line) and never shown *what* — and the window's card count has to match
   the hand badge, because the failure mode of resolving a hand batch against a deck is an
   empty window that still renders
+- and its entry is offered twice over — on the hand zone **and on each card in that hand** —
+  so both routes are taken and both have to open the same window: one gesture with two places
+  to ask for it, which is a new shape here and the one a check could half-cover
 - a card acted on from a reveal lands on its **owner's** board: the acting player's own
   discard must not move, and their mirror of the owner's discard must
 - and a card put **into play** on the owner's board stays the owner's to move: the card is
