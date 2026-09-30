@@ -23,6 +23,7 @@
    import { room } from '$lib/stores/connection.js'
    import { showMessage } from '$lib/stores/message.js'
    import { newGameCount } from '$lib/stores/newGame.js'
+   import RoomCode from '$lib/components/RoomCode.svelte'
    import Spinner from './Spinner.svelte'
 
    /*
@@ -203,6 +204,25 @@
 
          <p class="import-title">{label}</p>
 
+         <!--
+            **The room's code, while the deck is being imported.**
+
+            This window is `position: fixed; inset: 0` at `z-index: 45`, so it covers the panel
+            beside the board - which is where the code and its copy button have always been. A room
+            opens this window by itself and will not let it be dismissed until a deck lands, so
+            without this there is a stretch of a game's setup in which the code cannot be copied at
+            all. Reported from play: *"during game setup the game room code cannot be copied"*.
+
+            It follows the title for the same reason: a player pasting a list and a player reading
+            the code out to somebody are both looking at the top of this window.
+
+            It draws nothing in solo, which is the component's own rule rather than a condition
+            here (see components/RoomCode.svelte).
+         -->
+         <div class="import-room">
+            <RoomCode label="Room code" />
+         </div>
+
          <textarea
             class="import-text"
             placeholder="Paste a decklist here"
@@ -312,6 +332,16 @@
 
    .import-title {
       @apply text-lg font-bold text-center;
+   }
+
+   /*
+      The room's code, above a hairline that keeps it out of the way of the deck. The code belongs
+      to the room rather than to this window, which is about a deck - and the rule is what says so,
+      rather than another line of prose at the top of the window a player is pasting into.
+   */
+   .import-room {
+      @apply w-full pb-2;
+      border-bottom: 1px solid var(--bg-color-three);
    }
 
    /*

@@ -30,10 +30,11 @@
 
       the gate      greyed out until both decks are in, then enabled on both boards
       the toss      exactly one player is offered the call, and the other is told who is calling
-      the order     exactly one player chooses first or second
-      the deal      the dialog goes, the row arrives, both hands and six prizes each, veiled
+      the order     exactly one player is chosen to choose first or second
+      the deal      the dialog goes, the prompt arrives in the middle of the window, both hands
+                    and six prizes each, veiled
       ready         the press is visible on the board that made it, and does not start the game
-      the start     both ready: row gone, veil off, turn 1, one *Game started*, clock running
+      the start     both ready: prompt gone, veil off, turn 1, one *Game started*, clock running
       mulligan      the two lines, the count, and a fresh hand that is still seven
       a new game    the second game in a room deals and starts, which is what the guards forgot
 */
@@ -64,8 +65,8 @@ const wait = async (label, fn, { timeout = 30000, poll = 500 } = {}) => {
 }
 
 /*
-   One board, as a person sees it: what the setup dialog says and offers, what the row under the
-   turn says and offers, the turn number, how many veils are drawn, and the game-log lines that
+   One board, as a person sees it: what the setup dialog says and offers, what the opening-hand
+   prompt says and offers, the turn number, how many veils are drawn, and the game-log lines that
    belong to this feature.
 
    Everything here is read off the DOM, and deliberately: a check that read the stores would have
@@ -83,6 +84,49 @@ const board = (page) => page.evaluate(`(() => {
       label: b.textContent.trim(), disabled: b.disabled, glow: b.classList.contains('glow')
    }))
    /*
+      The opening-hand prompt, and where it actually is.
+
+      "In the middle of the screen" is the whole of what was asked for, and it is not something a
+      source check can answer: the layer is positioned by the CSS, so what is read here is the
+      painted box of the card against the window. pointerEvents is the other half - the prompt is
+      over a hand the player has to read, so it must not be taking the board's clicks.
+
+      Measured as a distance from the centre rather than as a rect, so the assertion is "centred"
+      and not "at these coordinates on a 1277x821 viewport".
+
+      No backticks anywhere in this string - it is a template literal, and the first one would end
+      it. That is what the comment in the component's own file is for; this is one line of it.
+   */
+   const promptLayer = document.querySelector('.setup-prompt')
+   const promptCard = document.querySelector('.setup-card')
+   const prompt = promptCard ? (() => {
+      const r = promptCard.getBoundingClientRect()
+      return {
+         up: true,
+         offCentreX: Math.round(Math.abs((r.left + r.width / 2) - window.innerWidth / 2)),
+         offCentreY: Math.round(Math.abs((r.top + r.height / 2) - window.innerHeight / 2)),
+         pointerEvents: promptLayer ? getComputedStyle(promptLayer).pointerEvents : null
+      }
+   })() : { up: false, offCentreX: null, offCentreY: null, pointerEvents: null }
+   /*
+      The room's code, as the window that is up carries it - the panel's own copy is behind that
+      window, so the search is scoped to the dialog rather than to the document. Asking the whole
+      document would find the panel's copy button first (the sidebar is later in the DOM than the
+      Import Deck window) and report a button nobody can reach as if it were the one on screen.
+
+      hit is the real question and not whether the code is drawn: the reported fault was that the
+      code **could not be copied** during setup, so what is asked is whether the element under the
+      middle of the copy button is the button.
+   */
+   const codeOwner = document.querySelector('.setup-dialog') || document.querySelector('.import-window')
+   const codeButton = codeOwner ? codeOwner.querySelector('.room-code-copy') : null
+   const code = codeButton ? (() => {
+      const r = codeButton.getBoundingClientRect()
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+      const value = codeOwner.querySelector('.room-code-value')
+      return { value: value ? value.textContent.trim() : null, hit: codeButton.contains(top) || top === codeButton }
+   })() : { value: null, hit: false }
+   /*
       This player's own prize pile, and it needs saying which one that is: the board draws *two*
       piles wearing the same class - the near half's and the far half's - and which one comes first
       in the document is not fixed, so a plain querySelector answered with the opponent's as often
@@ -92,14 +136,25 @@ const board = (page) => page.evaluate(`(() => {
    const nearPrizes = [...document.querySelectorAll('.gameboard > .prizes')]
       .find((el) => getComputedStyle(el).gridArea === 'prizes')
 
+   /*
+      The labelled buttons only. The room code's copy button is an icon with an aria-label and no
+      text, and counting it among the things a dialog "offers" is what would make "this window asks
+      for nothing" fail on a window that asks for nothing - it is read separately, as code and as
+      iconButtons, which is where it can be asserted properly.
+   */
+   const allButtons = box ? [ ...box.querySelectorAll('button') ] : []
+
    return {
       dialog: box ? box.innerText.replace(/\\s+/g, ' ').trim() : null,
-      buttons: box ? [...box.querySelectorAll('button')].map((b) => b.textContent.trim()) : [],
+      buttons: allButtons.filter((b) => b.textContent.trim()).map((b) => b.textContent.trim()),
+      iconButtons: allButtons.filter((b) => !b.textContent.trim()).map((b) => b.getAttribute('aria-label')),
+      code,
       backdrop: Boolean(document.querySelector('.setup-backdrop')),
       setupButton: setupButton
          ? { present: true, disabled: setupButton.disabled, label: setupButton.textContent.trim() }
          : { present: false },
       row,
+      prompt,
       /* the row the game itself runs on, once it has begun */
       liveRow: [...document.querySelectorAll('.game-actions button')].map((b) => b.textContent.trim()),
       turn: (document.querySelector('.turn-row .count') || {}).innerText || null,
@@ -210,6 +265,19 @@ const topOfImport = await alice.evaluate(`(() => {
 check('and nothing is drawn over the import buttons',
    topOfImport.topIsTheButton === true, JSON.stringify(topOfImport))
 
+/*
+   **And the room's code is on this window, and its copy button can actually be clicked.**
+
+   This is the reported fault: *"during game setup the game room code cannot be copied"*. The code
+   has always been in the panel beside the board, and this window is `position: fixed; inset: 0`,
+   so for the whole of the setup it is behind a backdrop - and this window is the first of the two
+   that does it. The assertion is the hit test rather than the presence, because a code that is
+   drawn but under something reads exactly like a code that is clickable.
+*/
+check('the room code is on the import window, and its copy button is the thing under the pointer',
+   importing.code.value === room && importing.code.hit === true,
+   `code=${JSON.stringify(importing.code)} room=${room}`)
+
 /* and the deck actually goes in, which is the thing the player could not do */
 await alice.importDeck()
 await sleep(2000)
@@ -225,6 +293,14 @@ check('and the setup dialog is up now, for the player who has imported',
 check('and it says nothing about pressing anything',
    afterImport.buttons.length === 0 && !/Game Setup/.test(afterImport.dialog || ''),
    'the opening is not gated on a press')
+/*
+   The one button this window does carry is the room code's copy, which is not about the opening -
+   and it is the second window to cover the panel, so the same question as above is asked of it.
+*/
+check('and the only thing on it is the room code, with its copy button reachable',
+   afterImport.iconButtons.join() === 'Copy room code' &&
+   afterImport.code.value === room && afterImport.code.hit === true,
+   `iconButtons=${JSON.stringify(afterImport.iconButtons)} code=${JSON.stringify(afterImport.code)}`)
 check('and the lock is the whole window, not the board',
    afterImport.backdrop === true, 'a click meant for a card lands on the backdrop')
 check('and no Game Setup button is drawn at all',
@@ -262,6 +338,15 @@ check('and the other is told who is calling, with nothing to press',
 check('and the board is locked while the toss is open',
    toss.alice.backdrop === true && toss.bob.backdrop === true,
    'the cards are not anybody\'s until the order is settled')
+/*
+   And the code travels with it: the setup dialog is the second window to cover the panel, and the
+   toss is the longest wait in the opening - the one where a player is most likely to be telling
+   somebody else the code.
+*/
+check('and the room code is on the toss dialog, with its copy button reachable',
+   toss.alice.code.value === room && toss.alice.code.hit === true &&
+   toss.bob.code.value === room && toss.bob.code.hit === true,
+   `alice=${JSON.stringify(toss.alice.code)} bob=${JSON.stringify(toss.bob.code)}`)
 
 const caller = aliceCalls ? alice : bob
 const waiter = aliceCalls ? bob : alice
@@ -322,10 +407,24 @@ check('the dialog is gone, and the board is the players\' own again',
    'the order being settled is what unlocks it')
 check('and no Game Setup button is drawn at any point',
    dealt.alice.setupButton.present === false && dealt.bob.setupButton.present === false)
-check('the row under the turn is Ready and Mulligan, neither disabled',
+/*
+   **The two buttons are in a prompt in the middle of the window**, rather than the last row of the
+   sidebar - which is where they were, at the opposite end of the screen from the seven cards they
+   are about. Both halves are asked: where the card is painted, and that the layer over the board
+   is not taking the clicks the player needs to read that hand with.
+*/
+check('the opening hand is asked for in a prompt, and it is the middle of the window',
+   dealt.alice.prompt.up === true && dealt.alice.prompt.offCentreX <= 2 && dealt.alice.prompt.offCentreY <= 2,
+   JSON.stringify(dealt.alice.prompt))
+check('and the prompt is not a lock: the board behind it stays reachable',
+   dealt.alice.prompt.pointerEvents === 'none',
+   `pointer-events=${dealt.alice.prompt.pointerEvents} - a prompt that answered everywhere would hide the hand it is about`)
+check('the prompt offers Ready and Mulligan, neither disabled',
    dealt.alice.row.length === 2 && dealt.alice.row[0].label === 'Ready' &&
    dealt.alice.row[0].disabled === false && dealt.alice.row[1].label === 'Mulligan',
    JSON.stringify(dealt.alice.row))
+check('and it is up on both boards',
+   dealt.bob.prompt.up === true && dealt.bob.row.length === 2, JSON.stringify(dealt.bob.row))
 
 /*
    **The mulligan is green and Ready is not.** Read off the painted colour rather than the class,
@@ -405,13 +504,16 @@ await sleep(800)
 
 const started = { alice: await board(alice), bob: await board(bob) }
 /*
-   **Ready and Mulligan stay for the whole game.** They are the room's own controls rather than the
-   opening's: a hand drawn mid-game can be mulliganed, and a player who has said they are ready
-   keeps their tick. What the start changes is the veil, the turn, the clock - and that Flip Coin
-   and End Turn join them.
+   **The prompt goes when the game does**, which is the one moment both of its buttons stop meaning
+   anything: the hand is decided, both players have said so, and *Ready* has already done its job -
+   both presses are *why* the game started. What is left under the log is the game's own row.
+
+   Asserted on both boards, because the prompt is driven by the phase and the two of them reach
+   `live` from different events.
 */
-check('Ready and Mulligan are still there on both boards',
-   started.alice.row.length === 2 && started.bob.row.length === 2,
+check('the opening-hand prompt is gone on both boards once both are ready',
+   started.alice.prompt.up === false && started.bob.prompt.up === false &&
+   started.alice.row.length === 0 && started.bob.row.length === 0,
    JSON.stringify([ started.alice.row, started.bob.row ]))
 check('and the veil is off both boards',
    started.alice.veil === 0 && started.bob.veil === 0,

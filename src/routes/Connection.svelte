@@ -3,9 +3,8 @@
    import Chat from './Chat.svelte'
    import Spinner from './Spinner.svelte'
    import GameActions from '$lib/play/GameActions.svelte'
-   import Icon from '$lib/components/Icon.svelte'
+   import RoomCode from '$lib/components/RoomCode.svelte'
    import RoomIdPrompt from '$lib/play/dialogs/RoomIdPrompt.svelte'
-   import { check, copy } from '$lib/icons/paths.js'
    import { PVP_SERVER } from '$lib/util/env.js'
    import {
       connected, room, spectating, spectators, chat,
@@ -22,10 +21,6 @@
       prompt is opened by whichever of them was pressed.
    */
    let prompt
-
-   /* the room code's copy button shows a tick for a moment after a copy */
-   let copied = false
-   let copiedTimer = null
 
    /*
       Is the game relay usable? Checked once when the window opens, because it is
@@ -184,19 +179,6 @@
       return why(`Could not spectate ${roomId.toUpperCase()}.`)
    }
 
-   /*
-      Copy the room code from beside the code itself, the way the harness copies
-      a prompt: the button turns into a tick for a moment so the copy is visible
-      without a label.
-   */
-   function copyRoomCode () {
-      navigator.clipboard.writeText($room).then(() => {
-         copied = true
-         clearTimeout(copiedTimer)
-         copiedTimer = setTimeout(() => { copied = false }, 2000)
-      })
-   }
-
    function leave () {
       if ($solo) {
          exitSolo()
@@ -294,17 +276,13 @@
             {#if $solo}
                <div class="text-sm text-[var(--text-color-two)]">Solo - both sides are yours</div>
             {:else}
-               <div class="flex items-center justify-center gap-1 text-sm text-[var(--text-color-two)]">
-                  <span>{$room}</span>
-                  <button
-                     class="rounded p-0.5 hover:bg-[var(--bg-color-two)]"
-                     title={copied ? 'Copied' : 'Copy room code'}
-                     aria-label="Copy room code"
-                     on:click={copyRoomCode}
-                  >
-                     <Icon path={copied ? check : copy} class="text-[8px]" />
-                  </button>
-               </div>
+               <!--
+                  The code and its copy button are a component of their own, because the two
+                  windows the opening puts over the board carry the same one: while the game is
+                  being set up this header is behind a backdrop, and the code is the thing worth
+                  having then (see components/RoomCode.svelte).
+               -->
+               <RoomCode />
             {/if}
          </div>
 
@@ -448,9 +426,19 @@
       @apply flex items-center gap-2 p-2 mb-2 rounded-md text-sm bg-[var(--bg-color-two)];
    }
 
-   /* solo's log window, styled like the chat window's list */
+   /*
+      Solo's log window, styled like the chat window's list.
+
+      **Its own bottom margin is gone, and that is the spacing rule rather than a tidy-up.** Every
+      row under this column - the game actions, the turn, the clock - is one `mt-1` away from what
+      is above it (see `.game-actions` in GameActions.svelte), so the room's log and its first row
+      of buttons are the same distance apart as that row and the turn row. This window carried an
+      `mb-2` of its own as well, which put solo's log twice as far from its buttons as the room's
+      is - and doubled the gap on top of the row's own margin. The room's `Chat` has no bottom
+      margin for the same reason.
+   */
    .solo-log {
-      @apply flex-1 p-2 mb-2 border border-dark-50 rounded-md overflow-y-scroll bg-[var(--input-color)];
+      @apply flex-1 p-2 border border-dark-50 rounded-md overflow-y-scroll bg-[var(--input-color)];
       max-height: 40vh;
    }
 
