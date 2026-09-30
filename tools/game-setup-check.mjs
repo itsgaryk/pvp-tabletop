@@ -89,7 +89,8 @@ check('and it does not relay them to one member only',
 const canStart = bodyOf(setup, 'canStartSetup')
 check('the button asks to be in a room with both seats taken', canStart.includes('seats().length >= 2'))
 check('and asks for a deck on both boards', canStart.includes('decksReady.get()'))
-check('and asks that no setup is already under way', canStart.includes("phase === 'idle'"))
+check('and asks that the opening has not begun', /at === 'idle' \|\| at === 'coin'/.test(canStart),
+   'idle is the first press and coin is the second, which arrives before that board has the toss')
 
 /*
    **And the button is *bound* to that rule reactively, which is not the same claim.** Svelte 4
@@ -114,13 +115,20 @@ check('and that value names a store, or it would be frozen in the same way',
 check('and the Ready button\'s own state is bound the same way',
    /^\s*\$: waiting = /m.test(actions) && /\$gameSetup\.ready/.test(actions),
    'and it reads the ready list itself, because the store read inside `isReady()` is invisible to the compiler')
-check('and neither call is left in the markup beside it',
-   !/disabled=\{[^}]*canStartSetup\(\)/.test(markup) && !/isReady\(\)/.test(markup),
+check('and so is this player\'s own Game Setup press',
+   /^\s*\$: pressed = /m.test(actions) && /\$gameSetup\.pressed/.test(actions),
+   'the label says whose press is outstanding, so it has to re-run when the list changes')
+check('and no store-reading call is left in the markup beside them',
+   !/disabled=\{[^}]*canStartSetup\(\)/.test(markup) && !/isReady\(\)/.test(markup) && !/hasPressed\(\)/.test(markup),
    'the markup reads the named values, so there is one answer to re-run rather than two')
 check('and the button is drawn disabled from that value',
-   /class="game-setup"[\s\S]{0,120}disabled=\{!canSetup\}/.test(markup))
-check('and Ready glows, disables and renames itself from its own',
-   /class:glow=\{waiting\}/.test(markup) && /disabled=\{waiting\}/.test(markup) && /Ready ✓/.test(markup))
+   /class="game-setup"[\s\S]{0,140}disabled=\{!canSetup \|\| pressed\}/.test(markup),
+   'disabled on the rule, and again on this player having already pressed')
+check('and Ready disables and renames itself from its own, with no glow',
+   /disabled=\{waiting\}/.test(markup) && /Ready ✓/.test(markup) && !/class:glow=\{waiting\}/.test(markup),
+   'the tick is the whole of the feedback; the continuous pulse is gone')
+check('and Ready keeps its colour rather than dimming when it is spent',
+   /\.ready:disabled/.test(actions) && /opacity-100/.test(actions))
 
 /*
    `decksReady` and the imported-deck indicator the feature was asked to look for are the same
@@ -143,12 +151,28 @@ check('and both boards are asked, so one import is not enough',
    disagree about half the time, and the player who did not draw one is then asked to call a
    toss that was already decided somewhere else.
 */
+/*
+   **Both players press it, and the toss waits for the second press.** One press is half of an
+   agreement: it is recorded, the room is told, and the flow is left where it is - so the toss
+   cannot start on one player's say-so, and the board is held until the pair is complete.
+*/
 const start = bodyOf(setup, 'startSetup')
-check('the caller of the coin is picked by the board that starts the setup',
+check('a press demands a room, both decks and an opening not yet begun',
+   /if \(!canStartSetup\(\)\) return false/.test(start))
+check('and a player cannot press twice', /if \(!id \|\| hasPressed\(\)\) return false/.test(start))
+check('and the press is written before the pair is judged',
+   start.indexOf('pressed:') < start.indexOf('if (!bothPressed())'),
+   'bothPressed asks the seats against the list, so it has to be able to see this press')
+check('and one press of two returns without starting the toss',
+   /if \(!bothPressed\(\)\) \{[\s\S]*?return true/.test(start) &&
+   start.indexOf("phase: 'coin'") > start.indexOf('if (!bothPressed())'))
+check('and the caller of the coin is picked by the board whose press completed the pair',
    /const chooser = players\[Math\.floor\(Math\.random\(\) \* players\.length\)\]/.test(start))
 check('and the choice travels with the event rather than being drawn again',
    /share\('setupStarted', agreed\)/.test(start) && /chooser/.test(start))
-check('and a board does not start a setup it may not start', /if \(!canStartSetup\(\)\) return false/.test(start))
+check('and both lists are spent before the deal',
+   /phase: 'coin'[\s\S]{0,80}ready: \[\]/.test(start),
+   'the pressed pair is the opening\'s, and the deal starts with neither list')
 
 /*
    The call is the player's own act and is logged before the coin is flipped; the flip is in the
@@ -156,7 +180,13 @@ check('and a board does not start a setup it may not start', /if \(!canStartSetu
 */
 const call = bodyOf(setup, 'callCoin')
 check('the call is written to the log as the player makes it',
-   /publishLog\(`Player chooses \$\{side\(call\)\}`\)/.test(call))
+   /publishLog\(`Chooses \$\{face\(call\)\}`\)/.test(call))
+check('and it names a coin face rather than a side',
+   !/publishLog\(`Chooses \$\{side/.test(call),
+   '`side` answers First or Second, so a call of heads was written as "Chooses Second"')
+check('and it does not say "Player chooses"',
+   !/publishLog\(`Player chooses/.test(call),
+   'the relay already names the sender on every line it delivers, so the word was said twice')
 check('and the coin is flipped in the same act', call.includes('const result = flipCoin()'))
 check('and only the player who was picked may call it', /if \(!callsCoin\(\)\) return false/.test(call))
 
@@ -187,7 +217,10 @@ check('and choosing First puts this player in front',
 check('and choosing Second puts the other player in front',
    /seats\(\)\.find\(\(player\) => player\.id !== winner\)\?\.id \|\| null/.test(order))
 check('and the choice is written the way the table reads it',
-   /publishLog\(`Player decided to go \$\{side\(order\)\}`\)/.test(order))
+   /publishLog\(`Decided to go \$\{side\(order\)\}`\)/.test(order))
+check('and it does not say "Player decided"',
+   !/publishLog\(`Player decided/.test(order),
+   'the same doubling the coin line had')
 
 /* ------------------------------------------------------------------ the deal --- */
 
@@ -251,9 +284,26 @@ check('and starts the clock', /setTimer\(\{ running: true, remaining: DEFAULT_TI
 check('starting states the opening turn rather than counting to it',
    /setTurn\(0\)[\s\S]*setTurn\(1\)/.test(startGame),
    'a relative turn is one more for every board that reaches the start')
-check('and the row is drawn only before the game is live',
-   /\$gameSetup\.phase === 'deal'/.test(actions) && !/phase === 'live'/.test(actions),
-   'a live game draws neither the button nor the row')
+/*
+   The row above the turn is **four phases of one slot**, and which one is drawn is the phase:
+
+      idle    the *Game Setup* button this player has not pressed - and once they have, the same
+              button saying they are waiting
+      deal    *Ready* and *Mulligan*
+      live    *Flip Coin* and *End Turn*, the game's own row, which a room had no button for while
+              the setup was the only row there was
+
+   A live game drawing the setup row is the fault this rules out, and so is a game that has begun
+   with no row at all - the second is what the room looked like before this change.
+*/
+check('the setup row is drawn for the deal and not for a live game',
+   /!\$solo && \$gameSetup\.phase === 'deal'/.test(actions))
+check('and a live game gets the game row instead',
+   /!\$solo && \$gameSetup\.phase === 'live'/.test(actions) &&
+   /class="game-actions"/.test(actions) && /on:click=\{flip\}/.test(actions) && /on:click=\{endTurn\}/.test(actions),
+   'Flip Coin and End Turn come back when the game does')
+check('and the setup button is drawn only at the start',
+   /!\$solo && \$gameSetup\.phase === 'idle'/.test(actions))
 
 /* the deal, the redraw and the start are registered by the module that owns the board */
 check('the board hands the deal, the redraw and the start to the flow',
@@ -298,21 +348,45 @@ check('and the flow\'s guards are cleared by it',
    hands: the ready list would otherwise name a member who has gone, and the new player would
    replay into a deal that happened before they arrived - with no cards in front of them.
 */
-check('and the seats changing hands forgets it too',
-   /if \(pair\) resetSetup\(\)/.test(setup),
+/*
+   **A setup belongs to two particular players, in one particular room**, and the second half is the
+   reported fault: leaving a room and making another one with the same opponent leaves the seats
+   *identical*, so watching the seats alone had nothing to notice while the flow still held a ready
+   list naming both of them. So the watcher is on the room as well, and it keys on the room id
+   rather than on an event - which is also what keeps a **reload** from wiping the setup it is in
+   the middle of, since resuming re-joins the same room.
+*/
+check('a seat changing hands forgets the setup',
+   /const seatsChanged = seatPair !== null && pair !== seatPair/.test(setup) &&
+   /if \(differentRoom \|\| seatsChanged\) resetSetup\(\)/.test(setup),
    'otherwise the phase belongs to somebody who is no longer in the room')
+check('and so does the room changing',
+   /const differentRoom = seenRoom !== null && seenRoom !== here/.test(setup),
+   'the same two members in another room are a different game')
+check('and it is watched on the room, not on an event, so a reload keeps its setup',
+   /room\.subscribe\(watchRoom\)/.test(setup) && /seatedPlayers\.subscribe\(watchRoom\)/.test(setup) &&
+   !/react\('joinedRoom', forgetRoom\)/.test(setup),
+   'resuming re-joins the same room, and that is not a change')
+check('and forgetting has a way to empty the two unions',
+   /function put \(state, \{ clear = false \} = \{\}\)/.test(setup) && /\{ clear: true \}/.test(setup),
+   'a union has no way out, so reset replaces rather than merges')
 check('and a step that arrives late cannot put the flow back',
    /RANK\[state\.phase\] < RANK\[before\.phase\]/.test(setup))
-check('and ready is a union, so a reload cannot lose this board\'s own press',
-   /new Set\(\[ \.\.\.before\.ready, \.\.\.state\.ready/.test(setup),
+check('and both lists are unions, so a reload cannot lose this board\'s own entry',
+   /union\(before\.ready, state\.ready\)/.test(setup) && /union\(before\.pressed, state\.pressed\)/.test(setup),
    'a client is never handed its own events back, so its own press is missing from the replay')
 
 /* ------------------------------------------------------------------ the row --- */
 
 check('the row offers Ready and Mulligan', /class="ready"/.test(actions) && /class="mulligan"/.test(actions))
-check('and Ready glows while it is waiting on the other player',
-   new RegExp('\\.ready\\.glow \\{\\s*animation: hide-glow 1s ease-in-out infinite').test(actions.replace(/\n\s*/g, ' ')),
-   'a continuous pulse, and it stays until the other player presses theirs')
+check('and the mulligan is green rather than the grey that read as disabled',
+   /\.setup-row \.mulligan \{[\s\S]{0,80}bg-green-600/.test(actions))
+check('and Ready does not animate at all',
+   !/class:glow=\{waiting\}/.test(actions) && !/\.ready\.glow/.test(actions),
+   'the tick is the whole of the feedback; a light nobody can turn off is not')
+check('and it keeps its colour when it is spent',
+   /\.ready:disabled \{[\s\S]{0,40}opacity-100/.test(actions),
+   'disabled is what a second press would do, not what the button is saying')
 check('and the setup button is gone once the row is up',
    /!\$solo && \$gameSetup\.phase === 'idle'/.test(actions),
    'the two are phases of one slot above the turn, never both at once')
@@ -346,12 +420,25 @@ check('and a phase that is not a deal takes no mulligan',
 /* ----------------------------------------------------------------- the dialog --- */
 
 /*
-   The dialog is the lock: it covers the board *and* the panel, and it is up for exactly the two
-   phases that are a decision. A phase with no dialog over it is the game stopping with nothing
-   on screen to say why.
+   **The dialog is the lock, and it is up for the whole opening.** Nothing on the table is
+   anybody's to touch until both players have said the game may begin, so it is up from the moment
+   a room has two players in it - before either has pressed - and it carries the toss and the
+   choice after that. It goes when the boards deal.
+
+   A phase with no dialog over it is a board a player can play while the game is still being
+   agreed, which is the fault the lock exists to prevent.
 */
-check('the dialog is up for the toss and for the choice',
-   /state\.phase === 'coin' \|\| state\.phase === 'order'/.test(dialog))
+check('the lock is up for every phase before the deal',
+   /locked = \(\$gameSetup\.phase === 'idle' \|\| \$gameSetup\.phase === 'coin' \|\| \$gameSetup\.phase === 'order'\)/.test(dialog),
+   'idle is before either press, and the board is held there too')
+check('and it says what is happening before anything has been decided',
+   /Setting up the game/.test(dialog) && /Both players need to press Game Setup/.test(dialog))
+check('and it tells the player who has pressed that they are waiting',
+   /Waiting for \{other\} to press Game Setup/.test(dialog) &&
+   /isPressed = state\.pressed\.includes\(\$myId\)/.test(dialog),
+   'the press is read off the list, because the store read inside `hasPressed()` is invisible to the compiler')
+check('and the lock is on the store value rather than a call',
+   /\$: open = !\$solo && !\$spectating && locked/.test(dialog))
 check('and covers the window rather than the board',
    /position: fixed;\s*inset: 0;/.test(dialog), 'the chat and the row are behind it too')
 check('and offers Heads and Tails to the player who was picked',

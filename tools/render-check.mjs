@@ -1216,14 +1216,16 @@ check('and a card attached under their Pokemon is pinged as its own card',
    'the click stops at that card, or the slot menu opens over it and the ping is about the Pokemon')
 
 /*
-   **The room's opening dialog, in the states it has.** It is the one thing in this feature that
-   draws over everything, and it draws *nothing* until a phase puts it up - so a fault in it is
-   invisible to every state above, exactly like the pile dialog.
+   **The room's opening dialog, in the states it has.** It is a *lock* before it is a dialog: it is
+   up from the moment a room has two players in it, before either has pressed *Game Setup*, and it
+   carries the toss and the choice after that. So there is no "draws nothing" state while a room is
+   open - what is asserted instead is the two halves of the lock, and that the buttons belong to the
+   player they are about.
 
    The phases are put into the store directly, which is the state the relay's own events leave
-   behind. `seatedPlayers` and `myId` are set the same way, because *who* the dialog is talking
-   to is the whole of what it branches on - and without a seat nobody is the caller, so every
-   state draws the waiting half of the dialog and the buttons are never reached.
+   behind. `seatedPlayers` and `myId` are set the same way, because *who* the dialog is talking to
+   is the whole of what it branches on - and without a seat nobody is the caller, so every state
+   draws the waiting half of the dialog and the buttons are never reached.
 */
 const setupState = (over) => ({
    phase: 'coin',
@@ -1235,26 +1237,31 @@ const setupState = (over) => ({
    order: null,
    first: null,
    ready: [],
+   pressed: [],
    ...over
 })
 
-const rendersNothing = (label, Component, { props = {}, context = undefined } = {}) => {
-   try {
-      const out = Component.render(props, { context })
-      const html = out?.body ?? out?.html ?? ''
-      check(label, html.trim() === '', `${html.length} chars`)
-      return html
-   } catch (err) {
-      check(label, false, `${err.name}: ${err.message}`)
-      return null
-   }
-}
-
 /* the two seats a room has, and this board's player in the first of them */
-rendersNothing('the setup dialog draws nothing with no setup under way', mod.GameSetupDialog)
-
 mod.seatedPlayers.set([ { id: 'me', name: 'Alice' }, { id: 'them', name: 'Bob' } ])
 mod.myId.set('me')
+
+/* the lock, before anything has been decided: both are asked to press, and neither has */
+mod.gameSetup.set(setupState({ phase: 'idle' }))
+const lockedDialog = renders('the setup dialog renders the lock', mod.GameSetupDialog)
+check('and it says the game is being set up',
+   Boolean(lockedDialog) && lockedDialog.includes('Setting up the game'))
+check('and asks both players to press Game Setup',
+   Boolean(lockedDialog) && lockedDialog.includes('Both players need to press Game Setup'))
+check('and it offers nothing to press at all',
+   Boolean(lockedDialog) && !lockedDialog.includes('<button'), 'the way out is the button behind it')
+
+/* and the same state once this player has pressed, which is the wait */
+mod.gameSetup.set(setupState({ phase: 'idle', pressed: [ 'me' ] }))
+const waitingForOther = renders('the lock renders for the player who has pressed', mod.GameSetupDialog)
+check('and that player is told they are waiting on the other one',
+   Boolean(waitingForOther) && /Waiting for Bob to press Game Setup/.test(waitingForOther),
+   'the name comes from the seats, not from a prop')
+
 mod.gameSetup.set(setupState({ chooser: 'me', you: { chooser: 'you', winner: null } }))
 
 const coinDialog = renders('the setup dialog renders the toss', mod.GameSetupDialog)

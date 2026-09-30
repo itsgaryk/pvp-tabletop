@@ -165,23 +165,45 @@ check('and none for a spectator, who has no deck to import', mod.canStartSetup()
 mod.spectating.set(false)
 
 /*
-   And the press itself: it picks **one of the two seats** and moves the room to the coin. That
-   the pick is random is not checkable here and does not need to be - what matters is that it is
-   one of the two players and that the room is told which, which is what the other check asserts
-   of the source and this one of the running store.
+   **One press is half of an agreement, and the toss waits for the other half.** This is the rule
+   the two boards have to keep between them, and it is asked of the running store rather than read
+   out of the source: the first press is recorded and stops, the second completes the pair and
+   draws the caller.
 
-   The flow's own exports are read through the namespace rather than by name, because this is the
-   one place they are driven rather than read: `callsCoin` and `startSetup` are the two the UI
-   calls, and both are asked here.
+   The two seats are driven by moving `myId` between them, which is what the two boards differ by -
+   they share one store here because a check has one process, so "the other board" is played by
+   changing whose id is looking. That is a limit of this harness rather than of the rule, and the
+   browser check is where the two boards really are two.
 */
-const { startSetup, callsCoin } = mod.setup
+const { startSetup, callsCoin, hasPressed, bothPressed } = mod.setup
 
-check('and the press starts the setup', startSetup() === true)
+check('the first press is recorded', startSetup() === true && hasPressed() === true)
+check('and does not start the toss on its own',
+   mod.gameSetup.get().phase === 'idle' && bothPressed() === false,
+   `phase = ${mod.gameSetup.get().phase}`)
+check('and the same player cannot press again', startSetup() === false)
+
+mod.myId.set('them')
+check('the other player has not pressed', hasPressed() === false)
+check('and the second press completes the pair and starts the toss',
+   startSetup() === true && bothPressed() === true)
 
 const state = mod.gameSetup.get()
 check('and the room is now calling the coin', state.phase === 'coin', `phase = ${state.phase}`)
 check('and the caller is one of the two seats',
    [ 'me', 'them' ].includes(state.chooser), `chooser = ${state.chooser}`)
+/*
+   And the pair is not re-pressed at. The list is a **union** - a client is never handed its own
+   events back, so a board that reloads replays the other player's list and would otherwise lose
+   its own entry and offer the button to somebody who has already pressed it - so it is still the
+   two members here. What matters is that neither of them is offered the button again, which is
+   what `hasPressed` answers.
+*/
+check('and neither player is offered the button again',
+   (mod.myId.set('me'), hasPressed() === true) && (mod.myId.set('them'), hasPressed() === true))
+mod.myId.set('me')
+check('and the toss does not wait on the pair any longer',
+   bothPressed() === true, 'both have pressed; the flow has moved on to the coin')
 
 /* and only the player who was picked is asked to call it */
 check('and the player who was picked may call it',
@@ -200,5 +222,5 @@ mod.defaultOpponent.cards.set([])
 
 console.log(failures
    ? `\n${failures} check(s) failed`
-   : '\nverdict: ok - the setup store loads, gates on two players and two decks, and starts a toss')
+   : '\nverdict: ok - the setup store loads, gates on two players and two decks, and needs both presses')
 process.exit(failures ? 1 : 0)

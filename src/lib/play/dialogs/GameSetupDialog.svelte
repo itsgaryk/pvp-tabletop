@@ -1,25 +1,51 @@
 <script>
    /*
-      Deciding who goes first: the coin toss, and the choice it hands to one player.
+      The room's opening, on screen: the lock that holds the board until both players are ready to
+      begin, the coin toss, and the choice it hands to one of them.
 
-      It is one dialog with two questions in it, because it is one exchange: the player the room
-      picked calls Heads or Tails, the coin comes up, and whoever called it right says whether
-      they want to go first or second. Which of the two is on screen is the phase, and who it is
-      on screen *for* is which seat the player holds.
+      ---------------------------------------------------------------------------
+      It is a lock before it is a dialog
+      ---------------------------------------------------------------------------
+      A player sits down, imports a deck, and looks at a board they are not yet meant to play. The
+      game has not been opened, and nothing on the table is anybody's to touch until **both** have
+      said so - so this is up from the moment a room has two players in it, and it covers the whole
+      window: the board, the cards, the chat and the panel beside them. The way out is the *Game
+      Setup* button, which is on the panel and outside this dialog's reach, and the way out of the
+      room is *Leave Room* beside it.
 
-      It takes the screen while it is up, and that is the point rather than a side effect: a coin
-      toss decided while one player is drawing cards is not a decision, and the two questions are
-      each a commitment. So the backdrop covers the board *and* the panel beside it, the way the
-      Import Deck window does, and the dialog's own buttons are the only thing that can be
-      pressed. It cannot be dismissed by Escape or by clicking beside it: neither of those is a
-      call or a choice, and a player who waved it away would leave the other one waiting on an
-      answer that is never coming.
+      It then carries the two questions of the toss, and goes when the order is settled and the
+      boards deal. So there is one element for the whole opening, and which of its states is on
+      screen is the phase:
 
-      While the *other* player is being asked, this board is told so rather than shown nothing -
-      the table has stopped, and a board that went quiet with no explanation reads as a fault.
+         idle     nothing yet. *Game Setup* is the only thing to press, and a player who has
+                  pressed it reads that they are waiting for the other one
+         coin     the player the room picked calls Heads or Tails
+         order    the coin has come up, and whoever called it right chooses first or second
+
+      ---------------------------------------------------------------------------
+      It cannot be dismissed, and that is deliberate
+      ---------------------------------------------------------------------------
+      Neither a click beside it nor `Escape` is a call, a choice, or a game begun. The Import Deck
+      window is the one other thing shaped like this, and for the same reason: a window that could
+      be waved away would leave the other player waiting on an answer that is never coming.
+
+      ---------------------------------------------------------------------------
+      Why every `$:` here names a store
+      ---------------------------------------------------------------------------
+      **Svelte 4 hoists a `$:` with no reactive dependency out of the component's update function
+      and runs it once, at instance creation.** `calling = callsCoin()` named no store and no
+      reactive variable - `callsCoin` reads `gameSetup.get()` and `myId.get()` *inside itself*,
+      which the compiler cannot see - so it was compiled to a bare assignment and answered once.
+      Measured on the running app: the dialog came up for the coin with `calling` stuck at its
+      first value of `false`, so **neither player was ever offered Heads or Tails** and both were
+      told the other one was calling.
+
+      Passing `state.phase` in is what makes the dependency visible, and it is the rule for every
+      expression below. `lock` and `blind` read `$gameSetup` and `$myId` directly for the same
+      reason. See docs/gotchas.md.
    */
    import {
-      gameSetup, callsCoin, choosesOrder, callCoin, chooseOrder
+      gameSetup, callsCoin, choosesOrder, callCoin, chooseOrder, hasPressed
    } from '$lib/stores/gameSetup.js'
    import { spectating, seatedPlayers, myId } from '$lib/stores/connection.js'
    import { solo } from '$lib/stores/solo.js'
@@ -38,28 +64,18 @@
    $: other = $seatedPlayers.find((player) => player?.id !== $myId)?.name || 'The other player'
 
    /*
-      The two questions, and who is being asked each of them.
+      The three states, each with the store it is about named in the expression.
 
-      `mine` is the whole of what decides whether this player gets buttons: they are the one the
-      room picked to call the coin, or the one who called it right. Everybody else - the other
-      player, and every watcher - is told what is happening and given nothing to press.
-
-      **Both read `state` rather than only asking the store, and that is not tidiness.** Svelte 4
-      hoists a `$:` statement with no *reactive* dependency out of the component's update function
-      entirely - it becomes a plain assignment that runs once, at instance creation, and never
-      again. `calling = callsCoin()` names no store and no reactive variable: `callsCoin` reads
-      `gameSetup.get()` and `myId.get()` *inside itself*, which the compiler cannot see. So it was
-      compiled to two bare statements after `$$self.$$.update` - measured on the running app, the
-      dialog came up for the coin with `calling` stuck at its first value of `false`, so **neither
-      player was ever offered Heads or Tails** and both were told the other one was calling.
-
-      Passing the phase in is what makes the dependency visible, so the answer is re-read every
-      time the flow moves. The same rule is written up in docs/gotchas.md; it is the second time
-      in this feature that a correct-looking read of a store was frozen by the compiler.
+      `locked` is the board being held: a room with two players in it whose game has not been
+      dealt. `pressed` is this player's own half of the agreement, read off the list rather than
+      asked of `hasPressed()` - the store read inside that call is invisible to the compiler, and
+      the whole opening is built on not making that mistake twice.
    */
    $: calling = callsCoin(state.phase)
    $: ordering = choosesOrder(state.phase)
-   $: open = !$solo && !$spectating && (state.phase === 'coin' || state.phase === 'order')
+   $: isPressed = state.pressed.includes($myId)
+   $: locked = ($gameSetup.phase === 'idle' || $gameSetup.phase === 'coin' || $gameSetup.phase === 'order')
+   $: open = !$solo && !$spectating && locked
 
    /* the face the coin came up, in the words the log used for it */
    $: face = state.result === 'heads' ? 'Heads' : 'Tails'
@@ -68,12 +84,31 @@
 
 {#if open}
    <!--
-      The backdrop is the lock. It is a sibling of nothing in particular and it covers the window,
-      so a click meant for a card, a pile or the chat lands here and does nothing instead.
+      The backdrop is the lock. It covers the window, so a click meant for a card, a pile or the
+      chat lands here and does nothing instead. The *Game Setup* button and *Leave Room* live in
+      the panel beside the board, which this is over - and the panel is why the dialog is centred
+      rather than sized to the board: the two controls a player still has are behind it on purpose,
+      and the dialog is the only thing that answers the pointer.
    -->
    <div class="setup-backdrop" role="presentation">
       <div class="setup-dialog" role="alertdialog" aria-modal="true" aria-labelledby="setup-title">
-         {#if state.phase === 'coin'}
+         {#if state.phase === 'idle'}
+            <!--
+               The lock, before anything has been decided. Both players are told what to do, and the
+               one who has already pressed is told that they are waiting - a board that went quiet
+               with no explanation would read as a fault rather than as the other player reading
+               their deck.
+            -->
+            <p id="setup-title" class="setup-title">Setting up the game</p>
+            <p class="setup-hint">
+               {#if isPressed}
+                  Ready. Waiting for {other} to press Game Setup.
+               {:else}
+                  Both players need to press Game Setup before the game can begin.
+               {/if}
+            </p>
+
+         {:else if state.phase === 'coin'}
             <!--
                The toss. The player who was picked is asked to call it; the other player is told
                that the call is being made, because the game has stopped until it is.

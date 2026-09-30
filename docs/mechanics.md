@@ -296,53 +296,66 @@ step, so the two are never in different phases.
 **Solo does none of this.** There is no second player to toss with, and solo's row is
 unchanged.
 
-**1. The button is gated on two things.** *Game Setup* is greyed out until there are two
-players in the room **and both have imported a deck**. The second half is not a flag of
-its own: the deck a player imported *is* the card list on their board, and the other
-player's arrives with every board state, so the rule asks `cards` and the opponent
-mirror. A deal cannot be built from a deck that is not there.
+**0. The board is locked, and both players press.** Nothing on the table is anybody's to
+touch until both have said the game may begin, so a **lock** covers the whole window — the
+board, the cards, the chat and the panel — from the moment a room has two players in it.
+The only controls it leaves are the *Game Setup* button and *Leave Room*, and both are in
+the panel behind it.
 
-**2. Deciding who goes first.** The press does not deal. It picks one of the two players
-**at random, on the board that pressed**, and names them in the event — two boards each
-drawing for themselves would disagree about half the time. That player is shown
-*Determining player order* with **Heads** and **Tails**, and the other player is shown
-the same dialog saying that the call is being made.
+*Game Setup* is pressed **by both**, one after the other. One press is half of an
+agreement: it is recorded and passed to the room, the board stays locked, and that player
+is told they are waiting. The press that completes the pair is the one that draws the coin
+caller. So the button reads *Game Setup* until this player has pressed, *Waiting for
+opponent…* after, and it is greyed out until there are two players in the room **and both
+have imported a deck**. That last part is not a flag of its own: the deck a player imported
+*is* the card list on their board, and the other player's arrives with every board state,
+so the rule asks `cards` and the opponent mirror.
 
-- The call is logged as `Player chooses Heads` or `Player chooses Tails`, and the coin is
-  flipped in the same act: `Coin flip: HEADS` or `Coin flip: TAILS`.
+**2. Deciding who goes first.** The second press does not deal. It picks one of the two
+players **at random, on the board whose press completed the pair**, and names them in the
+event — two boards each drawing for themselves would disagree about half the time. That
+player is shown *Determining player order* with **Heads** and **Tails**, and the other
+player is shown the same dialog saying that the call is being made.
+
+- The call is logged as `Chooses HEADS` or `Chooses TAILS`, and the coin is flipped in the
+  same act: `Coin flip: HEADS` or `Coin flip: TAILS`. **Neither line says `Player`**: the
+  relay already names the sender on every line it delivers, so the line reads
+  *[Alice] Chooses HEADS* and the word was the only thing in it that was said twice.
 - **Calling it right wins the toss.** The winner is asked whether they want to go **First**
   or **Second**; a wrong call hands that question to the other player instead, and the
   dialog on both screens says which way the toss went.
-- The choice is logged as `Player decided to go First` or `Player decided to go Second`.
-  Choosing *Second* is not "I am second" — it says the other player goes first, and that
-  is what the turn order records.
+- The choice is logged as `Decided to go First` or `Decided to go Second`. Choosing
+  *Second* is not "I am second" — it says the other player goes first, and that is what the
+  turn order records.
 
-While either question is open the dialog **takes the screen**: the board, the cards and
-the chat are behind it, and there is nothing to press but the two answers. It cannot be
-clicked away or escaped out of, because neither of those is a call or a choice — the same
-behaviour the Import Deck window has.
+While either question is open the dialog still takes the screen, and it cannot be clicked
+away or escaped out of, because neither of those is a call or a choice — the same behaviour
+the Import Deck window has.
 
 **3. The deal, and the opening hand.** As soon as the order is settled both boards deal:
 seven cards each and six prizes, hidden as the deal always hides them. The row that
 replaces *Game Setup* is **Ready** and **Mulligan**:
 
-- **Ready** starts the game. It glows continuously until the other player has pressed
-  theirs, because the wait is the other player's and a button that simply went dead would
-  read as the press having failed.
-- **Mulligan** redraws the opening hand — the same deal as the one above, so the prizes go
-  with the hand being thrown back rather than staying put. Each press **adds one to this
+- **Ready** starts the game. A press that has been made shows a **tick** — *Ready ✓* — and
+  the button stops answering. It does not glow: the tick says everything the glow was
+  saying, and a light that pulses for as long as the other player takes is a light nobody
+  can turn off.
+- **Mulligan** is drawn **green**, because it is the one button in the row that is this
+  player's own — it buys another hand and changes nothing on the other board — and the grey
+  it wore read as a disabled button beside a live one. Each press **adds one to this
   player's count** and writes two lines: `Player had N mulligans`, then `Hand: <the cards>`.
   The count is the player's own and is not sent to the other board; the opponent reads it
-  from the log, the way every other line is read. The button shows the count as it goes.
+  from the log. The button shows the count as it goes.
 
 **4. The game starts when both are ready.** Then, together:
 
 - the **veil comes off** both boards — set as a state rather than toggled, so the second
   board to arrive cannot hide the first one's Pokémon by toggling it back on;
 - the **clock starts**, from the room's default of fifty minutes;
-- the **turn moves on by one**, so the opening turn is turn 1 rather than the 0 the deal
-  leaves;
-- the row is **gone**, because the phase is `live` and the row only draws before that;
+- the **turn** is stated as **1** — see below;
+- the setup row is replaced by the **game's own row: Flip Coin and End Turn**, the two
+  actions a room has always had and had no button for while the setup was the only row
+  there was. They were on `F` and `Enter` alone;
 - `Game started` goes in the log — **once**, written by the first seat, because both
   boards notice the same moment and a line from each would say it twice.
 
@@ -359,16 +372,29 @@ Both boards reach the start independently, each applying the turn for itself, an
 from the current value went wrong the moment one of them got there twice: measured on two
 browsers, the game started, the log said so once, and the turn row read **Turn 2**.
 
-**A second game in the same room does not bring the setup back — known, and not yet
-fixed.** *New Game* goes through (the other player accepts, both boards are cleared, both
-import a deck again), but the room does not return to a phase where *Game Setup* is
-offered, so the second game cannot be started at all. Instrumented on the running app, the
-reset runs on both boards and leaves the phase at **`live`** with the previous game's ready
-list still in it, so something puts the flow back after the reset — the replay of the room's
-log is the first thing to look at, since a board that takes the log again re-applies every
-`setupReady` carrying `ready: [...]`, and the ready-union would then satisfy `bothReady()`
-again. The section of `tools/game-setup-browser-check.mjs` that drives it is written and
-skipped behind a `SECOND_GAME_KNOWN_BROKEN` flag.
+**A setup belongs to two players in one room, and is forgotten when either changes.** The
+phase lives in the room's log and nowhere else, so a seat changing hands — or the same two
+players making *another* room — leaves both boards in a phase agreed by somebody, or
+somewhere, that is no longer the case. The second is the one that was reported:
+*"after leaving the room and creating a new room the Game Setup button did not appear"*,
+because the new room had the **same two members in the same order**, so a watcher on the
+seats had nothing to notice while the flow still held a ready list naming both of them —
+and `bothReady()` was satisfied by a room that had not dealt a card, which put the phase at
+`live` and took the button away. The watcher is therefore on the **room id** as well, and
+keyed on the value rather than on an event, which is what keeps a *reload* from wiping the
+setup it is in the middle of: resuming a session re-joins the same room, and that is not a
+change.
+
+**A second game in the same room is still not checked.** *New Game* goes through — the other
+player accepts, both boards are cleared, both import a deck again — but whether the room
+returns to a phase where *Game Setup* is offered has not been verified since the reset was
+reworked, and it was **broken** when it was last tried: the reset ran on both boards and left
+the phase at `live` with the previous game's ready list in it, so the second game could not
+be started at all. The reset now also clears the two lists outright (a union has no way to
+empty itself) and is keyed on the room rather than on an event, which is the shape the
+diagnosis pointed at — but the section of `tools/game-setup-browser-check.mjs` that drives it
+is still written and skipped behind a `SECOND_GAME_KNOWN_BROKEN` flag, so **this is untested
+rather than fixed.** Leaving the room and making another one *is* checked there, and passes.
 
 ### Mulligans
 

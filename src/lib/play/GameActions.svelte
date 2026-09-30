@@ -9,11 +9,15 @@
       The board half of the room's opening: `onDeal` is the deal this module knows how to make,
       `onStart` is what starting a game does to a board, and the two questions in between are
       the dialog's (`play/dialogs/GameSetupDialog.svelte`). What the flow itself is - the
-      phases, the coin, who is ready - is `stores/gameSetup.js`, which owns none of this and
-      asks for it by registering, so the import points one way.
+      phases, the coin, who has pressed and who is ready - is `stores/gameSetup.js`, which owns
+      none of this and asks for it by registering, so the import points one way.
+
+      The two lists are read here rather than asked of the store's `isReady()` and `hasPressed()`,
+      and that is the rule this whole feature keeps having to relearn: see the note over `waiting`
+      and `pressed` below.
    */
    import {
-      gameSetup, decksReady, myMulligans, canStartSetup, startSetup, ready, isReady,
+      gameSetup, decksReady, myMulligans, canStartSetup, startSetup, ready,
       takeMulligan, redrawHand, onDeal, onRedraw, onStart, resetSetup, flipCoin
    } from '$lib/stores/gameSetup.js'
 
@@ -77,15 +81,16 @@
                        had even arrived
 
       So both name the stores they are about. The rule itself stays in the store - `canStartSetup`
-      is still the one place the gate is stated, and `startSetup` still enforces it - and these two
-      lines exist so the compiler can see what each answer depends on. `waiting` asks the ready
-      list directly rather than through `isReady()`, because "have *I* pressed it" is a question
-      about `$myId` as much as about the list.
+      is still the one place the gate is stated, and `startSetup` still enforces it - and these
+      lines exist so the compiler can see what each answer depends on. `waiting` and `pressed` ask
+      the lists directly rather than through `isReady()` and `hasPressed()`, because "have *I*
+      pressed it" is a question about `$myId` as much as about the list.
    */
    $: canSetup = $decksReady && $gameSetup.phase === 'idle' && canStartSetup()
 
-   /* and this one asks the list directly, for the reason above */
+   /* this player's own presses, asked of the lists directly, for the reason above */
    $: waiting = Boolean($myId) && $gameSetup.ready.includes($myId)
+   $: pressed = Boolean($myId) && $gameSetup.pressed.includes($myId)
 
    function draw7andPutPrizes () {
       resetBoard()
@@ -398,16 +403,20 @@
       stores/gameSetup.js). A deal cannot be built from a deck that is not there, and the whole
       opening - the toss, the order, the opening hands - is between those two players.
 
-      Pressing it does not deal. It opens the room's own opening: the coin toss and the choice
-      of who goes first, and the deal follows from where that lands. Solo is untouched by all of
-      it and keeps the row below.
+      **Both players press it.** One press is half of the agreement: it is recorded, the room is
+      told, and nothing else happens - the board stays locked and this player is told they are
+      waiting. The press that completes the pair starts the toss. So the label says whose press is
+      still outstanding rather than only whether this player has made theirs.
    -->
    {#if !$solo && $gameSetup.phase === 'idle'}
       <button
          class="game-setup"
-         disabled={!canSetup}
-         title="Both players need a deck imported: this starts the coin toss for who goes first"
-         on:click={startSetup}>Game Setup</button>
+         disabled={!canSetup || pressed}
+         title={pressed
+            ? 'Waiting for the other player to press Game Setup'
+            : 'Both players need a deck imported, and both need to press this'}
+         on:click={startSetup}
+      >{pressed ? 'Waiting for opponent…' : 'Game Setup'}</button>
    {/if}
 
    <!--
@@ -416,16 +425,19 @@
       when the phase became `deal` - so these two are what a player does with an opening hand:
       keep it, or take a mulligan and draw another.
 
-      The row is up until the game starts, and then it is gone: the phase is `live`, and neither
-      button means anything once the game is under way. That is why it is drawn from the phase
-      rather than from a flag of its own - one thing decides both whether the row is there and
-      what it is for.
+      The row is up until the game starts, and then it is replaced by the row below: the phase is
+      `live`, and neither of these means anything once the game is under way. That is why it is
+      drawn from the phase rather than from a flag of its own - one thing decides both whether the
+      row is there and what it is for.
+
+      **Ready carries a tick and no animation.** A press that sets a glowing button pulsing for as
+      long as the other player takes is a light nobody can turn off, and what it was saying - *this
+      one is done, and is waiting* - the tick says on its own.
    -->
    {#if !$solo && $gameSetup.phase === 'deal'}
       <div class="setup-row">
          <button
             class="ready"
-            class:glow={waiting}
             disabled={waiting}
             title={waiting ? 'Waiting for the other player' : 'Ready to start the game'}
             on:click={ready}
@@ -433,13 +445,32 @@
 
          <!--
             The mulligan, drawn with the count it is about to write: the button says how many
-            this player has taken rather than making them read the log to find out.
+            this player has taken rather than making them read the log to find out. Green, because
+            it is the one button here that is the player's own rather than the table's, and the
+            grey it had read as disabled.
          -->
          <button
             class="mulligan"
             title="Shuffle this hand back and draw a new one, keeping your prizes"
             on:click={mulligan}
          >{$myMulligans > 0 ? `Mulligan (${$myMulligans})` : 'Mulligan'}</button>
+      </div>
+   {/if}
+
+   <!--
+      And the row the game itself runs on, once it has begun: **Flip Coin** and **End Turn**, the
+      two actions a room has always had and has had no button for since the row was cut down to
+      *Game Setup*. They appear where the setup row was - above the turn, the same width - so the
+      turn and the clock under them never move.
+
+      They were keyboard-only (`F` and `Enter`) while the setup was the one thing a room did with a
+      button. A game that has started is a game with a turn to end and a coin to flip, so they come
+      back when it does.
+   -->
+   {#if !$solo && $gameSetup.phase === 'live'}
+      <div class="game-actions">
+         <button on:click={flip} title="Shortcut: F">Flip Coin</button>
+         <button on:click={endTurn} title="End your turn (Shortcut: Enter): logs it, moves the turn on, and clears your Ability Used stripes">End Turn</button>
       </div>
    {/if}
 
@@ -517,13 +548,13 @@
    }
 
    /*
-      The Mulligan is the plain one and Ready is the lit one, because Ready is the button that
-      moves the game on and the mulligan is the button that buys another hand. Neither is
-      disabled by the other: a player may take a mulligan right up to the moment the game
-      starts - that is what the count is for - and only the start itself takes both away.
+      The Mulligan is the green one and Ready is the blue one. Green is not decoration: the
+      mulligan is the only button in this row that is *this player's own* - it buys another hand
+      and changes nothing on the other board - and the grey it wore read as a disabled button
+      sitting beside a live one.
    */
    .setup-row .mulligan {
-      @apply text-white bg-[var(--bg-color-three)];
+      @apply text-white bg-green-600;
    }
 
    .setup-row .ready {
@@ -531,19 +562,11 @@
    }
 
    /*
-      A player who has pressed Ready glows until the other one does: it is the whole of what this
-      half of the table can say about the wait, and a button that simply went dead would read as
-      the press having failed. It stays lit rather than fading on a timer because the wait is the
-      other player's, and there is no length of time it is fair to guess at.
-
-      The glow is the continuous one - the same pulse the Solo Setup button uses - rather than a
-      couple of beats and then nothing, which is the difference between "this is waiting on
-      something" and "this just happened".
+      A player who has pressed Ready keeps its colour rather than dimming: `disabled` is what the
+      second press would do, not what the button is saying, and the tick beside the word is the
+      whole of the feedback. **There is no glow** - a press that sets a light pulsing for as long
+      as the other player takes is a light nobody can turn off.
    */
-   .setup-row .ready.glow {
-      animation: hide-glow 1s ease-in-out infinite;
-   }
-
    .setup-row .ready:disabled {
       @apply opacity-100;
    }
@@ -563,9 +586,8 @@
    /*
       Solo's Setup hides the boards for you, and its button shows which one did it. The pulse
       repeats rather than stopping after a couple of beats: it stays until the button is
-      clicked, which for a player who is mid-turn may be a while. The room's *Ready* borrows
-      the same pulse for its own wait (see `.setup-row .ready.glow`), which is why the keyframes
-      are named for the motion rather than for the button that first wanted it.
+      clicked, which for a player who is mid-turn may be a while. It is the only glow left in
+      this component - the room's *Ready* had the same one and it is gone.
    */
    .game-actions button.glow {
       animation: hide-glow 1s ease-in-out infinite;
